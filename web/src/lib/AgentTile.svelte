@@ -1,6 +1,7 @@
 <script>
   import { STATE_COLORS, STATE_LABEL } from './states.js';
   import Avatar from './Avatar.svelte';
+  import SessionInfo from './SessionInfo.svelte';
 
   let { agent } = $props();
 
@@ -44,6 +45,7 @@
         <div class="lm-h">Recent activity</div>
         <ul class="logs">{#each agent.logLines.slice(0, 6) as l, i (i)}<li>{l}</li>{/each}</ul>
       {/if}
+      {#if agent.root}<SessionInfo {agent} />{/if}
     </div>
   {/if}
 

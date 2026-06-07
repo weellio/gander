@@ -4,6 +4,7 @@
   import { avatarMode, layout, images } from './lib/stores.js';
   import AgentTile from './lib/AgentTile.svelte';
   import ActionImages from './lib/ActionImages.svelte';
+  import CopySkill from './lib/CopySkill.svelte';
   import Hierarchy from './lib/Hierarchy.svelte';
 
   let agents = $state([]);
@@ -101,6 +102,7 @@
       {#if $images.length}<button class="select" onclick={clearImages} title="Clear imported images">✕{$images.length}</button>{/if}
       <input bind:this={fileInput} type="file" accept="image/*" multiple style="display:none" onchange={onFiles} />
       <ActionImages />
+      <CopySkill />
     </div>
   </header>
 
