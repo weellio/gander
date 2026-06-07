@@ -1,11 +1,11 @@
 <script>
   import { STATE_COLORS, STATE_LABEL } from './states.js';
+  import Avatar from './Avatar.svelte';
 
   let { agent } = $props();
 
   let msg = $state('');
   let color = $derived(STATE_COLORS[agent.state] || '#6B7280');
-  let initial = $derived(((agent.name || '?').trim()[0] || '?').toUpperCase());
 
   async function send(type) {
     const sessionId = agent.sessionId || String(agent.id).replace(/^sess:/, '');
@@ -20,13 +20,13 @@
   }
 </script>
 
-<div class="tile" class:idle={agent.state === 'idle'} class:sub={!!agent.parentId} style="--c:{color}">
+<div class="tile" class:idle={agent.state === 'idle'} class:sub={!!agent.parentId} style="--c:{color}" data-id={agent.id}>
   <div class="head">
     <span class="name">{agent.parentId ? '↳ ' : ''}{agent.name}</span>
     <span class="badge">{STATE_LABEL[agent.state] || agent.state}</span>
   </div>
 
-  <div class="avatar">{initial}</div>
+  <div class="avatar"><Avatar {agent} /></div>
 
   <div class="log">{agent.logLines && agent.logLines[0] ? '› ' + agent.logLines[0] : ''}</div>
 
@@ -56,12 +56,7 @@
   .head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
   .name { font-size: 12px; font-weight: 500; color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .badge { font-size: 9px; font-weight: 600; color: #fff; background: var(--c); padding: 2px 7px; border-radius: 99px; white-space: nowrap; }
-  .avatar {
-    align-self: center; width: 52px; height: 52px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px; font-weight: 600; color: #fff; background: var(--c);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 25%, transparent);
-  }
+  .avatar { align-self: center; display: flex; align-items: center; justify-content: center; }
   .log {
     font-family: var(--font-mono); font-size: 10px; color: var(--color-text-secondary);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 14px;
