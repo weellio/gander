@@ -208,6 +208,7 @@
 <script src="src/gif-avatar.js"></script>
 <script src="src/hierarchy.js"></script>
 <script src="src/projects.js"></script>
+<script src="src/control.js"></script>
 <script>
 const STATES = {
   idle:     { label: 'Idle',     color: '#6B7280', bg: '#F3F4F6', text: '#374151' },
@@ -661,7 +662,19 @@ window.AOC_AVATAR_MODE = window.AOC_AVATAR_MODE || 'pixel';
   sel.title = 'Avatar style';
   sel.innerHTML = '<option value="pixel">Pixel art</option><option value="abstract">Abstract</option><option value="gif">GIF</option>';
   sel.value = window.AOC_AVATAR_MODE;
-  sel.addEventListener('change', () => { window.AOC_AVATAR_MODE = sel.value; });
+  sel.addEventListener('change', () => {
+    const prev = window.AOC_AVATAR_MODE;
+    window.AOC_AVATAR_MODE = sel.value;
+    // Tear down the previous DOM renderer (e.g. GIF hides the canvas + adds an
+    // <img>); without this, switching GIF -> pixel/abstract leaves the canvas
+    // hidden and nothing appears to change.
+    const prevR = window.AOC_AVATARS && window.AOC_AVATARS[prev];
+    if (prevR && typeof prevR.teardown === 'function') {
+      document.querySelectorAll('.agent-card').forEach((card) => {
+        try { prevR.teardown(card); } catch (e) {}
+      });
+    }
+  });
   bar.appendChild(sel);
 })();
 

@@ -49,6 +49,31 @@ function projectFromCwd(cwd) {
   return parts.length ? parts[parts.length - 1] : 'unknown';
 }
 
+// ── Operator command queue ───────────────────────────────────────────────────
+// The dashboard queues commands for a running session; they're delivered through
+// the Claude Code hook RETURN CHANNEL: a 'message' is injected when the agent's
+// Stop hook fires (decision:block), a 'stop' denies the next tool (PreToolUse).
+const commands = new Map(); // sessionId -> [{ id, type, text, ts }]
+let cmdSeq = 1;
+function queueCommand(sessionId, type, text) {
+  if (!sessionId) return { error: 'sessionId required' };
+  if (!['message', 'stop'].includes(type)) return { error: 'type must be message|stop' };
+  const q = commands.get(sessionId) || [];
+  const cmd = { id: cmdSeq++, type, text: String(text || ''), ts: Date.now() };
+  q.push(cmd);
+  commands.set(sessionId, q);
+  return { ok: true, queued: cmd };
+}
+function takeCommand(sessionId, predicate) {
+  const q = commands.get(sessionId);
+  if (!q || !q.length) return null;
+  const i = q.findIndex(predicate);
+  if (i === -1) return null;
+  const [cmd] = q.splice(i, 1);
+  if (!q.length) commands.delete(sessionId);
+  return cmd;
+}
+
 function upsert(ev) {
   const id = String(ev.agentId);
   if (!id || id === 'undefined') return { error: 'agentId required' };
@@ -98,7 +123,9 @@ function snapshot() {
   const projects = Object.values(byProject).map((p) => ({
     project: p.project, total: p.total, sessions: p.sessions.size, states: p.states, muted: muted.has(p.project),
   }));
-  return { agents: list, projects, muted: [...muted] };
+  const pending = {};
+  for (const [sid, q] of commands) if (q.length) pending[sid] = q.length;
+  return { agents: list, projects, muted: [...muted], pending };
 }
 
 // ── Claude Code hook payload → registry events ───────────────────────────────
@@ -245,7 +272,21 @@ const server = http.createServer(async (req, res) => {
     const evs = mapHookToEvents(body);
     for (const ev of evs) upsert(ev);
     if (evs.length) console.log(`[hook] ${body.hook_event_name} (${project}) -> ${evs.map(e => e.agentId + ':' + (e.state || '')).join(', ')}`);
-    return sendJson(res, 200, { ok: true, applied: evs.length });
+
+    // Deliver any queued operator command through the hook return channel.
+    let deliver = null;
+    const sid = body.session_id;
+    if (sid) {
+      if (body.hook_event_name === 'Stop') {
+        const c = takeCommand(sid, (x) => x.type === 'message');
+        if (c) deliver = { kind: 'stop-block', text: c.text };
+      } else if (body.hook_event_name === 'PreToolUse') {
+        const c = takeCommand(sid, (x) => x.type === 'stop');
+        if (c) deliver = { kind: 'pretool-deny', text: c.text || 'The operator requested STOP. Stop running tools, end your turn, and wait for further instructions.' };
+      }
+    }
+    if (deliver) console.log(`[deliver] ${sid} <- ${deliver.kind}`);
+    return sendJson(res, 200, { ok: true, applied: evs.length, deliver });
   }
 
   if (url === '/api/mute' && req.method === 'POST') {
@@ -258,6 +299,14 @@ const server = http.createServer(async (req, res) => {
     if (!unmute) for (const [k, a] of agents) if ((a.project || 'unknown') === body.project) agents.delete(k);
     console.log(`[mute] ${body.project} -> ${unmute ? 'unmuted' : 'muted'}`);
     return sendJson(res, 200, { ok: true, muted: [...muted] });
+  }
+
+  if (url === '/api/command' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    const r = queueCommand(body.sessionId, body.type || 'message', body.text);
+    if (!r.error) console.log(`[command] ${body.sessionId} <- ${body.type || 'message'}: ${String(body.text || '').slice(0, 60)}`);
+    return sendJson(res, r.error ? 400 : 200, r);
   }
 
   if (url === '/api/reset' && req.method === 'POST') {

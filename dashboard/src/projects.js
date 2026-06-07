@@ -1,4 +1,4 @@
-// â”€â”€ Agent Ops Center Â· NOC project control module â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Agent Ops Center · NOC project control module ───────────────────────────
 // Self-contained, zero-dependency. Adds multi-PROJECT filtering, a live status
 // bar, and per-project mute to the existing dashboard WITHOUT touching
 // index.html or any other file. It only reads /api/state and manipulates the
@@ -36,7 +36,7 @@
 
     injectStyle();
 
-    // â”€â”€ Build the filter UI (select + mute button) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Build the filter UI (select + mute button) ──────────────────────────
     var select = document.createElement('select');
     select.className = 'project-select';
     select.title = 'Filter by project';
@@ -44,7 +44,7 @@
     var muteBtn = document.createElement('button');
     muteBtn.className = 'aoc-mute-btn';
     muteBtn.type = 'button';
-    muteBtn.textContent = 'ðŸ”‡'; // ðŸ”‡
+    muteBtn.textContent = '🔇'; // 🔇
     muteBtn.title = 'Mute selected project';
     muteBtn.disabled = true;
 
@@ -58,7 +58,7 @@
       topBar.appendChild(muteBtn);
     }
 
-    // â”€â”€ Status bar, inserted right under the top bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Status bar, inserted right under the top bar ─────────────────────────
     var statusBar = document.createElement('div');
     statusBar.className = 'aoc-statusbar';
     var dashboard = topBar.parentNode;
@@ -68,7 +68,7 @@
       dashboard.appendChild(statusBar);
     }
 
-    // â”€â”€ Selection state (persisted) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Selection state (persisted) ─────────────────────────────────────────
     var selected = null; // null === "All projects"
     try {
       var saved = localStorage.getItem(STORAGE_KEY);
@@ -102,7 +102,7 @@
     // Public API.
     window.AOC_PROJECTS = { current: function () { return selected; } };
 
-    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Helpers ─────────────────────────────────────────────────────────────
     function isMuted(state, name) {
       return state && Array.isArray(state.muted) &&
              state.muted.indexOf(name) !== -1;
@@ -166,7 +166,7 @@
 
       projects.forEach(function (p) {
         if (p.name === selected) stillExists = true;
-        var label = p.name + ' â€” ' + p.active + 'â— ' + p.idle + 'â—Œ';
+        var label = p.name + ' — ' + p.active + '● ' + p.idle + '◌';
         if (p.muted) label += ' (muted)';
         html += '<option value="' + escapeAttr(p.name) + '">' +
                 escapeHtml(label) + '</option>';
@@ -182,7 +182,7 @@
     function updateMuteBtn(state) {
       if (!selected) {
         muteBtn.disabled = true;
-        muteBtn.textContent = 'ðŸ”‡';
+        muteBtn.textContent = '🔇';
         muteBtn.title = 'Select a project to mute';
         muteBtn.classList.remove('is-muted');
         return;
@@ -190,7 +190,7 @@
       muteBtn.disabled = false;
       var muted = isMuted(state, selected);
       muteBtn.classList.toggle('is-muted', muted);
-      muteBtn.textContent = muted ? 'ðŸ”ˆ' : 'ðŸ”‡'; // ðŸ”ˆ unmute / ðŸ”‡ mute
+      muteBtn.textContent = muted ? '🔈' : '🔇'; // 🔈 unmute / 🔇 mute
       muteBtn.title = (muted ? 'Unmute ' : 'Mute ') + selected;
     }
 
@@ -246,7 +246,7 @@
 
       var parts = [];
       parts.push('<span class="aoc-scope">' + escapeHtml(scopeLabel) + '</span>');
-      parts.push('<span class="aoc-sep">â€¢</span>');
+      parts.push('<span class="aoc-sep">•</span>');
       parts.push('<span class="aoc-metric">' + sessions + ' session' +
                  (sessions === 1 ? '' : 's') + '</span>');
       parts.push('<span class="aoc-metric">' + scopeAgents.length + ' agent' +
@@ -283,7 +283,7 @@
       renderStatusBar(state, projects);
     }
 
-    // â”€â”€ Mute POST â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Mute POST ────────────────────────────────────────────────────────────
     function postMute(project, muted) {
       try {
         fetch(API_MUTE, {
@@ -302,7 +302,7 @@
       } catch (e) { /* ignore */ }
     }
 
-    // â”€â”€ Poll loop â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Poll loop ────────────────────────────────────────────────────────────
     function poll() {
       fetch(API_STATE, { cache: 'no-store' })
         .then(function (res) { return res.json(); })
@@ -317,7 +317,7 @@
     setInterval(poll, POLL_MS);
   }
 
-  // â”€â”€ Tiny HTML/attr escaping (avoid breaking option markup) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Tiny HTML/attr escaping (avoid breaking option markup) ─────────────────
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -327,7 +327,7 @@
     return escapeHtml(s).replace(/"/g, '&quot;');
   }
 
-  // â”€â”€ Injected styles (match .spawn-btn / .layout-select look) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Injected styles (match .spawn-btn / .layout-select look) ───────────────
   function injectStyle() {
     if (document.getElementById('aoc-projects-style')) return;
     var css =
