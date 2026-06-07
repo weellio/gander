@@ -29,6 +29,12 @@ const argPort = (() => {
 })();
 
 const DASHBOARD_DIR = path.join(__dirname, '..', 'dashboard');
+const DIST_DIR = path.join(DASHBOARD_DIR, 'dist');
+// Serve the built Svelte app from dashboard/dist when present; otherwise fall
+// back to the legacy static dashboard. Lets the migration land incrementally.
+function webRoot() {
+  try { return fs.existsSync(path.join(DIST_DIR, 'index.html')) ? DIST_DIR : DASHBOARD_DIR; } catch (_) { return DASHBOARD_DIR; }
+}
 
 // ── In-memory agent registry ────────────────────────────────────────────────
 /** @type {Map<string, object>} */
@@ -218,11 +224,12 @@ const MIME = {
 };
 
 function serveStatic(req, res) {
+  const base = webRoot();
   let rel = decodeURIComponent(req.url.split('?')[0]);
   if (rel === '/') rel = '/index.html';
-  const filePath = path.join(DASHBOARD_DIR, path.normalize(rel));
-  // prevent path traversal outside the dashboard dir
-  if (!filePath.startsWith(DASHBOARD_DIR)) {
+  const filePath = path.join(base, path.normalize(rel));
+  // prevent path traversal outside the web root
+  if (!filePath.startsWith(base)) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
   fs.readFile(filePath, (err, data) => {
