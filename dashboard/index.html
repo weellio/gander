@@ -206,6 +206,7 @@
 <script src="src/layout.js"></script>
 <script src="src/abstract-avatar.js"></script>
 <script src="src/gif-avatar.js"></script>
+<script src="src/image-avatar.js"></script>
 <script src="src/hierarchy.js"></script>
 <script src="src/projects.js"></script>
 <script src="src/control.js"></script>
@@ -660,7 +661,7 @@ window.AOC_AVATAR_MODE = window.AOC_AVATAR_MODE || 'pixel';
   const sel = document.createElement('select');
   sel.className = 'layout-select';
   sel.title = 'Avatar style';
-  sel.innerHTML = '<option value="pixel">Pixel art</option><option value="abstract">Abstract</option><option value="gif">GIF</option>';
+  sel.innerHTML = '<option value="pixel">Pixel art</option><option value="abstract">Abstract</option><option value="image">Your image</option><option value="gif">GIF (plain)</option>';
   sel.value = window.AOC_AVATAR_MODE;
   sel.addEventListener('change', () => {
     const prev = window.AOC_AVATAR_MODE;
