@@ -16,16 +16,35 @@ It attaches to any project automatically via Claude Code **hooks** — no manual
 - **3 avatar tiers** — pixel art (procedural Canvas), abstract (waveforms/EQ/rings), and GIF (your own).
 - **5 grid layouts** — Solo, Squad, War Room, Broadcast, Mosaic.
 
-## Install (as a Claude Code plugin)
+## Install
 
-From inside Claude Code:
+**Requirements:** [Node.js](https://nodejs.org) and Claude Code.
+
+### Quick install (recommended)
+
+From the Hivemind folder:
+
+```
+node install.js            # global: every Claude session on this machine reports in
+node install.js --project  # only sessions started in the current folder
+```
+
+This merges Hivemind's hooks into your Claude Code `settings.json` (without touching your other settings) and computes all paths automatically. Then, in any open session run `/hooks` (or restart) to load them.
+
+To remove it completely:
+
+```
+node uninstall.js          # or: node uninstall.js --project
+```
+
+### Alternative: as a Claude Code plugin
 
 ```
 /plugin marketplace add <this-repo-or-path>
 /plugin install hivemind@hivemind
 ```
 
-On your next session the `SessionStart` hook starts the bridge and opens the dashboard at `http://localhost:3131/`. As Claude works, tiles light up automatically.
+Either way, on your next session the `SessionStart` hook starts the bridge and opens the dashboard at `http://localhost:3131/`. As Claude works, tiles light up automatically — and you can **send messages or stop** any session right from its tile.
 
 ### How the automatic wiring works
 
