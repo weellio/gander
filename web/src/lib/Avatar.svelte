@@ -1,8 +1,9 @@
 <script>
   import { drawAgent } from './avatars/pixel.js';
   import { draw as drawAbstract } from './avatars/abstract.js';
-  import { avatarMode, images } from './stores.js';
+  import { avatarMode, images, imageMap } from './stores.js';
   import { STATE_COLORS, STATE_LABEL } from './states.js';
+  import { readFile, downscale } from './img.js';
 
   let { agent } = $props();
   let canvas = $state(null);
@@ -17,7 +18,41 @@
 
   let isCanvas = $derived($avatarMode === 'pixel' || $avatarMode === 'abstract');
   let color = $derived(STATE_COLORS[agent.state] || '#6B7280');
-  let imgSrc = $derived($images.length ? $images[hash(agent.id) % $images.length] : placeholder(agent));
+
+  // Stable per-agent key (name/project persist across sessions; id is the fallback).
+  let key = $derived(agent.name || agent.project || String(agent.id));
+  // Resolution: agent+state > agent base > global state > imported pool > placeholder.
+  let imgSrc = $derived(
+    $imageMap[`${key}::${agent.state}`] ||
+    $imageMap[key] ||
+    $imageMap[`*::${agent.state}`] ||
+    ($images.length ? $images[hash(agent.id) % $images.length] : placeholder(agent))
+  );
+
+  let fileInput = $state(null);
+  // Click sets THIS agent's base image; Shift-click sets it for this agent + current state;
+  // Alt-click clears the agent's overrides.
+  function pickImage(e) {
+    if (e.altKey) {
+      imageMap.update((m) => { const n = { ...m }; delete n[key]; delete n[`${key}::${agent.state}`]; return n; });
+      return;
+    }
+    fileInput && fileInput.click();
+    fileInput._perState = e.shiftKey;
+  }
+  async function onPick(e) {
+    const f = (e.target.files || [])[0];
+    const perState = fileInput && fileInput._perState;
+    if (f && /^image\//.test(f.type)) {
+      const raw = await readFile(f);
+      const ds = /gif/i.test(f.type) ? raw : (await downscale(raw, 160)) || raw;
+      if (ds) {
+        const mapKey = perState ? `${key}::${agent.state}` : key;
+        imageMap.update((m) => ({ ...m, [mapKey]: ds }));
+      }
+    }
+    e.target.value = '';
+  }
 
   // Canvas animation loop — runs only in canvas modes, restarts when mode changes.
   $effect(() => {
@@ -41,8 +76,14 @@
 {#if isCanvas}
   <canvas bind:this={canvas} width="240" height="200" class="av-canvas"></canvas>
 {:else}
-  <div class="img-wrap" class:plain={$avatarMode === 'gif'} data-state={agent.state} style="--c:{color}">
+  <div class="img-wrap" class:plain={$avatarMode === 'gif'} data-state={agent.state} style="--c:{color}"
+       role="button" tabindex="0"
+       title="Click: set this agent's image · Shift-click: set for this state · Alt-click: reset"
+       onclick={pickImage} onkeydown={(e) => e.key === 'Enter' && pickImage(e)}>
     <img class="img" src={imgSrc} alt="" />
+    <div class="edit">✎</div>
+    <input bind:this={fileInput} type="file" accept="image/*" style="display:none"
+           onclick={(e) => e.stopPropagation()} onchange={onPick} />
     <div class="fx">
       <div class="badge">{STATE_LABEL[agent.state] || agent.state}</div>
       <div class="m-think">?</div>
@@ -66,6 +107,10 @@
   .img-wrap[data-state="idle"], .img-wrap[data-state="done"] { animation: pulse 3.5s ease-in-out infinite; }
   .img-wrap.plain { animation: none; box-shadow: 0 0 0 2px var(--c); }
   .img-wrap.plain .fx { display: none; }
+  .img-wrap { cursor: pointer; }
+  .edit { position: absolute; bottom: 4px; left: 4px; display: none; font-size: 11px; color: #fff;
+    background: rgba(0,0,0,0.5); border-radius: 4px; padding: 0 4px; z-index: 3; }
+  .img-wrap:hover .edit { display: block; }
   @keyframes pulse { 0%,100%{ box-shadow:0 0 0 2px var(--c);} 50%{ box-shadow:0 0 9px 2px var(--c);} }
   @keyframes shake { 0%,100%{transform:translateX(0);} 25%{transform:translateX(-2px);} 75%{transform:translateX(2px);} }
   .img { width: 100%; height: 100%; object-fit: cover; display: block; }

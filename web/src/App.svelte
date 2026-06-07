@@ -3,6 +3,7 @@
   import { STATE_COLORS, STATE_LABEL } from './lib/states.js';
   import { avatarMode, layout, images } from './lib/stores.js';
   import AgentTile from './lib/AgentTile.svelte';
+  import ActionImages from './lib/ActionImages.svelte';
 
   let agents = $state([]);
   let projects = $state([]);
@@ -98,6 +99,7 @@
       <button class="select" onclick={() => fileInput.click()} title="Import avatar images (PNG/JPG/GIF)">Images…</button>
       {#if $images.length}<button class="select" onclick={clearImages} title="Clear imported images">✕{$images.length}</button>{/if}
       <input bind:this={fileInput} type="file" accept="image/*" multiple style="display:none" onchange={onFiles} />
+      <ActionImages />
     </div>
   </header>
 
