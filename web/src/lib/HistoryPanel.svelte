@@ -22,6 +22,15 @@
 
   function onKeydown(e) { if (e.key === 'Escape') closePanel(); }
 
+  let launched = $state(null);
+  async function resume(session) {
+    try {
+      await fetch('/api/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: session.cwd, resume: session.sessionId }) });
+      launched = session.sessionId;
+      setTimeout(() => { if (launched === session.sessionId) launched = null; }, 2500);
+    } catch (_) {}
+  }
+
   async function copyResume(session) {
     try {
       await navigator.clipboard.writeText(session.resumeCmd);
@@ -97,14 +106,19 @@
             </div>
             <div class="row-bottom">
               <span class="sid mono">{s.sessionId.slice(0, 8)}</span>
-              <button
-                class="copy-btn"
-                class:copied-state={copied === s.sessionId}
-                onclick={() => copyResume(s)}
-                title={s.resumeCmd}
-              >
-                {copied === s.sessionId ? 'copied!' : 'Copy resume'}
-              </button>
+              <span class="rb-actions">
+                <button class="copy-btn" onclick={() => resume(s)} title="Open a terminal and resume this session">
+                  {launched === s.sessionId ? 'launching…' : '▶ Resume'}
+                </button>
+                <button
+                  class="copy-btn"
+                  class:copied-state={copied === s.sessionId}
+                  onclick={() => copyResume(s)}
+                  title={s.resumeCmd}
+                >
+                  {copied === s.sessionId ? 'copied!' : 'Copy'}
+                </button>
+              </span>
             </div>
           </div>
         {/each}
@@ -168,4 +182,5 @@
   .copy-btn.copied-state {
     background: var(--accent, #6366F1); color: #fff; border-color: transparent;
   }
+  .rb-actions { display: flex; gap: 5px; }
 </style>
