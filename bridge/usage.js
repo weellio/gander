@@ -137,6 +137,14 @@ function streamLines(file, onObj) {
   });
 }
 
+// Canonicalise a path for display (uppercase Windows drive letter).
+function canonPath(p) {
+  if (!p || typeof p !== 'string') return p;
+  return /^[a-z]:/.test(p) ? p[0].toUpperCase() + p.slice(1) : p;
+}
+// Case-insensitive grouping key (Windows paths differ only by drive-letter case).
+function projKey(p) { return process.platform === 'win32' ? String(p).toLowerCase() : p; }
+
 // ---------------------------------------------------------------------------
 // Core aggregation
 // ---------------------------------------------------------------------------
@@ -182,7 +190,7 @@ async function build() {
       }
 
       const model = msg.model || 'unknown';
-      const cwd = o.cwd || decodeDirName(entry.dir);
+      const cwd = canonPath(o.cwd || decodeDirName(entry.dir));
       const ts = o.timestamp || null;
       const tokens = input + output + cacheWrite + cacheRead;
       const cost = costOf(model, input, output, cacheWrite, cacheRead);
@@ -195,11 +203,12 @@ async function build() {
       totals.totalTokens += tokens;
       totals.costUSD += cost;
 
-      // by project
-      let p = projects.get(cwd);
+      // by project (case-insensitive key so D:\ and d:\ merge; keep first display path)
+      const pk = projKey(cwd);
+      let p = projects.get(pk);
       if (!p) {
         p = { path: cwd, tokens: 0, costUSD: 0, sessions: new Set(), lastActive: null };
-        projects.set(cwd, p);
+        projects.set(pk, p);
       }
       p.tokens += tokens;
       p.costUSD += cost;
