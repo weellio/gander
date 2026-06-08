@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Hivemind avatar template — top-down "desk worker".
+  Recreates the built-in Canvas figure as editable vector art so you can refine
+  it in Illustrator and make one file per action.
+
+  Canvas: 120 x 100 (6:5). The dashboard renders the image with object-fit:cover,
+  so keep the subject centered with a little breathing room at the edges.
+
+  Layers (groups) are named so they show up in Illustrator's Layers panel.
+  Delete the "desk" group if you want a transparent avatar that sits on the card.
+
+  Make one of these per state, then in the dashboard:
+    Action images…  → assign each file to: idle, thinking, coding, spawning,
+    reading, searching, testing, error, done
+  Avatar dropdown → "Image (plain, no overlay)".
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100" width="360" height="300">
+  <g id="desk">
+    <rect x="4" y="4" width="112" height="92" rx="10" fill="#3A332D"/>
+  </g>
+
+  <g id="coffee">
+    <circle cx="26" cy="30" r="7" fill="#E5E7EB"/>
+    <circle cx="26" cy="30" r="4.5" fill="#6B3F1E"/>
+  </g>
+
+  <g id="laptop">
+    <rect x="32" y="62" width="56" height="13" rx="4" fill="#3F3F46"/>
+    <rect x="35" y="56" width="50" height="30" rx="4" fill="#18181B"/>
+    <rect x="39" y="60" width="42" height="22" rx="2" fill="#0F172A"/>
+  </g>
+
+  <g id="body">
+    <!-- neck -->
+    <rect x="56.5" y="28" width="7" height="11" rx="3" fill="#E8B89B"/>
+    <!-- shoulders (tapered, with collar) -->
+    <path id="shoulders" d="M35 48 Q33 35 47 33 L73 33 Q87 35 85 48 L77 62 Q60 65 43 62 Z" fill="#F59E0B"/>
+    <!-- collar V -->
+    <path id="collar" d="M52 34 L60 44 L68 34 L65 32 L60 40 L55 32 Z" fill="#B45309"/>
+  </g>
+
+  <g id="arms" fill="none" stroke="#F59E0B" stroke-width="9" stroke-linecap="round">
+    <path d="M43 41 L49 64"/>
+    <path d="M77 41 L71 64"/>
+  </g>
+  <g id="hands" fill="#E8B89B">
+    <circle cx="49" cy="64" r="4.5"/>
+    <circle cx="71" cy="64" r="4.5"/>
+  </g>
+
+  <g id="head">
+    <!-- hair (egg-shaped) -->
+    <ellipse cx="60" cy="22" rx="10" ry="12.5" fill="#3C2A1E"/>
+    <!-- hair sheen / part -->
+    <ellipse cx="57.6" cy="20.5" rx="6" ry="9" transform="rotate(-12 57.6 20.5)" fill="#5A4030"/>
+    <!-- face/forehead sliver toward the laptop -->
+    <ellipse cx="60" cy="31" rx="5.5" ry="4.5" fill="#E8B89B"/>
+  </g>
+</svg>
