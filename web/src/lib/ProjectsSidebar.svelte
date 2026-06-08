@@ -24,6 +24,18 @@
   async function removeRoot(p) { await post('/api/projects/roots', { action: 'remove', path: p }); load(); }
   async function browse() { result = 'Opening folder picker…'; const j = await post('/api/pick-folder', {}); result = j && j.ok ? `Added ${j.path}` : (j && j.error ? j.error : ''); load(); }
   function pick(proj, type, name) { selected = { fromPath: proj.path, fromName: proj.name, type, name }; target = ''; result = ''; }
+
+  let busy = $state('');
+  let commitMsg = $state({});
+  async function launch(p) { busy = p.path + ':launch'; const j = await post('/api/launch', { cwd: p.path }); result = j && j.ok ? `Started a Claude session in ${p.name}` : 'Could not launch'; busy = ''; }
+  async function openIn(p, target) { await post('/api/open', { cwd: p.path, target }); }
+  async function gitDo(p, action) {
+    busy = p.path + ':' + action;
+    const j = await post('/api/git-action', { cwd: p.path, action, message: commitMsg[p.path] || '' });
+    const tail = (j && j.output ? ' — ' + j.output.split('\n').slice(-1)[0] : '');
+    result = j && j.ok ? `git ${action} ✓${tail}` : `git ${action} ✗${tail || ': ' + ((j && j.error) || 'failed')}`;
+    busy = ''; loadGit();
+  }
   async function doCopy() {
     if (!selected || !target) return;
     const body = { type: selected.type, name: selected.name, fromCwd: selected.fromPath, toCwd: target };
@@ -74,6 +86,16 @@
           </button>
           {#if expanded[p.path]}
             <div class="comps">
+              <div class="acts">
+                <button class="select" onclick={() => launch(p)} disabled={!!busy} title="Open a new terminal running Claude Code here">▶ Start</button>
+                <button class="select" onclick={() => openIn(p, 'folder')} title="Open folder">📂</button>
+                <button class="select" onclick={() => openIn(p, 'editor')} title="Open in VS Code">Code</button>
+                {#if gitMap[p.path]?.isRepo}
+                  <button class="select" onclick={() => gitDo(p, 'pull')} disabled={!!busy} title="git pull">⬇ Pull</button>
+                  <input class="cm" placeholder="commit message…" bind:value={commitMsg[p.path]} />
+                  <button class="select" onclick={() => gitDo(p, 'commit-push')} disabled={!!busy || !gitMap[p.path].dirty} title="git add -A · commit · push">Commit & Push{#if gitMap[p.path].dirty} ({gitMap[p.path].dirty}){/if}</button>
+                {/if}
+              </div>
               {#each GROUPS as [type, label] (type)}
                 {#if itemsOf(p, type).length}
                   <div class="grp"><span class="gl">{label}</span>
@@ -136,6 +158,8 @@
   .git .ah { color: #10B981; }
   .git .bh { color: #EF4444; }
   .comps { padding: 2px 6px 10px 26px; display: flex; flex-direction: column; gap: 6px; }
+  .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-bottom: 6px; margin-bottom: 2px; border-bottom: 0.5px dashed var(--color-border-tertiary); }
+  .acts .cm { flex: 1 1 90px; min-width: 80px; font-size: 10px; padding: 3px 6px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); color: var(--color-text-primary); }
   .grp { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
   .gl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-tertiary); width: 60px; flex-shrink: 0; }
   .chip { font-size: 10px; padding: 2px 8px; border-radius: 99px; cursor: pointer; border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); color: var(--color-text-primary); }

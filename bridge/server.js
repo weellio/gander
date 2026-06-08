@@ -19,7 +19,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const readline = require('readline');
 const { createParser } = require('./parser.js');
 const https = require('https');
@@ -280,6 +280,44 @@ function openPath(p, target) {
     else if (process.platform === 'darwin') spawn('open', [p], { detached: true, stdio: 'ignore' }).unref();
     else spawn('xdg-open', [p], { detached: true, stdio: 'ignore' }).unref();
   } catch (_) {}
+}
+
+// Launch a fresh Claude Code session in a new terminal at the given cwd.
+function launchSession(cwd) {
+  try {
+    if (process.platform === 'win32') {
+      spawn('cmd', ['/c', 'start', 'Hivemind: Claude', 'cmd', '/k', 'claude'], { cwd, detached: true, stdio: 'ignore' }).unref();
+    } else if (process.platform === 'darwin') {
+      spawn('osascript', ['-e', `tell app "Terminal" to do script "cd '${cwd}' && claude"`], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      spawn('x-terminal-emulator', ['-e', `bash -c "cd '${cwd}'; claude; exec bash"`], { detached: true, stdio: 'ignore' }).unref();
+    }
+    return { ok: true };
+  } catch (e) { return { error: e.message }; }
+}
+
+function execGit(cwd, args) {
+  return new Promise((resolve) => {
+    execFile('git', ['-C', cwd, ...args], { timeout: 60000, windowsHide: true, maxBuffer: 4 << 20 }, (err, stdout, stderr) => {
+      resolve({ code: err ? (err.code || 1) : 0, out: ((stdout || '') + (stderr || '')).trim() });
+    });
+  });
+}
+
+// Safe-ish source-control helpers, invoked explicitly from the dashboard.
+async function gitAction(cwd, action, message) {
+  if (action === 'pull') { const r = await execGit(cwd, ['pull']); return { ok: r.code === 0, output: r.out }; }
+  if (action === 'fetch') { const r = await execGit(cwd, ['fetch', '--all', '--prune']); return { ok: r.code === 0, output: r.out }; }
+  if (action === 'commit-push') {
+    const msg = (message && String(message).trim()) || 'Update from Hivemind';
+    let out = '';
+    let r = await execGit(cwd, ['add', '-A']); out += r.out;
+    r = await execGit(cwd, ['commit', '-m', msg]); out += (out ? '\n' : '') + r.out;
+    if (r.code !== 0) { return { ok: false, output: out }; } // e.g. nothing to commit
+    r = await execGit(cwd, ['push']); out += '\n' + r.out;
+    return { ok: r.code === 0, output: out.trim() };
+  }
+  return { error: 'unknown action' };
 }
 
 function snapshot() {
@@ -576,6 +614,22 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/git-status' && req.method === 'POST') {
     const body = await readBody(req);
     return sendJson(res, 200, await git.statusMany((body && body.paths) || []));
+  }
+
+  if (url === '/api/git-action' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.cwd || !body.action) return sendJson(res, 400, { error: 'cwd and action required' });
+    if (!fs.existsSync(body.cwd)) return sendJson(res, 400, { error: 'path not found' });
+    const r = await gitAction(body.cwd, body.action, body.message);
+    return sendJson(res, r.error ? 400 : 200, r);
+  }
+
+  if (url === '/api/launch' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
+    if (!fs.existsSync(body.cwd)) return sendJson(res, 400, { error: 'path not found' });
+    const r = launchSession(body.cwd);
+    return sendJson(res, r.error ? 400 : 200, r);
   }
 
   if (url === '/api/usage' && req.method === 'GET') {
