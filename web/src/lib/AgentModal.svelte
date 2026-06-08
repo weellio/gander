@@ -70,6 +70,7 @@
         {#if agent.project}<span>{agent.project}</span>{/if}
         {#if agent.sessionId}<span class="mono">· {String(agent.sessionId).slice(0, 8)}</span>{/if}
         {#if agent.parentId}<span>· sub-agent</span>{/if}
+        {#if agent.role}<span title="Agent type">· {agent.role}</span>{/if}
         {#if cost}<span class="mono" title="This session's estimated spend">· 💰 ${cost.costUSD.toFixed(2)}</span>{/if}
       </div>
       {#if agent.cwd}<div class="path mono">{agent.cwd}</div>{/if}

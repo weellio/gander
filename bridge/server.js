@@ -53,6 +53,23 @@ function webRoot() {
 const agents = new Map();
 const VALID_STATES = ['idle', 'thinking', 'coding', 'spawning', 'reading', 'error', 'testing', 'done', 'awaiting'];
 
+// Hurricane-style naming: nameless "general-purpose" workers get a friendly name,
+// cycling A→Z (Andy, Bo, Cleo … Xander, Yogesh, Zephyr) then wrapping around.
+const HNAMES = [
+  ['Andy', 'Amara', 'Aaron'], ['Bo', 'Bianca', 'Ben'], ['Cleo', 'Cody', 'Cara'],
+  ['Dana', 'Dmitri', 'Dee'], ['Eve', 'Eli', 'Esme'], ['Fay', 'Felix', 'Fern'],
+  ['Gina', 'Gus', 'Greta'], ['Hank', 'Hana', 'Hugo'], ['Iris', 'Ivan', 'Ines'],
+  ['Joe', 'Jada', 'Jonah'], ['Kit', 'Kira', 'Karl'], ['Leon', 'Lila', 'Larry'],
+  ['Mae', 'Milo', 'Mara'], ['Nina', 'Ned', 'Noor'], ['Omar', 'Olive', 'Otis'],
+  ['Pia', 'Pete', 'Priya'], ['Quinn', 'Quincy', 'Qadir'], ['Rosa', 'Ray', 'Remy'],
+  ['Sue', 'Sami', 'Sage'], ['Tom', 'Tara', 'Theo'], ['Uma', 'Uri', 'Una'],
+  ['Vera', 'Vince', 'Vida'], ['Wendy', 'Walt', 'Wren'], ['Xander', 'Xia', 'Xavi'],
+  ['Yogesh', 'Yara', 'Yusuf'], ['Zephyr', 'Zoe', 'Zane'],
+];
+let hurricaneIdx = 0;
+function isGeneric(name) { return !name || /^(general[-\s]?purpose|subagent|sub-|agent-)/i.test(String(name)); }
+function nextHurricane() { const list = HNAMES[hurricaneIdx % 26]; hurricaneIdx++; return list[Math.floor(Math.random() * list.length)]; }
+
 // Persist the registry so a bridge restart doesn't lose the picture. Entries
 // older than 12h are dropped on load (stale sessions from long-gone runs).
 const REG_FILE = path.join(__dirname, 'aoc-registry.json');
@@ -266,7 +283,14 @@ function upsert(ev) {
   }
 
   const existing = agents.get(id) || { id, logLines: [], createdAt: Date.now() };
-  if (ev.name !== undefined) existing.name = ev.name;
+  if (ev.name !== undefined) {
+    if (isGeneric(ev.name)) {
+      if (!existing.name) existing.name = nextHurricane();   // friendly name for a nameless worker
+      if (!existing.role) existing.role = String(ev.name);   // keep the real type for reference
+    } else {
+      existing.name = ev.name;
+    }
+  }
   if (ev.shirt !== undefined) existing.shirt = ev.shirt;
   if (ev.parentId !== undefined) existing.parentId = String(ev.parentId);
   if (ev.project !== undefined) existing.project = ev.project;
