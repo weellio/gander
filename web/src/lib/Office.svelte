@@ -89,13 +89,17 @@
   }
 
   // ── circuit-board (octilinear) routing ──
-  // Parent→child trace: down to a horizontal trunk, across to the child's column,
-  // then down — so same-column children share a vertical bus, like a PCB.
+  // Parent→child trace runs in the empty lanes (hallways): down to a horizontal
+  // trunk under the root, across to the gutter LEFT of the worker's cubicle, down
+  // that gutter, then a short jog into the worker — never down through the column.
+  const LANE = 35; // px left of a worker's centre → its column gutter
   function connRoute(px, py, cx, cy) {
     const trunkY = py + 46;
+    const laneX = cx - LANE;
     const pts = [{ x: px, y: py }, { x: px, y: trunkY }];
-    if (Math.abs(cx - px) > 2) pts.push({ x: cx, y: trunkY });
-    pts.push({ x: cx, y: cy });
+    if (Math.abs(laneX - px) > 2) pts.push({ x: laneX, y: trunkY });
+    pts.push({ x: laneX, y: cy });
+    if (Math.abs(cx - laneX) > 1) pts.push({ x: cx, y: cy });
     return pts;
   }
   // Generic octilinear elbow between any two points: straight on the long axis, then 45°.
