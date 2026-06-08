@@ -13,8 +13,20 @@ It attaches to any project automatically via Claude Code **hooks** — no manual
 - **Live agent tiles** — one per session/sub-agent, driven by real tool activity.
 - **Persistent Orchestrator root** — the main session is always present (idle when quiet) as the root of the tree.
 - **Recursive hierarchy view** — connectors from each agent to its sub-agents at any depth, with subtree hover-highlight and animated parent→child flow.
-- **3 avatar tiers** — pixel art (procedural Canvas), abstract (waveforms/EQ/rings), and GIF (your own).
-- **5 grid layouts** — Solo, Squad, War Room, Broadcast, Mosaic.
+- **Office floor + Mosaic views** — a top-down animated office where agents walk, gather at the water cooler, and route packets to their sub-agents; or a compact responsive tile grid.
+- **3 avatar tiers** — pixel art (procedural Canvas), abstract (waveforms/EQ/rings), and top-down desk people / your own images.
+- **Click any agent** — a modal to read its current task, reply, stop it, or open its folder / VS Code.
+
+## Control center — manage Claude Code, not just watch it
+
+Beyond visualization, Hivemind is a local control panel for everything Claude Code on your machine (top-bar buttons):
+
+- **Projects** — every Claude project (running, recently active, or discovered from folders you add — typed or via a native picker) with the components each uses: skills, agents, commands, hooks, MCP servers. Copy any component between projects (or to/from your global `~/.claude`, with an overwrite confirm); see per-project **git status** (branch · dirty · ahead/behind); **▶ Start** a session, **Pull**, or **Commit & Push** in place.
+- **Usage** — token & cost analytics parsed from your `~/.claude` transcripts (including sub-agent sessions): total spend, 30-day chart, per-project / per-model breakdowns, priciest sessions. Today's + total spend also show live in the status bar.
+- **GitHub** — open PRs and issues per project via the `gh` CLI, click to open in the browser.
+- **Config** — view a project's hooks, MCP servers, and raw `settings.json`; delete a hook event or MCP server.
+- **History** — recent sessions across all projects with their first prompt; **▶ Resume** any one (`claude --resume <id>` in a terminal) or copy the command.
+- **Telegram** — get pinged when a session is waiting on you, and reply or `/stop` from your phone.
 
 ## Install
 
@@ -91,8 +103,15 @@ bridge/
   parser.js            # stream-json → agent events (for the --stdin / --run pipeline)
   launch.js            # cross-platform idempotent launcher
   license.js           # optional Gumroad license verification
+  projects.js          # project registry: discover projects + components, copy between them
+  git.js               # per-project git status (branch/dirty/ahead/behind)
+  usage.js             # token/cost analytics from ~/.claude transcripts
+  github.js            # PRs/issues via the gh CLI
+  configmgr.js         # read/delete hooks + MCP servers in a project
+  history.js           # recent resumable sessions
 web/                   # Svelte 5 + Vite dashboard SOURCE
   src/App.svelte, src/lib/*.svelte, src/lib/*.js
+  src/lib/{ProjectsSidebar,CostPanel,GithubPanel,SettingsPanel,HistoryPanel}.svelte  # control-center panels
   -> `npm run build` outputs to dashboard/dist (what the bridge serves)
 dashboard/dist/        # built dashboard (shipped)
 skills/
@@ -112,8 +131,22 @@ POST /api/event      -> { agentId, name?, state?, parentId?, project?, cwd?, log
 POST /api/hook       -> raw Claude Code hook payload (mapped automatically)
 POST /api/command    -> { sessionId, type:"message"|"stop", text }   (delivered via hook return channel)
 POST /api/mute       -> { project, muted }
-POST /api/copy-skill -> { fromCwd, toCwd, skill }
 POST /api/reset      -> clear registry
+
+# Control center
+GET  /api/projects        -> { roots, projects:[{path,name,running,skills,agents,commands,hooks,mcp}] }
+POST /api/projects/roots  -> { action:"add"|"remove", path }
+POST /api/pick-folder     -> native folder picker (Windows); registers a project root
+POST /api/copy-component  -> { type:skill|agent|command|hook|mcp, name, fromCwd, toCwd, overwrite? }
+POST /api/git-status      -> { paths:[...] } -> path -> { branch, dirty, ahead, behind, remote, lastWhen }
+POST /api/git-action      -> { cwd, action:pull|fetch|commit-push, message? }
+POST /api/launch          -> { cwd, resume? }   (opens a terminal running claude)
+POST /api/open            -> { cwd, target:"folder"|"editor" }
+GET  /api/usage           -> token/cost summary from transcripts
+POST /api/github          -> { cwd, kind:info|prs|issues }
+POST /api/config-read     -> { cwd } -> { hooks, mcp, settingsRaw, ... }
+POST /api/config          -> { cwd, action:delHook|delMcp, name }
+GET  /api/history         -> recent sessions [{ sessionId, project, firstPrompt, resumeCmd, ... }]
 ```
 
 States: `idle · thinking · coding · spawning · reading · testing · error · done · awaiting`.
