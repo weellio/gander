@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { STATE_COLORS, STATE_LABEL } from './states.js';
   import { paintFigure } from './avatars/desk.js';
+  import { animations } from './stores.js';
   import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
@@ -435,7 +436,7 @@
           let tx = null, ty = null, kind = null, pause = 0.6, skipB = d.parentDeskId, phrase = null;
           if (agent.state === 'idle' || agent.state === 'done') {
             if (d.nextBreakAt == null) d.nextBreakAt = t + 90 + Math.random() * 240; // first wander: 1.5–5.5 min in
-            if (t > d.nextBreakAt) {
+            if (t > d.nextBreakAt && $animations) {
               // casually visit a random idle peer (chat) OR the water cooler
               const peers = list.filter((a) => a.id !== agent.id && (a.state === 'idle' || a.state === 'done') && (desks.get(a.id) || {}).homeX != null);
               if (peers.length && Math.random() < 0.5) {

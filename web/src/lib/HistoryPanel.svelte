@@ -1,5 +1,7 @@
 <script>
-  let open = $state(false);
+  let { open = $bindable(false) } = $props();
+  let _wasOpen = false;
+  $effect(() => { if (open && !_wasOpen) openPanel(); _wasOpen = open; });
   let sessions = $state([]);
   let loading = $state(false);
   let filter = $state('');
@@ -68,7 +70,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<button class="select" onclick={openPanel}>History</button>
+<!-- trigger provided by App's Manage menu (bind:open) -->
 
 {#if open}
   <div class="ov" onclick={closePanel} role="presentation"></div>

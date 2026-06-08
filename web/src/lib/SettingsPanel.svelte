@@ -1,5 +1,7 @@
 <script>
-  let open = $state(false);
+  let { open = $bindable(false) } = $props();
+  let _wasOpen = false;
+  $effect(() => { if (open && !_wasOpen) openPanel(); _wasOpen = open; });
   let projects = $state([]);
   let cwd = $state('');
   let cfg = $state(null);   // { ok, settingsRaw, hooks, mcp, hasSettings, hasMcp }
@@ -50,7 +52,7 @@
   }
 </script>
 
-<button class="select" onclick={openPanel}>Config</button>
+<!-- trigger provided by App's Manage menu (bind:open) -->
 
 {#if open}
   <div class="ov" onclick={closePanel} role="presentation"></div>

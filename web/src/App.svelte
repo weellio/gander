@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { STATE_COLORS, STATE_LABEL } from './lib/states.js';
-  import { avatarMode, layout, images, soundOn } from './lib/stores.js';
+  import { avatarMode, layout, images, soundOn, autoUsage, fastPoll, animations } from './lib/stores.js';
   import AgentTile from './lib/AgentTile.svelte';
   import ActionImages from './lib/ActionImages.svelte';
   import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
@@ -70,13 +70,25 @@
     return d ? d.costUSD : 0;
   });
 
+  // Manage / Options menus + the panels they control
+  let menuOpen = $state(false);
+  let optsOpen = $state(false);
+  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false });
+  function openP(k) { panels[k] = true; menuOpen = false; }
+
   onMount(() => {
     poll();
     pollUsage();
     fetch('/api/license').then((r) => r.json()).then((s) => (license = s)).catch(() => {});
-    const id = setInterval(poll, 500);
-    const uid = setInterval(pollUsage, 60000);
-    return () => { clearInterval(id); clearInterval(uid); };
+    // auto-refresh cost only when enabled (re-parsing transcripts is disk-heavy)
+    const uid = setInterval(() => { if ($autoUsage) pollUsage(); }, 60000);
+    return () => clearInterval(uid);
+  });
+
+  // agent-state polling — cadence follows the "fast updates" option
+  $effect(() => {
+    const id = setInterval(poll, $fastPoll ? 500 : 2000);
+    return () => clearInterval(id);
   });
 
   let shown = $derived(
@@ -161,15 +173,48 @@
       {#if $images.length}<button class="select" onclick={clearImages} title="Clear imported images">✕{$images.length}</button>{/if}
       <input bind:this={fileInput} type="file" accept="image/*" multiple style="display:none" onchange={onFiles} />
       <ActionImages />
-      <ProjectsSidebar />
-      <CostPanel />
-      <GithubPanel />
-      <SettingsPanel />
-      <HistoryPanel />
-      <button class="select" onclick={() => ($soundOn = !$soundOn)} title="Alert sound when an agent needs input">{$soundOn ? '🔔' : '🔕'}</button>
+
+      <div class="menu-wrap">
+        <button class="select" onclick={() => { menuOpen = !menuOpen; optsOpen = false; }} title="Manage your Claude Code projects & sessions">⚙ Manage ▾</button>
+        {#if menuOpen}
+          <div class="dropdown" role="menu">
+            <button class="select" onclick={() => openP('projects')}>Projects &amp; components</button>
+            <button class="select" onclick={() => openP('usage')}>Usage / cost</button>
+            <button class="select" onclick={() => openP('github')}>GitHub</button>
+            <button class="select" onclick={() => openP('config')}>Config (hooks · MCP)</button>
+            <button class="select" onclick={() => openP('history')}>Session history</button>
+          </div>
+        {/if}
+      </div>
+
+      <div class="menu-wrap">
+        <button class="select" onclick={() => { optsOpen = !optsOpen; menuOpen = false; }} title="Options & token conservation">Options</button>
+        {#if optsOpen}
+          <div class="dropdown opts" role="menu">
+            <div class="opt-sec">Conserve Claude tokens</div>
+            <p class="opt-note">Hivemind sends almost nothing to the model on its own. The real per-turn cost is the <b>MCP servers, skills &amp; agents</b> each project loads — trim ones you don't need.</p>
+            <button class="select" onclick={() => { openP('config'); optsOpen = false; }}>Manage MCP &amp; skills →</button>
+            <div class="opt-sec">Dashboard performance</div>
+            <label class="opt"><input type="checkbox" bind:checked={$soundOn} /> Alert sound</label>
+            <label class="opt"><input type="checkbox" bind:checked={$autoUsage} /> Auto-refresh cost <span class="dim">(re-reads transcripts)</span></label>
+            <label class="opt"><input type="checkbox" bind:checked={$fastPoll} /> Fast agent updates <span class="dim">(0.5s vs 2s)</span></label>
+            <label class="opt"><input type="checkbox" bind:checked={$animations} /> Office animations <span class="dim">(CPU)</span></label>
+          </div>
+        {/if}
+      </div>
+
       <ThemeMenu />
     </div>
   </header>
+
+  {#if menuOpen || optsOpen}<div class="menu-backdrop" onclick={() => { menuOpen = false; optsOpen = false; }} role="presentation"></div>{/if}
+
+  <!-- always-mounted panels, opened from the Manage menu (drawers are position:fixed) -->
+  <ProjectsSidebar bind:open={panels.projects} />
+  <CostPanel bind:open={panels.usage} />
+  <GithubPanel bind:open={panels.github} />
+  <SettingsPanel bind:open={panels.config} />
+  <HistoryPanel bind:open={panels.history} />
 
   <div class="statusbar">
     <strong>{selectedProject || 'All projects'}</strong>
@@ -208,6 +253,17 @@
   }
   .top-bar { justify-content: space-between; }
   .controls { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .menu-wrap { position: relative; display: inline-flex; }
+  .dropdown { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; display: flex; flex-direction: column; gap: 4px;
+    min-width: 190px; padding: 6px; background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
+  .dropdown button.select { width: 100%; justify-content: flex-start; text-align: left; }
+  .dropdown.opts { width: 256px; }
+  .opt-sec { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-tertiary); padding: 5px 4px 2px; }
+  .opt-note { font-size: 10px; color: var(--color-text-secondary); line-height: 1.45; margin: 0 4px 5px; }
+  .opt { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--color-text-primary); padding: 3px 4px; cursor: pointer; }
+  .opt .dim { color: var(--color-text-tertiary); font-size: 10px; }
+  .menu-backdrop { position: fixed; inset: 0; z-index: 55; }
   .title { font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #9CA3AF; }
   .dot.online { background: #10B981; animation: pulse 2s infinite; }

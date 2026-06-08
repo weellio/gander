@@ -1,5 +1,7 @@
 <script>
-  let open = $state(false);
+  let { open = $bindable(false) } = $props();
+  let _wasOpen = false;
+  $effect(() => { if (open && !_wasOpen) openPanel(); _wasOpen = open; });
   let projects = $state([]);
   let chosenPath = $state('');
   let repoInfo = $state(null);   // { repo, url, defaultBranch, visibility } | { error } | null
@@ -67,7 +69,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<button class="select" onclick={openPanel}>GitHub</button>
+<!-- trigger provided by App's Manage menu (bind:open) -->
 
 {#if open}
   <div class="ov" onclick={closePanel} role="presentation"></div>

@@ -1,5 +1,7 @@
 <script>
-  let open = $state(false);
+  let { open = $bindable(false) } = $props();
+  let _wasOpen = false;
+  $effect(() => { if (open && !_wasOpen) openPanel(); _wasOpen = open; });
   let data = $state({ roots: [], projects: [] });
   let newRoot = $state('');
   let expanded = $state({});
@@ -51,7 +53,7 @@
   const itemsOf = (p, type) => type === 'skill' ? p.skills : type === 'agent' ? p.agents : type === 'command' ? p.commands : type === 'hook' ? p.hooks : p.mcp;
 </script>
 
-<button class="select" onclick={openPanel}>Projects</button>
+<!-- trigger provided by App's Manage menu (bind:open) -->
 
 {#if open}
   <div class="ov" onclick={closePanel} role="presentation"></div>

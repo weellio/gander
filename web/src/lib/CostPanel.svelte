@@ -2,7 +2,9 @@
   // Token-usage & cost analytics panel. Self-contained: renders its own
   // "Usage" trigger button and a right-anchored drawer. Drop <CostPanel />
   // into the toolbar — no other wiring needed. GETs /api/usage on open.
-  let open = $state(false);
+  let { open = $bindable(false) } = $props();
+  let _wasOpen = false;
+  $effect(() => { if (open && !_wasOpen) openPanel(); _wasOpen = open; });
   let loading = $state(false);
   let data = $state(null);
 
@@ -57,7 +59,7 @@
 
 <svelte:window onkeydown={onKey} />
 
-<button class="select" onclick={openPanel}>Usage</button>
+<!-- trigger provided by App's Manage menu (bind:open) -->
 
 {#if open}
   <div class="ov" onclick={closePanel} role="presentation"></div>
