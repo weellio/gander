@@ -40,6 +40,10 @@
       msg = '';
     } catch (_) {}
   }
+  async function openIn(target) {
+    if (!agent || !agent.cwd) return;
+    try { await fetch('/api/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: agent.cwd, target }) }); } catch (_) {}
+  }
   function onKey(e) { if (e.key === 'Escape') onClose(); }
 </script>
 
@@ -77,6 +81,13 @@
           <span class="chip">Skills: {info.skills && info.skills.length ? info.skills.join(', ') : '—'}</span>
           <span class="chip">Sub-agents: {(info.subagents && info.subagents.length) || 0}</span>
           <span class="chip">Hooks: {(info.hooks && info.hooks.length) || 0}</span>
+        </div>
+      {/if}
+
+      {#if agent.cwd}
+        <div class="actions">
+          <button class="select" onclick={() => openIn('folder')}>📂 Open folder</button>
+          <button class="select" onclick={() => openIn('editor')}>Open in VS Code</button>
         </div>
       {/if}
 
@@ -130,4 +141,5 @@
     border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); }
   .reply button.stop { color: #EF4444; border-color: #EF4444; }
   .foot { font-size: 10px; color: var(--color-text-tertiary); }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 </style>

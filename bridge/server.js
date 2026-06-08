@@ -266,6 +266,16 @@ function copySkill(fromCwd, toCwd, skill) {
   catch (e) { return { error: e.message }; }
 }
 
+// Open a path in the OS file manager or in VS Code (local bridge → real action).
+function openPath(p, target) {
+  try {
+    if (target === 'editor') { spawn('code', [p], { shell: true, detached: true, stdio: 'ignore' }).unref(); return; }
+    if (process.platform === 'win32') spawn('explorer', [p], { detached: true, stdio: 'ignore' }).unref();
+    else if (process.platform === 'darwin') spawn('open', [p], { detached: true, stdio: 'ignore' }).unref();
+    else spawn('xdg-open', [p], { detached: true, stdio: 'ignore' }).unref();
+  } catch (_) {}
+}
+
 function snapshot() {
   const list = Array.from(agents.values());
   const byProject = {};
@@ -498,6 +508,15 @@ const server = http.createServer(async (req, res) => {
     const r = copySkill(body.fromCwd, body.toCwd, body.skill);
     if (!r.error) console.log(`[copy-skill] ${body.skill}: ${body.fromCwd} -> ${body.toCwd}`);
     return sendJson(res, r.error ? 400 : 200, r);
+  }
+
+  if (url === '/api/open' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
+    if (!fs.existsSync(body.cwd)) return sendJson(res, 400, { error: 'path not found' });
+    openPath(body.cwd, body.target);
+    console.log(`[open] ${body.target || 'folder'}: ${body.cwd}`);
+    return sendJson(res, 200, { ok: true });
   }
 
   if (url === '/api/reset' && req.method === 'POST') {

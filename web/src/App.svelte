@@ -164,11 +164,7 @@
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #9CA3AF; }
   .dot.online { background: #10B981; animation: pulse 2s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-  .select {
-    font-size: 12px; padding: 5px 10px; border-radius: var(--border-radius-md);
-    border: 0.5px solid var(--color-border-secondary);
-    background: var(--color-background-primary); color: var(--color-text-primary); cursor: pointer;
-  }
+  /* .select is styled globally in app.css for a consistent modern look */
   .statusbar { font-size: 11px; color: var(--color-text-secondary); flex-wrap: wrap; }
   .cnt { display: inline-flex; align-items: center; gap: 4px; }
   .cnt i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
