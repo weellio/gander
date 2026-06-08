@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { STATE_COLORS, STATE_LABEL } from './lib/states.js';
-  import { avatarMode, layout, images, soundOn, autoUsage, fastPoll, animations } from './lib/stores.js';
+  import { avatarMode, layout, images, soundOn, autoUsage, fastPoll, animations, desktopNotify } from './lib/stores.js';
   import AgentTile from './lib/AgentTile.svelte';
   import ActionImages from './lib/ActionImages.svelte';
   import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
@@ -48,6 +48,25 @@
     } catch (_) {}
   }
 
+  function notifyDesktop(agent) {
+    try {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return;
+      const n = new Notification('Hivemind — agent needs you', {
+        body: `${agent.name || agent.project || 'An agent'} is waiting for input`,
+        tag: agent.id,
+      });
+      n.onclick = () => { window.focus(); n.close(); };
+    } catch (_) {}
+  }
+  async function toggleNotify(e) {
+    const want = e.target.checked;
+    if (want && 'Notification' in window && Notification.permission !== 'granted') {
+      const p = await Notification.requestPermission().catch(() => 'denied');
+      if (p !== 'granted') { $desktopNotify = false; return; }
+    }
+    $desktopNotify = want;
+  }
+
   async function poll() {
     try {
       const r = await fetch('/api/state', { cache: 'no-store' });
@@ -55,7 +74,10 @@
       agents = d.agents || [];
       projects = d.projects || [];
       const nowAwaiting = new Set(agents.filter((a) => a.state === 'awaiting').map((a) => a.id));
-      if (!firstPoll) { for (const id of nowAwaiting) if (!prevAwaiting.has(id)) { playChime(); break; } }
+      if (!firstPoll) {
+        const fresh = agents.filter((a) => a.state === 'awaiting' && !prevAwaiting.has(a.id));
+        if (fresh.length) { playChime(); if ($desktopNotify) fresh.forEach(notifyDesktop); }
+      }
       prevAwaiting = nowAwaiting; firstPoll = false;
       online = true;
     } catch (_) { online = false; }
@@ -198,6 +220,7 @@
             <button class="select" onclick={() => { openP('config'); optsOpen = false; }}>Manage MCP &amp; skills →</button>
             <div class="opt-sec">Dashboard performance</div>
             <label class="opt"><input type="checkbox" bind:checked={$soundOn} /> Alert sound</label>
+            <label class="opt"><input type="checkbox" checked={$desktopNotify} onchange={toggleNotify} /> Desktop notifications <span class="dim">(when waiting)</span></label>
             <label class="opt"><input type="checkbox" bind:checked={$autoUsage} /> Auto-refresh cost <span class="dim">(re-reads transcripts)</span></label>
             <label class="opt"><input type="checkbox" bind:checked={$fastPoll} /> Fast agent updates <span class="dim">(0.5s vs 2s)</span></label>
             <label class="opt"><input type="checkbox" bind:checked={$animations} /> Office animations <span class="dim">(CPU)</span></label>
