@@ -32,6 +32,7 @@ const configmgr = require('./configmgr.js');
 const history = require('./history.js');
 const health = require('./health.js');
 const transcript = require('./transcript.js');
+const search = require('./search.js');
 const STARTED = Date.now();
 let eventsReceived = 0;
 
@@ -69,6 +70,10 @@ const HNAMES = [
 let hurricaneIdx = 0;
 function isGeneric(name) { return !name || /^(general[-\s]?purpose|subagent|sub-|agent-)/i.test(String(name)); }
 function nextHurricane() { const list = HNAMES[hurricaneIdx % 26]; hurricaneIdx++; return list[Math.floor(Math.random() * list.length)]; }
+
+// Rolling activity feed (newest-first ring buffer) for the event ticker / error spotlight.
+const feed = [];
+function pushFeed(e) { feed.unshift(e); if (feed.length > 300) feed.length = 300; }
 
 // Persist the registry so a bridge restart doesn't lose the picture. Entries
 // older than 12h are dropped on load (stale sessions from long-gone runs).
@@ -170,6 +175,36 @@ function retireSweep() {
     }
   }
   if (changed) saveRegistry();
+}
+
+// ── cost budget alerts — warn (Telegram + dashboard) when spend crosses a cap. ──
+const budget = { daily: Number(cfg.dailyBudget) || 0, session: Number(cfg.sessionBudget) || 0 };
+let budgetState = { dailyCost: 0, daily: budget.daily, session: budget.session, overDaily: false, generatedAt: 0 };
+const budgetAlerted = { day: '', sessions: new Set() };
+function dayKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+async function checkBudget() {
+  try {
+    const u = await usage.summaryAsync();
+    const tk = dayKey();
+    const day = (u.byDay || []).find((x) => x.date === tk);
+    const dailyCost = day ? day.costUSD : 0;
+    const overDaily = budget.daily > 0 && dailyCost >= budget.daily;
+    budgetState = { dailyCost, daily: budget.daily, session: budget.session, overDaily, generatedAt: Date.now() };
+    if (overDaily && budgetAlerted.day !== tk) {
+      budgetAlerted.day = tk;
+      sendTelegram(`💸 <b>Hivemind budget</b>\nToday's spend $${dailyCost.toFixed(2)} crossed your $${budget.daily} cap.`);
+      pushFeed({ ts: Date.now(), agentId: 'budget', agent: 'budget', project: '', state: 'error', log: `Daily spend $${dailyCost.toFixed(2)} over $${budget.daily} cap`, error: true });
+    }
+    if (budget.session > 0 && u.bySession) {
+      for (const [sid, s] of Object.entries(u.bySession)) {
+        if (s.costUSD >= budget.session && !budgetAlerted.sessions.has(sid)) {
+          budgetAlerted.sessions.add(sid);
+          const ag = agents.get('sess:' + sid);
+          sendTelegram(`💸 <b>Hivemind</b>\nSession ${ag ? ag.project : sid.slice(0, 8)} hit $${s.costUSD.toFixed(2)} (cap $${budget.session}).`);
+        }
+      }
+    }
+  } catch (_) {}
 }
 const LICENSE_KEY = process.env.AOC_LICENSE || cfg.license || '';
 let licenseState = { licensed: true, mode: 'pending' };
@@ -312,6 +347,9 @@ function upsert(ev) {
   existing.retiring = false; existing.retireAt = 0;   // any event = activity → cancel clock-out
   existing.updatedAt = Date.now();
   agents.set(id, existing);
+  if (ev.state !== undefined || ev.log) {
+    pushFeed({ ts: Date.now(), agentId: id, agent: existing.name || id, project: existing.project || '', state: existing.state, log: ev.log ? String(ev.log) : '', error: existing.state === 'error' });
+  }
   saveRegistry();
   return { ok: true, agent: existing };
 }
@@ -421,7 +459,7 @@ function snapshot() {
   }));
   const pending = {};
   for (const [sid, q] of commands) if (q.length) pending[sid] = q.length;
-  return { agents: list, projects, muted: [...muted], pending };
+  return { agents: list, projects, muted: [...muted], pending, budget: budgetState };
 }
 
 // ── Claude Code hook payload → registry events ───────────────────────────────
@@ -553,6 +591,28 @@ const server = http.createServer(async (req, res) => {
 
   if (url === '/api/state' && req.method === 'GET') {
     return sendJson(res, 200, snapshot());
+  }
+
+  if (url === '/api/feed' && req.method === 'GET') {
+    return sendJson(res, 200, { events: feed.slice(0, 200) });
+  }
+
+  if (url === '/api/search' && req.method === 'POST') {
+    const body = await readBody(req);
+    return sendJson(res, 200, await search.search(body && body.q, body || {}));
+  }
+
+  if (url === '/api/budget' && req.method === 'GET') {
+    return sendJson(res, 200, budgetState);
+  }
+  if (url === '/api/budget' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    if (body.daily !== undefined) { budget.daily = Number(body.daily) || 0; cfg.dailyBudget = budget.daily; }
+    if (body.session !== undefined) { budget.session = Number(body.session) || 0; cfg.sessionBudget = budget.session; }
+    saveConfig();
+    await checkBudget();
+    return sendJson(res, 200, budgetState);
   }
 
   if (url === '/api/license' && req.method === 'GET') {
@@ -789,6 +849,12 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, r.error ? 400 : 200, r);
   }
 
+  if (url === '/api/component-diff' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    return sendJson(res, 200, projects.diffComponent(body.type, body.name, body.fromCwd, body.toCwd));
+  }
+
   if (url === '/api/copy-component' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
@@ -823,6 +889,7 @@ server.listen(argPort, () => {
   startIngest();
   startTelegramPolling();
   setInterval(retireSweep, 12000);
+  setInterval(checkBudget, 180000); setTimeout(checkBudget, 8000);
   license.verify(LICENSE_KEY, cfg.gumroadProduct).then((s) => { licenseState = s; console.log(`[license] ${s.mode}`); });
 });
 

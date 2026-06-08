@@ -125,4 +125,54 @@ function copyComponent(type, name, fromDir, toDir, overwrite) {
   catch (e) { return { error: e.message }; }
 }
 
-module.exports = { getConfig, addRoot, removeRoot, noteKnown, discover, project, copyComponent, keyOf };
+// ── diff: show how the target would change before an overwrite copy ──
+function lineDiff(aText, bText) {
+  const a = String(aText).split('\n'), b = String(bText).split('\n');
+  const n = a.length, m = b.length;
+  if (n > 800 || m > 800) return null; // too big for an O(n*m) diff
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const out = []; let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push({ t: ' ', text: a[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ t: '-', text: a[i] }); i++; }
+    else { out.push({ t: '+', text: b[j] }); j++; }
+  }
+  while (i < n) out.push({ t: '-', text: a[i++] });
+  while (j < m) out.push({ t: '+', text: b[j++] });
+  return out;
+}
+function capLines(lines) {
+  if (!lines) return { lines: null, note: 'File too large to diff — review manually before overwriting.' };
+  if (lines.length > 400) return { lines: lines.slice(0, 400), note: `… ${lines.length - 400} more lines` };
+  return { lines };
+}
+function readEntry(dir, type, name) {
+  try {
+    if (type === 'hook') { const s = JSON.parse(fs.readFileSync(path.join(dir, '.claude', 'settings.json'), 'utf8')); const v = s.hooks && s.hooks[name]; return v ? { found: true, text: JSON.stringify(v, null, 2) } : { found: false, text: '' }; }
+    const m = JSON.parse(fs.readFileSync(path.join(dir, '.mcp.json'), 'utf8')); const v = m.mcpServers && m.mcpServers[name]; return v ? { found: true, text: JSON.stringify(v, null, 2) } : { found: false, text: '' };
+  } catch (_) { return { found: false, text: '' }; }
+}
+function diffComponent(type, name, fromDir, toDir) {
+  if (!type || !name || /[\\/]/.test(name) || name.includes('..')) return { error: 'invalid' };
+  if (type === 'hook' || type === 'mcp') {
+    const tgt = readEntry(toDir, type, name);
+    if (!tgt.found) return { exists: false };
+    const src = readEntry(fromDir, type, name);
+    return { exists: true, kind: type, ...capLines(lineDiff(tgt.text, src.text)) };
+  }
+  if (type === 'skill') {
+    const dst = path.join(toDir, '.claude', 'skills', name);
+    return fs.existsSync(dst) ? { exists: true, kind: 'skill', note: 'Skill folder already exists — it will be replaced.' } : { exists: false };
+  }
+  const rel = type === 'agent' ? ['agents', name + '.md'] : type === 'command' ? ['commands', name + '.md'] : null;
+  if (!rel) return { error: 'unknown type' };
+  const dst = path.join(toDir, '.claude', ...rel);
+  if (!fs.existsSync(dst)) return { exists: false };
+  let a = '', b = '';
+  try { a = fs.readFileSync(dst, 'utf8'); } catch (_) {}
+  try { b = fs.readFileSync(path.join(fromDir, '.claude', ...rel), 'utf8'); } catch (_) {}
+  return { exists: true, kind: type, ...capLines(lineDiff(a, b)) };
+}
+
+module.exports = { getConfig, addRoot, removeRoot, noteKnown, discover, project, copyComponent, keyOf, diffComponent };
