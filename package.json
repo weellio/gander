@@ -1,0 +1,7 @@
+{
+  "name": "hivemind",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}
