@@ -403,7 +403,7 @@
         if (!d.walk && t > walkStagger) {
           let tx = null, ty = null, kind = null, pause = 0.6, skipB = d.parentDeskId, phrase = null;
           if (agent.state === 'idle' || agent.state === 'done') {
-            if (d.nextBreakAt == null) d.nextBreakAt = t + 10 + Math.random() * 35; // first trip staggered
+            if (d.nextBreakAt == null) d.nextBreakAt = t + 90 + Math.random() * 240; // first wander: 1.5–5.5 min in
             if (t > d.nextBreakAt) {
               // casually visit a random idle peer (chat) OR the water cooler
               const peers = list.filter((a) => a.id !== agent.id && (a.state === 'idle' || a.state === 'done') && (desks.get(a.id) || {}).homeX != null);
@@ -418,7 +418,8 @@
                 tx = cooler.x + Math.cos(ang) * 16; ty = cooler.y - 12 + Math.sin(ang) * 7;
                 kind = 'break'; pause = 3 + Math.random() * 3;
               }
-              d.nextBreakAt = t + 50 + Math.random() * 45;
+              d.nextBreakAt = t + 180 + Math.random() * 420;             // 3–10 min between wanders
+              if (kind === 'break') d.nextBreakAt += 60 + Math.random() * 60; // cooler: a minute or two more on top
             }
           } else if (!isRoot && d.parentDeskId && ACTIVE.has(agent.state) && t > d.nextWalkAt) {
             const parent = desks.get(d.parentDeskId);
