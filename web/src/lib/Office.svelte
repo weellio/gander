@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { STATE_COLORS, STATE_LABEL } from './states.js';
   import { paintFigure } from './avatars/desk.js';
+  import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
   let { agents: agentsProp = null } = $props();
@@ -294,6 +295,9 @@
   // ── pan / zoom (applied to the canvas transform) ──
   let zoom = $state(1), panX = $state(0), panY = $state(0), dragging = $state(false);
   let drag = null;
+  let selectedId = $state(null);   // clicked agent → modal
+  let hitTargets = [];             // {id,x,y,r} in world coords, rebuilt each frame
+  let down = null;                 // pointerdown pos, to tell a click from a drag
   const zclamp = (v) => Math.max(0.3, Math.min(3, v));
   function zoomAt(sx, sy, nz) {
     nz = zclamp(nz);
@@ -305,11 +309,23 @@
   function onWheel(e) { e.preventDefault(); const r = canvas.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, zoom * (e.deltaY < 0 ? 1.12 : 0.89)); }
   function onPointerDown(e) {
     if (e.target.closest && e.target.closest('.zoomctl')) return;
-    dragging = true; drag = { x: e.clientX, y: e.clientY, px: panX, py: panY };
+    dragging = true; down = { x: e.clientX, y: e.clientY };
+    drag = { x: e.clientX, y: e.clientY, px: panX, py: panY };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   }
   function onPointerMove(e) { if (dragging && drag) { panX = drag.px + (e.clientX - drag.x); panY = drag.py + (e.clientY - drag.y); } }
-  function onPointerUp() { dragging = false; drag = null; }
+  function onPointerUp(e) {
+    if (down && e && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5) handleClick(e); // a click, not a drag
+    dragging = false; drag = null; down = null;
+  }
+  function handleClick(e) {
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const wx = (e.clientX - rect.left - panX) / zoom, wy = (e.clientY - rect.top - panY) / zoom;
+    let best = null, bestD = Infinity;
+    for (const h of hitTargets) { const dd = Math.hypot(h.x - wx, h.y - wy); if (dd < h.r && dd < bestD) { best = h; bestD = dd; } }
+    if (best) selectedId = best.id;
+  }
 
   function frame(now) {
     raf = requestAnimationFrame(frame);
@@ -323,6 +339,7 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, panX * dpr, panY * dpr);
+      hitTargets = [];
 
       // faint floor grid
       ctx.strokeStyle = 'rgba(140,140,150,0.07)';
@@ -467,6 +484,7 @@
 
         // Render with the shared top-down vector figure (+ its desk objects).
         const fs = isRoot ? 0.58 : 0.44; // figure scale on the floor
+        hitTargets.push({ id: agent.id, x: drawX, y: drawY, r: Math.max(30, 55 * fs) });
         ctx.save();
         ctx.translate(drawX, drawY);
         ctx.scale(fs, fs);
@@ -540,6 +558,10 @@
     <button class="fit" onclick={fitView} title="Fit">Fit</button>
   </div>
 </div>
+
+{#if selectedId}
+  <AgentModal id={selectedId} onClose={() => (selectedId = null)} />
+{/if}
 
 <style>
   .office {
