@@ -54,6 +54,15 @@
 
   function onProjectChange() { loadGithub(); }
 
+  let prTitle = $state(''); let prBody = $state(''); let prBase = $state(''); let prResult = $state(''); let showPrForm = $state(false);
+  async function createPr() {
+    if (!chosenPath || !prTitle.trim()) return;
+    prResult = 'Creating…';
+    const j = await post('/api/github', { cwd: chosenPath, kind: 'createPr', title: prTitle, body: prBody, base: prBase.trim() });
+    if (j && j.ok) { prResult = '✓ ' + j.url; prTitle = ''; prBody = ''; prBase = ''; loadGithub(); }
+    else { prResult = 'Error: ' + ((j && j.error) || 'failed'); }
+  }
+
   function openUrl(url) { if (url) window.open(url, '_blank', 'noopener'); }
 
   function fmtDate(iso) {
@@ -129,6 +138,17 @@
           <span class="badge vis">{repoInfo.visibility.toLowerCase()}</span>
           <span class="branch mono">⎇ {repoInfo.defaultBranch}</span>
           <span class="vanity" title="{repoInfo.stars} stars · {repoInfo.forks} forks · {repoInfo.watchers} watchers">★ {repoInfo.stars} · ⑂ {repoInfo.forks}</span>
+        </div>
+
+        <div class="prnew">
+          <button class="prtoggle" onclick={() => (showPrForm = !showPrForm)}>{showPrForm ? '▾' : '▸'} New pull request</button>
+          {#if showPrForm}
+            <input class="in" placeholder="PR title" bind:value={prTitle} />
+            <input class="in" placeholder="base branch (optional, default {repoInfo.defaultBranch})" bind:value={prBase} />
+            <textarea class="in ta" placeholder="description (optional)" bind:value={prBody}></textarea>
+            <button class="select" onclick={createPr} disabled={!prTitle.trim()}>Create PR for current branch</button>
+            {#if prResult}<div class="prres">{prResult.startsWith('✓') ? '' : ''}{#if prResult.startsWith('✓ http')}✓ <a href={prResult.slice(2)} target="_blank" rel="noopener">{prResult.slice(2)}</a>{:else}{prResult}{/if}</div>{/if}
+          {/if}
         </div>
 
         <!-- Open PRs -->
@@ -223,6 +243,12 @@
   .repo-name:hover { opacity: 0.8; }
   .branch { font-size: 10px; color: var(--color-text-tertiary); margin-left: auto; }
   .vanity { font-size: 10px; color: var(--color-text-secondary); font-family: var(--font-mono); white-space: nowrap; }
+  .prnew { display: flex; flex-direction: column; gap: 5px; padding: 6px 14px 10px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .prtoggle { align-self: flex-start; background: none; border: none; cursor: pointer; font-size: 11px; color: var(--color-text-secondary); padding: 0; }
+  .prnew .in { font-size: 11px; padding: 5px 7px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary);
+    background: var(--color-background-secondary); color: var(--color-text-primary); box-sizing: border-box; width: 100%; }
+  .prnew .ta { min-height: 54px; resize: vertical; font-family: inherit; }
+  .prres { font-size: 10px; color: var(--color-text-secondary); word-break: break-all; }
   .mono { font-family: var(--font-mono); }
   .badge {
     font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 99px;

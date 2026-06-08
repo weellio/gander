@@ -115,4 +115,29 @@ async function issues(dir) {
   }));
 }
 
-module.exports = { info, prs, issues };
+/** Run `gh` returning raw stdout text (for commands that don't emit JSON). */
+function runGhText(args, cwd) {
+  return new Promise((resolve) => {
+    execFile('gh', args, { cwd, timeout: 15000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) return resolve({ error: String(stderr || err.message || 'gh failed').trim().slice(0, 240) });
+      resolve({ text: String(stdout).trim() });
+    });
+  });
+}
+
+/**
+ * createPr(dir, { title, body, base }) — open a PR for the current branch.
+ * Returns { ok, url } or { error }. Non-interactive (title + body provided).
+ */
+async function createPr(dir, opts) {
+  const title = ((opts && opts.title) || '').trim();
+  if (!title) return { error: 'title required' };
+  const args = ['pr', 'create', '--title', title, '--body', String((opts && opts.body) || '').slice(0, 4000)];
+  if (opts && opts.base) args.push('--base', String(opts.base));
+  const r = await runGhText(args, dir);
+  if (r.error) return { error: r.error };
+  const url = (r.text.match(/https?:\/\/\S+/) || [r.text])[0];
+  return { ok: true, url };
+}
+
+module.exports = { info, prs, issues, createPr };

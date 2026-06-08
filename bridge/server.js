@@ -688,7 +688,9 @@ const server = http.createServer(async (req, res) => {
 
   if (url === '/api/github' && req.method === 'POST') {
     const body = await readBody(req);
-    if (!body || !body.cwd || !github[body.kind]) return sendJson(res, 400, { error: 'cwd and kind (info|prs|issues) required' });
+    if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
+    if (body.kind === 'createPr') return sendJson(res, 200, await github.createPr(body.cwd, body));
+    if (!github[body.kind]) return sendJson(res, 400, { error: 'kind must be info|prs|issues|createPr' });
     return sendJson(res, 200, await github[body.kind](body.cwd));
   }
 
