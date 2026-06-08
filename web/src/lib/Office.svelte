@@ -291,6 +291,26 @@
   let frameN = 0;
   let walkStagger = 0; // global throttle so they don't all move at once
 
+  // ── pan / zoom (applied to the canvas transform) ──
+  let zoom = $state(1), panX = $state(0), panY = $state(0), dragging = $state(false);
+  let drag = null;
+  const zclamp = (v) => Math.max(0.3, Math.min(3, v));
+  function zoomAt(sx, sy, nz) {
+    nz = zclamp(nz);
+    const wx = (sx - panX) / zoom, wy = (sy - panY) / zoom;
+    panX = sx - wx * nz; panY = sy - wy * nz; zoom = nz;
+  }
+  function zoomBy(f) { if (canvas) { const r = canvas.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, zoom * f); } }
+  function fitView() { zoom = 1; panX = 0; panY = 0; }
+  function onWheel(e) { e.preventDefault(); const r = canvas.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, zoom * (e.deltaY < 0 ? 1.12 : 0.89)); }
+  function onPointerDown(e) {
+    if (e.target.closest && e.target.closest('.zoomctl')) return;
+    dragging = true; drag = { x: e.clientX, y: e.clientY, px: panX, py: panY };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  }
+  function onPointerMove(e) { if (dragging && drag) { panX = drag.px + (e.clientX - drag.x); panY = drag.py + (e.clientY - drag.y); } }
+  function onPointerUp() { dragging = false; drag = null; }
+
   function frame(now) {
     raf = requestAnimationFrame(frame);
     frameN++;
@@ -300,8 +320,9 @@
     const W = cssW, H = cssH;
 
     try {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, W, H);
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, panX * dpr, panY * dpr);
 
       // faint floor grid
       ctx.strokeStyle = 'rgba(140,140,150,0.07)';
@@ -509,8 +530,15 @@
   });
 </script>
 
-<div class="office" bind:this={wrap}>
+<div class="office" bind:this={wrap} class:dragging
+     onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onpointerleave={onPointerUp} onwheel={onWheel}>
   <canvas bind:this={canvas}></canvas>
+  <div class="zoomctl">
+    <button onclick={() => zoomBy(0.83)} title="Zoom out">−</button>
+    <span>{Math.round(zoom * 100)}%</span>
+    <button onclick={() => zoomBy(1.2)} title="Zoom in">+</button>
+    <button class="fit" onclick={fitView} title="Fit">Fit</button>
+  </div>
 </div>
 
 <style>
@@ -530,4 +558,18 @@
     width: 100%;
     height: 100%;
   }
+  .office { cursor: grab; touch-action: none; }
+  .office.dragging { cursor: grabbing; }
+  .zoomctl {
+    position: absolute; top: 8px; right: 8px; z-index: 5; display: flex; align-items: center; gap: 4px;
+    background: var(--color-background-secondary); border: 0.5px solid var(--color-border-secondary);
+    border-radius: var(--border-radius-md); padding: 3px 5px;
+  }
+  .zoomctl button {
+    width: 22px; height: 22px; font-size: 13px; line-height: 1; cursor: pointer;
+    border: 0.5px solid var(--color-border-secondary); border-radius: 5px;
+    background: var(--color-background-primary); color: var(--color-text-primary);
+  }
+  .zoomctl button.fit { width: auto; padding: 0 8px; font-size: 11px; }
+  .zoomctl span { font-size: 11px; color: var(--color-text-secondary); min-width: 36px; text-align: center; }
 </style>
