@@ -4,7 +4,7 @@
   import { avatarMode, layout, images, soundOn } from './lib/stores.js';
   import AgentTile from './lib/AgentTile.svelte';
   import ActionImages from './lib/ActionImages.svelte';
-  import CopySkill from './lib/CopySkill.svelte';
+  import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
   import Hierarchy from './lib/Hierarchy.svelte';
   import ThemeMenu from './lib/ThemeMenu.svelte';
   import Office from './lib/Office.svelte';
@@ -145,7 +145,7 @@
       {#if $images.length}<button class="select" onclick={clearImages} title="Clear imported images">✕{$images.length}</button>{/if}
       <input bind:this={fileInput} type="file" accept="image/*" multiple style="display:none" onchange={onFiles} />
       <ActionImages />
-      <CopySkill />
+      <ProjectsSidebar />
       <button class="select" onclick={() => ($soundOn = !$soundOn)} title="Alert sound when an agent needs input">{$soundOn ? '🔔' : '🔕'}</button>
       <ThemeMenu />
     </div>
