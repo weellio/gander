@@ -29,6 +29,7 @@ const git = require('./git.js');
 const usage = require('./usage.js');
 const github = require('./github.js');
 const configmgr = require('./configmgr.js');
+const history = require('./history.js');
 
 const argPort = (() => {
   const i = process.argv.indexOf('--port');
@@ -634,6 +635,10 @@ const server = http.createServer(async (req, res) => {
 
   if (url === '/api/usage' && req.method === 'GET') {
     return sendJson(res, 200, await usage.summaryAsync());
+  }
+
+  if (url === '/api/history' && req.method === 'GET') {
+    return sendJson(res, 200, await history.list({}));
   }
 
   if (url === '/api/github' && req.method === 'POST') {

@@ -8,6 +8,7 @@
   import CostPanel from './lib/CostPanel.svelte';
   import GithubPanel from './lib/GithubPanel.svelte';
   import SettingsPanel from './lib/SettingsPanel.svelte';
+  import HistoryPanel from './lib/HistoryPanel.svelte';
   import Hierarchy from './lib/Hierarchy.svelte';
   import ThemeMenu from './lib/ThemeMenu.svelte';
   import Office from './lib/Office.svelte';
@@ -164,6 +165,7 @@
       <CostPanel />
       <GithubPanel />
       <SettingsPanel />
+      <HistoryPanel />
       <button class="select" onclick={() => ($soundOn = !$soundOn)} title="Alert sound when an agent needs input">{$soundOn ? '🔔' : '🔕'}</button>
       <ThemeMenu />
     </div>
