@@ -26,6 +26,9 @@ const https = require('https');
 const license = require('./license.js');
 const projects = require('./projects.js');
 const git = require('./git.js');
+const usage = require('./usage.js');
+const github = require('./github.js');
+const configmgr = require('./configmgr.js');
 
 const argPort = (() => {
   const i = process.argv.indexOf('--port');
@@ -573,6 +576,29 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/git-status' && req.method === 'POST') {
     const body = await readBody(req);
     return sendJson(res, 200, await git.statusMany((body && body.paths) || []));
+  }
+
+  if (url === '/api/usage' && req.method === 'GET') {
+    return sendJson(res, 200, await usage.summaryAsync());
+  }
+
+  if (url === '/api/github' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.cwd || !github[body.kind]) return sendJson(res, 400, { error: 'cwd and kind (info|prs|issues) required' });
+    return sendJson(res, 200, await github[body.kind](body.cwd));
+  }
+
+  if (url === '/api/config-read' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
+    return sendJson(res, 200, configmgr.read(body.cwd));
+  }
+
+  if (url === '/api/config' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
+    const r = configmgr.del(body.cwd, body.action === 'delHook' ? 'hook' : 'mcp', body.name);
+    return sendJson(res, r.error ? 400 : 200, r);
   }
 
   if (url === '/api/copy-component' && req.method === 'POST') {

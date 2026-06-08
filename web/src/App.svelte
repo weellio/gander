@@ -5,6 +5,9 @@
   import AgentTile from './lib/AgentTile.svelte';
   import ActionImages from './lib/ActionImages.svelte';
   import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
+  import CostPanel from './lib/CostPanel.svelte';
+  import GithubPanel from './lib/GithubPanel.svelte';
+  import SettingsPanel from './lib/SettingsPanel.svelte';
   import Hierarchy from './lib/Hierarchy.svelte';
   import ThemeMenu from './lib/ThemeMenu.svelte';
   import Office from './lib/Office.svelte';
@@ -146,6 +149,9 @@
       <input bind:this={fileInput} type="file" accept="image/*" multiple style="display:none" onchange={onFiles} />
       <ActionImages />
       <ProjectsSidebar />
+      <CostPanel />
+      <GithubPanel />
+      <SettingsPanel />
       <button class="select" onclick={() => ($soundOn = !$soundOn)} title="Alert sound when an agent needs input">{$soundOn ? '🔔' : '🔕'}</button>
       <ThemeMenu />
     </div>
