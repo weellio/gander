@@ -84,37 +84,48 @@ node bridge/server.js --run "claude -p 'task' --output-format stream-json --verb
   plugin.json          # plugin manifest
   marketplace.json     # distribution manifest
 hooks/
-  hooks.json           # SessionStart (command) + event hooks (http) → the bridge
+  hooks.json           # SessionStart launches the bridge; tool/Stop/Notification → emit.js
+  emit.js              # forwards hook payloads to the bridge (+ command return channel, last-message capture)
 bridge/
-  server.js            # zero-dep HTTP server: serves dashboard, /api/state, /api/event, /api/hook
+  server.js            # zero-dep HTTP server: serves the dashboard + the event/command/inspect API
   parser.js            # stream-json → agent events (for the --stdin / --run pipeline)
   launch.js            # cross-platform idempotent launcher
-dashboard/
-  index.html           # the dashboard (vanilla JS + Canvas)
-  src/
-    themes.js, layout.js          # 5 grid layout presets + switcher
-    abstract-avatar.js            # abstract avatar tier
-    gif-avatar.js                 # GIF avatar tier
-    hierarchy.js                  # recursive connectors + animated flow
+  license.js           # optional Gumroad license verification
+web/                   # Svelte 5 + Vite dashboard SOURCE
+  src/App.svelte, src/lib/*.svelte, src/lib/*.js
+  -> `npm run build` outputs to dashboard/dist (what the bridge serves)
+dashboard/dist/        # built dashboard (shipped)
 skills/
   agent-ops/SKILL.md   # manual control skill
+install.js, uninstall.js   # merge/remove the hooks in settings.json
 ```
+
+The bridge + hooks stay small, readable Node (they run on every tool call on the user's machine); the dashboard is a compiled Svelte app. Rebuild the UI with `cd web && npm run build` (or `npm run dev` for hot-reload).
 
 ### Event API
 
 ```
-GET  /api/state   -> { agents: [ { id, name, state, parentId?, root?, logLines } ] }
-POST /api/event   -> { agentId, name?, state?, detail?, parentId?, log?, remove? }
-POST /api/hook    -> raw Claude Code hook payload (mapped automatically)
-POST /api/reset   -> clear registry (keeps the root Orchestrator)
+GET  /api/state      -> { agents:[...], projects:[...], muted:[...], pending:{} }
+GET  /api/license    -> { licensed, mode, ... }
+GET  /api/inspect?session=<id>  -> { cwd, subagents, skills, agents, hooks }
+POST /api/event      -> { agentId, name?, state?, parentId?, project?, cwd?, log?, remove? }
+POST /api/hook       -> raw Claude Code hook payload (mapped automatically)
+POST /api/command    -> { sessionId, type:"message"|"stop", text }   (delivered via hook return channel)
+POST /api/mute       -> { project, muted }
+POST /api/copy-skill -> { fromCwd, toCwd, skill }
+POST /api/reset      -> clear registry
 ```
 
-States: `idle · thinking · coding · spawning · reading · testing · error · done`.
+States: `idle · thinking · coding · spawning · reading · testing · error · done · awaiting`.
 
 ## Configuration
 
-- **Port** — default `3131`; set `AOC_PORT` and update the URLs in `hooks/hooks.json`.
-- **Your own GIFs** — drop files in `dashboard/assets/avatars/` and list them in `dashboard/assets/avatars/manifest.json`, or set `window.AOC_GIFS` in the page.
+`bridge/aoc-config.json` (gitignored) or env vars:
+
+- **Port** — `AOC_PORT` (default `3131`).
+- **Telegram alerts/replies** — `{ "telegramToken": "...", "telegramChatId": "...", "dashboardUrl": "..." }` (or `AOC_TG_TOKEN` / `AOC_TG_CHAT` / `AOC_DASH_URL`). For inbound replies, the bot must have no webhook — use a dedicated bot via `"telegramReplyToken"` if needed.
+- **License** — `{ "license": "...", "gumroadProduct": "..." }` (or `AOC_LICENSE`). Licensing is off unless a Gumroad product is configured.
+- **Avatar images** — imported from the dashboard (**Images…** / **Action images…**), stored in the browser's localStorage.
 
 ## License
 

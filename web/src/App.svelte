@@ -12,6 +12,7 @@
   let online = $state(false);
   let selectedProject = $state(localStorage.getItem('aoc-project') || '');
   let fileInput;
+  let license = $state({ licensed: true });
 
   async function poll() {
     try {
@@ -22,7 +23,12 @@
       online = true;
     } catch (_) { online = false; }
   }
-  onMount(() => { poll(); const id = setInterval(poll, 500); return () => clearInterval(id); });
+  onMount(() => {
+    poll();
+    fetch('/api/license').then((r) => r.json()).then((s) => (license = s)).catch(() => {});
+    const id = setInterval(poll, 500);
+    return () => clearInterval(id);
+  });
 
   let shown = $derived(
     selectedProject ? agents.filter((a) => (a.project || 'unknown') === selectedProject) : agents
@@ -69,6 +75,12 @@
 </script>
 
 <div class="dashboard">
+  {#if license.licensed === false}
+    <div class="lic">⚠ Hivemind is unlicensed — {license.message || 'add your license key to bridge/aoc-config.json'}.
+      <button onclick={() => (license = { licensed: true })}>Dismiss</button>
+    </div>
+  {/if}
+
   <header class="top-bar">
     <div class="title">
       <span class="dot" class:online></span>
@@ -129,6 +141,10 @@
 
 <style>
   .dashboard { padding: 16px; display: flex; flex-direction: column; gap: 12px; max-width: 1500px; margin: 0 auto; }
+  .lic { display: flex; align-items: center; gap: 10px; font-size: 12px; padding: 8px 14px;
+    background: #FFFBEB; color: #92400E; border: 0.5px solid #F59E0B; border-radius: var(--border-radius-md); }
+  .lic button { margin-left: auto; font-size: 11px; padding: 2px 8px; border-radius: var(--border-radius-md);
+    border: 0.5px solid #F59E0B; background: transparent; color: #92400E; cursor: pointer; }
   .top-bar, .statusbar {
     display: flex; align-items: center; gap: 10px; padding: 10px 14px;
     background: var(--color-background-secondary);

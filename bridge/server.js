@@ -23,6 +23,7 @@ const { spawn } = require('child_process');
 const readline = require('readline');
 const { createParser } = require('./parser.js');
 const https = require('https');
+const license = require('./license.js');
 
 const argPort = (() => {
   const i = process.argv.indexOf('--port');
@@ -92,6 +93,8 @@ try { cfg = JSON.parse(fs.readFileSync(CFG_FILE, 'utf8')); } catch (_) {}
 const TG_TOKEN = process.env.AOC_TG_TOKEN || cfg.telegramToken || '';
 const TG_CHAT = process.env.AOC_TG_CHAT || cfg.telegramChatId || '';
 const DASH_URL = process.env.AOC_DASH_URL || cfg.dashboardUrl || `http://localhost:${argPort}/`;
+const LICENSE_KEY = process.env.AOC_LICENSE || cfg.license || '';
+let licenseState = { licensed: true, mode: 'pending' };
 const alertedAt = new Map();        // sessionId -> ts (throttle)
 const alertMsgMap = new Map();       // telegram message_id -> sessionId (for reply routing)
 let lastAwaitingSession = null;
@@ -391,6 +394,10 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, snapshot());
   }
 
+  if (url === '/api/license' && req.method === 'GET') {
+    return sendJson(res, 200, licenseState);
+  }
+
   if (url === '/api/event' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
@@ -487,6 +494,7 @@ server.listen(argPort, () => {
   console.log(`Push event: POST http://localhost:${argPort}/api/event`);
   startIngest();
   startTelegramPolling();
+  license.verify(LICENSE_KEY, cfg.gumroadProduct).then((s) => { licenseState = s; console.log(`[license] ${s.mode}`); });
 });
 
 // ── Optional inline ingest ───────────────────────────────────────────────────
