@@ -41,6 +41,8 @@
         ['GitHub', 'Open PRs & issues per project (★ stars · ⑂ forks), click to open in the browser, and create a pull request.'],
         ['Config', 'View a project’s hooks, MCP servers & raw settings; add or delete an MCP server, delete a hook — plus set up Telegram (live, no restart).'],
         ['Session history', 'Recent sessions across all projects with their first prompt — View the transcript or ▶ Resume any one.'],
+        ['Search', 'Search across every session transcript + project — find which session touched a file or topic, then open it.'],
+        ['Activity feed', 'A live chronological ticker of agent events, with an errors-only filter to spotlight failures.'],
         ['Health / status', 'Confirm Hivemind is wired up: bridge uptime/events, hook-install checklist, node/platform.'],
       ],
     },
@@ -48,6 +50,7 @@
       title: 'Options & alerts',
       items: [
         ['Conserve tokens', 'Hivemind sends almost nothing to the model itself — the real per-turn cost is the MCP servers / skills a project loads. Trim them in Config.'],
+        ['Cost budget', 'Set a daily / per-session spend cap (in Config) — get a banner + Telegram alert when crossed.'],
         ['Performance toggles', 'Alert sound, desktop notifications, auto-refresh cost, fast agent updates, and office animations.'],
         ['Status bar', 'Today’s + total spend is always visible.'],
         ['Telegram', 'Get pinged when a session is waiting, and reply or /stop from your phone.'],
