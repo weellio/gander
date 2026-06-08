@@ -382,13 +382,9 @@ export function paintFigure(ctx, agent, t, opts = {}) {
     drawHead(ctx, hair, 0, dyIdle);
     drawLaptop(ctx, accent, '#0F172A');
     const hy = 22 + dyIdle; // head centre (matches drawHead)
-    // Both arms sweep UP and OUT to the sides, hands meeting behind the head.
-    drawArm(ctx, shirt, lShoulder.x, lShoulder.y, CX - 22, hy - 2);
-    drawArm(ctx, shirt, rShoulder.x, rShoulder.y, CX + 22, hy - 2);
-    // Hands tucked behind the head (drawn over the hair, near the top corners).
-    ctx.fillStyle = SKIN;
-    ctx.beginPath(); ctx.arc(CX - 13, hy - 6, 4, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(CX + 13, hy - 6, 4, 0, Math.PI * 2); ctx.fill();
+    // Both arms up, one hand each resting behind the head (drawArm draws the hands).
+    drawArm(ctx, shirt, lShoulder.x, lShoulder.y, CX - 12, hy - 5);
+    drawArm(ctx, shirt, rShoulder.x, rShoulder.y, CX + 12, hy - 5);
     // Z's drifting up (idle cue), looping via t.
     const zp = t % 90, za = zp < 45 ? zp / 45 : (90 - zp) / 45;
     ctx.globalAlpha = Math.max(0, za);
