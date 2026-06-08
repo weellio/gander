@@ -143,19 +143,23 @@
     const { roots, children } = tree;
     const CELLW = 92, CELLH = 84, ROOTH = 94, PADX = 46, PADY = 40, GAP = 38;
     const maxCols = Math.max(1, Math.floor((W - 2 * PADX) / CELLW));
-    let curX = PADX, curY = PADY, bandH = 0;
+    let curX = PADX, curY = PADY, bandH = 0, prevSolo = true;
 
-    roots.forEach((root) => {
+    // solo orchestrators first (sparse top), then teams with workers below (smallest first)
+    const ordered = [...roots].sort((a, b) => (children.get(a.id)?.length || 0) - (children.get(b.id)?.length || 0));
+
+    ordered.forEach((root) => {
       const subs = children.get(root.id) || [];
       const m = subs.length;
+      const isSolo = m === 0;
       // a roughly-square grid, a touch wider than tall, capped to the viewport
       const cols = m ? Math.min(maxCols, Math.max(1, Math.round(Math.sqrt(m) * 1.3))) : 1;
       const rows = m ? Math.ceil(m / cols) : 0;
       const blockW = Math.max(CELLW, cols * CELLW);
       const blockH = ROOTH + rows * CELLH;
 
-      // wrap to a new band when this team would overflow the row
-      if (curX + blockW > W - PADX && curX > PADX) { curX = PADX; curY += bandH + GAP; bandH = 0; }
+      // new band when leaving the solo cluster, or when this team would overflow the row
+      if (((!isSolo && prevSolo) || (curX + blockW > W - PADX)) && curX > PADX) { curX = PADX; curY += bandH + GAP; bandH = 0; }
 
       // orchestrator centred above its cubicle grid
       const rd = getDesk(root.id);
@@ -173,8 +177,10 @@
         sd.isRoot = false; sd.homeX = sd.tx; sd.homeY = sd.ty; sd.parentDeskId = root.id;
       });
 
+      rd.teamRect = { x: curX, y: curY, w: blockW, h: blockH, team: m > 0 };
       curX += blockW + GAP;
       bandH = Math.max(bandH, blockH);
+      prevSolo = isSolo;
     });
   }
 
@@ -434,6 +440,20 @@
       let _minX = Infinity, _maxX = -Infinity, _minY = Infinity;
       for (const d of desks.values()) if (d.homeX != null) { if (d.homeX < _minX) _minX = d.homeX; if (d.homeX > _maxX) _maxX = d.homeX; if (d.homeY < _minY) _minY = d.homeY; }
       const cooler = (_minY === Infinity) ? { x: W / 2, y: 40 } : { x: (_minX + _maxX) / 2, y: _minY - 74 };
+
+      // ── team rooms: a soft box around each orchestrator + its workers ──
+      ctx.save();
+      for (const root of tree.roots) {
+        const rd = desks.get(root.id);
+        if (!rd || !rd.teamRect || !rd.teamRect.team) continue;
+        const r = rd.teamRect;
+        const bx = r.x - 12, by = r.y - 16, bw = r.w + 24, bh = r.h + 30;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, 14); else ctx.rect(bx, by, bw, bh);
+        ctx.fillStyle = 'rgba(140,152,178,0.05)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(150,162,190,0.30)'; ctx.lineWidth = 1; ctx.setLineDash([]); ctx.stroke();
+      }
+      ctx.restore();
 
       // ── circuit traces from each orchestrator to its sub-agents ──
       // Octilinear (H/V + 45° corners) routed through a horizontal trunk under the
