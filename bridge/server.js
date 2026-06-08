@@ -25,6 +25,7 @@ const { createParser } = require('./parser.js');
 const https = require('https');
 const license = require('./license.js');
 const projects = require('./projects.js');
+const git = require('./git.js');
 
 const argPort = (() => {
   const i = process.argv.indexOf('--port');
@@ -567,6 +568,11 @@ const server = http.createServer(async (req, res) => {
       });
     } catch (_) { finish({ cancelled: true, error: 'picker failed' }); }
     return;
+  }
+
+  if (url === '/api/git-status' && req.method === 'POST') {
+    const body = await readBody(req);
+    return sendJson(res, 200, await git.statusMany((body && body.paths) || []));
   }
 
   if (url === '/api/copy-component' && req.method === 'POST') {

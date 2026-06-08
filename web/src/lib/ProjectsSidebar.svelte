@@ -6,9 +6,17 @@
   let selected = $state(null);   // { fromPath, fromName, type, name }
   let target = $state('');
   let result = $state('');
+  let gitMap = $state({});
   let timer = null;
 
-  async function load() { try { const r = await fetch('/api/projects'); data = await r.json(); } catch (_) {} }
+  async function load() { try { const r = await fetch('/api/projects'); data = await r.json(); loadGit(); } catch (_) {} }
+  async function loadGit() {
+    try {
+      const paths = data.projects.map((p) => p.path);
+      const r = await fetch('/api/git-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paths }) });
+      gitMap = await r.json();
+    } catch (_) {}
+  }
   function openPanel() { open = true; result = ''; load(); timer = setInterval(load, 3000); }
   function closePanel() { open = false; clearInterval(timer); }
   async function post(path, body) { try { return await (await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json(); } catch (_) { return null; } }
@@ -57,6 +65,11 @@
             <span class="caret">{expanded[p.path] ? '▾' : '▸'}</span>
             <span class="pname" title={p.path}>{p.name}</span>
             {#if p.running}<span class="run">● live</span>{/if}
+            {#if gitMap[p.path]?.isRepo}
+              <span class="git" title={[gitMap[p.path].remote, gitMap[p.path].lastWhen && 'last: ' + gitMap[p.path].lastWhen].filter(Boolean).join('\n')}>
+                ⎇{gitMap[p.path].branch}{#if gitMap[p.path].dirty}<i class="dirty">●{gitMap[p.path].dirty}</i>{/if}{#if gitMap[p.path].ahead}<i class="ah">↑{gitMap[p.path].ahead}</i>{/if}{#if gitMap[p.path].behind}<i class="bh">↓{gitMap[p.path].behind}</i>{/if}
+              </span>
+            {/if}
             <span class="counts">{p.skills.length}·{p.agents.length}·{p.commands.length}·{p.hooks.length}</span>
           </button>
           {#if expanded[p.path]}
@@ -117,6 +130,11 @@
   .pname { flex: 1 1 auto; font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .run { font-size: 9px; color: #10B981; }
   .counts { font-size: 9px; color: var(--color-text-tertiary); font-family: var(--font-mono); }
+  .git { display: inline-flex; align-items: center; gap: 3px; font-size: 9px; font-family: var(--font-mono); color: var(--color-text-tertiary); white-space: nowrap; }
+  .git i { font-style: normal; }
+  .git .dirty { color: #F59E0B; }
+  .git .ah { color: #10B981; }
+  .git .bh { color: #EF4444; }
   .comps { padding: 2px 6px 10px 26px; display: flex; flex-direction: column; gap: 6px; }
   .grp { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
   .gl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-tertiary); width: 60px; flex-shrink: 0; }
