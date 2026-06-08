@@ -266,6 +266,27 @@
 
   // Water cooler drawn UPRIGHT (front view) — bottle on a dispenser, like the
   // real thing. (x, y) is the bottom-centre of the base.
+  // Punch clock — agents walk here to "clock out" before retiring.
+  function drawClock(ctx, x, y) {
+    ctx.save();
+    const w = 24, h = 30, top = y - h;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x - w / 2, top, w, h, 5); else ctx.rect(x - w / 2, top, w, h);
+    ctx.fillStyle = '#3a4452'; ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1; ctx.stroke();
+    const cyf = top + 11;
+    ctx.beginPath(); ctx.arc(x, cyf, 7.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#e9eef3'; ctx.fill(); ctx.strokeStyle = '#222b36'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = '#222b36'; ctx.lineWidth = 1.3; ctx.lineCap = 'round';
+    const a = frameN * 0.03;
+    ctx.beginPath(); ctx.moveTo(x, cyf); ctx.lineTo(x + Math.cos(a) * 5, cyf + Math.sin(a) * 5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, cyf); ctx.lineTo(x + Math.cos(a * 0.5 - 1.2) * 3.4, cyf + Math.sin(a * 0.5 - 1.2) * 3.4); ctx.stroke();
+    ctx.fillStyle = '#1b2330'; ctx.fillRect(x - 7, top + h - 9, 14, 3); // card slot
+    ctx.fillStyle = 'rgba(150,160,178,0.85)'; ctx.font = '7px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('TIME CLOCK', x, y + 8);
+    ctx.restore();
+  }
+
   function drawCooler(ctx, x, y) {
     const rr = (rx, ry, w, h, r) => { ctx.beginPath(); ctx.roundRect(rx, ry, w, h, r); ctx.fill(); };
     const baseW = 26, baseH = 20, bx = x - baseW / 2, by = y - baseH;
@@ -439,7 +460,10 @@
       // is sparse (just orchestrators) while workers pile up below, so it stays clear.
       let _minX = Infinity, _maxX = -Infinity, _minY = Infinity;
       for (const d of desks.values()) if (d.homeX != null) { if (d.homeX < _minX) _minX = d.homeX; if (d.homeX > _maxX) _maxX = d.homeX; if (d.homeY < _minY) _minY = d.homeY; }
-      const cooler = (_minY === Infinity) ? { x: W / 2, y: 40 } : { x: (_minX + _maxX) / 2, y: _minY - 74 };
+      const _midX = _minY === Infinity ? W / 2 : (_minX + _maxX) / 2;
+      const _topY = _minY === Infinity ? 40 : _minY - 74;
+      const cooler = { x: _midX - 84, y: _topY };   // break area, top-centre-left
+      const clock = { x: _midX + 84, y: _topY };    // punch clock, top-centre-right
 
       // ── rooms: team rooms enclose the orchestrator + its cubicle floor; solo
       // orchestrators each get their own small private office. ──
@@ -488,6 +512,7 @@
 
       drawDecor(ctx, W, H, frameN);
       drawCooler(ctx, cooler.x, cooler.y);
+      drawClock(ctx, clock.x, clock.y);
 
       // draw root desks first (under), then subs
       const drawList = [];
@@ -564,6 +589,18 @@
           }
         }
 
+        // ── clocking out: a retiring agent walks to the punch clock and fades ──
+        let retireAlpha = 1;
+        if (agent.retiring && clock) {
+          if (!d.clockOut) d.clockOut = { start: t, route: octElbow(d.x, d.y, clock.x, clock.y + 6) };
+          const co = d.clockOut, el = t - co.start;
+          if (co._dur == null) co._dur = Math.max(0.7, Math.min(3, Math.hypot(clock.x - co.route[0].x, clock.y - co.route[0].y) / 120));
+          if (el < co._dur) { const q = polyPos(co.route, easeIO(el / co._dur)); drawX = q.x; drawY = q.y; walking = true; bubble = false; chat = null; }
+          else { drawX = clock.x; drawY = clock.y + 6; walking = false; bubble = true; chat = 'clocking out'; }
+          retireAlpha = Math.max(0.1, 1 - Math.max(0, el - co._dur) / 2.2);
+          d.walk = null;
+        }
+
         // Render with the shared top-down vector figure (+ its desk objects).
         const fs = isRoot ? 0.58 : 0.44; // figure scale on the floor
 
@@ -579,7 +616,7 @@
           g.addColorStop(1, hexA(color, 0));
           ctx.fillStyle = g;
           ctx.beginPath(); ctx.arc(drawX, drawY, haloR, 0, Math.PI * 2); ctx.fill();
-        } else if (agent.state === 'idle') {
+        } else if (agent.state === 'idle' && !agent.retiring) {
           const pulse = 0.5 + 0.5 * Math.sin(t * 2 + (d.seed || 0) * 6.28);
           ctx.save();
           ctx.strokeStyle = hexA('#F59E0B', 0.4 + 0.45 * pulse);
@@ -589,6 +626,7 @@
         }
 
         hitTargets.push({ id: agent.id, x: drawX, y: drawY, r: Math.max(30, 55 * fs) });
+        ctx.globalAlpha = retireAlpha;
         ctx.save();
         ctx.translate(drawX, drawY);
         ctx.scale(fs, fs);
@@ -611,6 +649,7 @@
           ctx.textAlign = 'center';
           ctx.fillText(STATE_LABEL[agent.state] || agent.state, drawX, drawY - 24);
         }
+        ctx.globalAlpha = 1;
       }
     } catch (_) {
       /* never throw out of rAF */

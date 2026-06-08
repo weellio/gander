@@ -125,6 +125,35 @@ const tg = {
   dash: process.env.AOC_DASH_URL || cfg.dashboardUrl || `http://localhost:${argPort}/`,
 };
 function saveConfig() { try { fs.writeFileSync(CFG_FILE, JSON.stringify(cfg, null, 2)); } catch (_) {} }
+
+// ── auto-retire ("clock out") — prune stale tiles so the floor reflects reality.
+// Only idle/done ever retire; active states never do. Tunable via aoc-config.json.
+const RETIRE = {
+  done: (cfg.retireDoneSec || 180) * 1000,            // finished sub-agents: 3 min
+  closed: (cfg.retireClosedSec || 60) * 1000,         // SessionEnd (truly closed): 1 min
+  idle: (cfg.retireIdleSec || 1500) * 1000,           // idle session (resting): 25 min
+  staleActive: (cfg.retireStaleActiveSec || 1800) * 1000, // orphaned "active" tile (no terminal event): 30 min
+  grace: 6000,                                         // animation window before deletion
+  enabled: cfg.autoRetire !== false,
+};
+function retireSweep() {
+  if (!RETIRE.enabled) return;
+  const now = Date.now();
+  let changed = false;
+  for (const [id, a] of agents) {
+    // active tiles get a long stale leash (catches orphans whose Stop never fired);
+    // idle/done retire on their normal timers.
+    const ttl = a.state === 'done' ? RETIRE.done
+      : a.state === 'idle' ? (a.closed ? RETIRE.closed : RETIRE.idle)
+      : RETIRE.staleActive;
+    if (!a.retiring) {
+      if (now - (a.updatedAt || 0) > ttl) { a.retiring = true; a.retireAt = now; changed = true; }
+    } else if (now - (a.retireAt || now) > RETIRE.grace) {
+      agents.delete(id); changed = true;
+    }
+  }
+  if (changed) saveRegistry();
+}
 const LICENSE_KEY = process.env.AOC_LICENSE || cfg.license || '';
 let licenseState = { licensed: true, mode: 'pending' };
 const alertedAt = new Map();        // sessionId -> ts (throttle)
@@ -255,6 +284,8 @@ function upsert(ev) {
     existing.logLines.unshift(String(ev.log));
     if (existing.logLines.length > 8) existing.logLines.pop();
   }
+  existing.closed = !!ev.closed;                      // SessionEnd marks a truly-closed session
+  existing.retiring = false; existing.retireAt = 0;   // any event = activity → cancel clock-out
   existing.updatedAt = Date.now();
   agents.set(id, existing);
   saveRegistry();
@@ -437,7 +468,7 @@ function mapHookToEvents(p) {
     case 'Stop':
       return [{ ...base, agentId: rootId, root: true, name: project, state: 'idle', log: 'turn complete', lastMessage: p._lastMessage }];
     case 'SessionEnd':
-      return [{ ...base, agentId: rootId, root: true, name: project, state: 'idle', log: 'session ended' }];
+      return [{ ...base, agentId: rootId, root: true, name: project, state: 'idle', closed: true, log: 'session ended' }];
     default:
       return [];
   }
@@ -767,6 +798,7 @@ server.listen(argPort, () => {
   console.log(`Push event: POST http://localhost:${argPort}/api/event`);
   startIngest();
   startTelegramPolling();
+  setInterval(retireSweep, 12000);
   license.verify(LICENSE_KEY, cfg.gumroadProduct).then((s) => { licenseState = s; console.log(`[license] ${s.mode}`); });
 });
 
