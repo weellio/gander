@@ -1,6 +1,7 @@
 <script>
   import { drawAgent } from './avatars/pixel.js';
   import { draw as drawAbstract } from './avatars/abstract.js';
+  import { draw as drawDesk } from './avatars/desk.js';
   import { avatarMode, images, imageMap } from './stores.js';
   import { STATE_COLORS, STATE_LABEL } from './states.js';
   import { readFile, downscale } from './img.js';
@@ -16,7 +17,7 @@
     return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
   }
 
-  let isCanvas = $derived($avatarMode === 'pixel' || $avatarMode === 'abstract');
+  let isCanvas = $derived($avatarMode === 'pixel' || $avatarMode === 'abstract' || $avatarMode === 'desk');
   let color = $derived(STATE_COLORS[agent.state] || '#6B7280');
 
   // Stable per-agent key (name/project persist across sessions; id is the fallback).
@@ -57,14 +58,15 @@
   // Canvas animation loop — runs only in canvas modes, restarts when mode changes.
   $effect(() => {
     const mode = $avatarMode;
-    if (mode !== 'pixel' && mode !== 'abstract') return;
+    if (mode !== 'pixel' && mode !== 'abstract' && mode !== 'desk') return;
     let raf, tick = 0;
     const run = () => {
       tick++;
       const ctx = canvas && canvas.getContext('2d');
       if (ctx) {
-        ctx.imageSmoothingEnabled = false;
-        try { (mode === 'abstract' ? drawAbstract : drawAgent)(ctx, agent, tick); } catch (_) {}
+        ctx.imageSmoothingEnabled = mode === 'desk';
+        const fn = mode === 'desk' ? drawDesk : mode === 'abstract' ? drawAbstract : drawAgent;
+        try { fn(ctx, agent, tick); } catch (_) {}
       }
       raf = requestAnimationFrame(run);
     };
@@ -74,7 +76,7 @@
 </script>
 
 {#if isCanvas}
-  <canvas bind:this={canvas} width="240" height="200" class="av-canvas"></canvas>
+  <canvas bind:this={canvas} width="240" height="200" class="av-canvas" class:smooth={$avatarMode === 'desk'}></canvas>
 {:else}
   <div class="img-wrap" class:plain={$avatarMode === 'gif'} data-state={agent.state} style="--c:{color}"
        role="button" tabindex="0"
@@ -100,6 +102,7 @@
 
 <style>
   .av-canvas { display: block; width: 120px; height: 100px; image-rendering: pixelated; }
+  .av-canvas.smooth { image-rendering: auto; }
 
   .img-wrap { position: relative; width: 120px; height: 100px; border-radius: 10px; overflow: hidden;
     --c: #6B7280; box-shadow: 0 0 0 2px var(--c); animation: pulse 2s ease-in-out infinite; }

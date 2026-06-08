@@ -6,12 +6,17 @@
   import ActionImages from './lib/ActionImages.svelte';
   import CopySkill from './lib/CopySkill.svelte';
   import Hierarchy from './lib/Hierarchy.svelte';
+  import ThemeMenu from './lib/ThemeMenu.svelte';
+  import Office from './lib/Office.svelte';
+  import { theme, applyTheme } from './lib/theme.js';
+
+  $effect(() => applyTheme($theme));
 
   let agents = $state([]);
   let projects = $state([]);
   let online = $state(false);
   let selectedProject = $state(localStorage.getItem('aoc-project') || '');
-  let fileInput;
+  let fileInput = $state();
   let license = $state({ licensed: true });
 
   async function poll() {
@@ -101,11 +106,13 @@
         <option value="squad">Squad</option>
         <option value="warroom">War Room</option>
         <option value="broadcast">Broadcast</option>
+        <option value="office">Office (floor)</option>
       </select>
 
       <select class="select" bind:value={$avatarMode}>
         <option value="pixel">Pixel art</option>
         <option value="abstract">Abstract</option>
+        <option value="desk">Desk (top-down)</option>
         <option value="image">Your image</option>
         <option value="gif">GIF (plain)</option>
       </select>
@@ -115,6 +122,7 @@
       <input bind:this={fileInput} type="file" accept="image/*" multiple style="display:none" onchange={onFiles} />
       <ActionImages />
       <CopySkill />
+      <ThemeMenu />
     </div>
   </header>
 
@@ -128,6 +136,8 @@
 
   {#if shown.length === 0}
     <div class="empty">No agents reporting yet. Run <code>/hooks</code> in a Claude Code session (or start a new one) to begin.</div>
+  {:else if $layout === 'office'}
+    <div class="office-wrap"><Office agents={shown} /></div>
   {:else}
     <div class="grid" data-layout={$layout}>
       {#each shown as agent (agent.id)}
@@ -136,7 +146,7 @@
     </div>
   {/if}
 
-  <Hierarchy agents={shown} />
+  {#if $layout !== 'office'}<Hierarchy agents={shown} />{/if}
 </div>
 
 <style>
@@ -165,6 +175,8 @@
   .cnt { display: inline-flex; align-items: center; gap: 4px; }
   .cnt i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
   .empty { padding: 40px; text-align: center; color: var(--color-text-tertiary); font-size: 13px; }
+  .office-wrap { height: calc(100vh - 175px); min-height: 440px; border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg); overflow: hidden; background: var(--color-background-primary); }
   code { font-family: var(--font-mono); background: var(--color-background-primary); padding: 1px 5px; border-radius: 4px; }
 
   /* ── layout presets ── */

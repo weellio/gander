@@ -9,6 +9,8 @@
   let expanded = $state(false);
   let color = $derived(STATE_COLORS[agent.state] || '#6B7280');
   let awaiting = $derived(agent.state === 'awaiting');
+  function hash(id) { let h = 0; const s = String(id); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+  let fd = $derived((hash(agent.id) % 50) / 10);
 
   async function send(type) {
     const sessionId = agent.sessionId || String(agent.id).replace(/^sess:/, '');
@@ -23,7 +25,7 @@
   }
 </script>
 
-<div class="tile" class:idle={agent.state === 'idle'} class:sub={!!agent.parentId} class:awaiting style="--c:{color}" data-id={agent.id}>
+<div class="tile" class:idle={agent.state === 'idle'} class:sub={!!agent.parentId} class:awaiting style="--c:{color}; --fd:{fd}s" data-id={agent.id}>
   <button class="head" onclick={() => (expanded = !expanded)} title="Toggle details">
     <span class="name">{agent.parentId ? '↳ ' : ''}{agent.name}</span>
     <span class="badge">{awaiting ? '🔔 ' : ''}{STATE_LABEL[agent.state] || agent.state}</span>
@@ -60,17 +62,23 @@
 
 <style>
   .tile {
+    position: relative;
     background: var(--color-background-primary);
     border: 0.5px solid var(--color-border-tertiary);
     border-left: 3px solid var(--c);
     border-radius: var(--border-radius-lg);
     padding: 12px; display: flex; flex-direction: column; gap: 8px;
     min-height: 150px; transition: border-color 0.3s;
+    animation: float 6s ease-in-out infinite; animation-delay: var(--fd, 0s);
   }
+  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+  @media (prefers-reduced-motion: reduce) { .tile { animation: none; } }
   .tile.idle { opacity: 0.7; }
   .tile.sub { margin-left: 6px; }
-  .tile.awaiting { opacity: 1; border-left-color: #F59E0B; animation: needpulse 1.2s ease-in-out infinite; }
-  @keyframes needpulse { 0%,100%{ box-shadow: 0 0 0 0 rgba(245,158,11,0); } 50%{ box-shadow: 0 0 0 3px rgba(245,158,11,0.45); } }
+  .tile.awaiting { opacity: 1; border-left-color: #F59E0B; }
+  .tile.awaiting::after { content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+    box-shadow: 0 0 0 0 rgba(245,158,11,0.5); animation: needpulse 1.2s ease-in-out infinite; }
+  @keyframes needpulse { 0%,100%{ box-shadow: 0 0 0 0 rgba(245,158,11,0); } 50%{ box-shadow: 0 0 0 4px rgba(245,158,11,0.5); } }
 
   .head { display: flex; align-items: center; justify-content: space-between; gap: 6px;
     background: none; border: none; padding: 0; width: 100%; cursor: pointer; text-align: left; color: inherit; font: inherit; }
