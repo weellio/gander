@@ -78,6 +78,8 @@
   }
 
   const ACTIVE = new Set(['spawning', 'coding', 'reading', 'thinking', 'testing']);
+  const PHRASES = ['hi', 'how are you?', 'gotta run', "where's the TPS report?", 'haha', 'coffee?', 'busy day',
+    'nice work', 'ugh, bugs', 'lunch?', 'did you see that?', 'on it 👍', 'morning!', 'so close', 'standup?'];
 
   // ── layout: deterministic target positions in normalized 0..1 space ──
   function layout(tree, W, H) {
@@ -229,6 +231,19 @@
     ctx.fillText('water', x, y + 9);
   }
 
+  // Small speech bubble with text (for casual peer chats).
+  function drawTextBubble(ctx, x, y, text) {
+    ctx.save();
+    ctx.font = '9px ui-sans-serif, system-ui, sans-serif';
+    const w = Math.max(22, ctx.measureText(text).width + 12), h = 15, bx = x - w / 2, by = y - 32;
+    ctx.fillStyle = 'rgba(255,255,255,0.97)'; ctx.strokeStyle = 'rgba(0,0,0,0.14)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(bx, by, w, h, 6); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x - 3, by + h); ctx.lineTo(x, by + h + 5); ctx.lineTo(x + 3, by + h); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#374151'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, by + h / 2 + 0.5);
+    ctx.restore();
+  }
+
   function drawBubble(ctx, x, y, scale) {
     ctx.save();
     ctx.translate(x + 16 * scale, y - 18 * scale);
@@ -363,25 +378,37 @@
         // Trips: active sub-agents walk to their parent to check in; idle/done
         // agents occasionally wander to the water cooler, hang out a few seconds,
         // then return. Both follow the curved walkways (around other desks).
-        let drawX = d.x, drawY = d.y, walking = false, bubble = false;
+        let drawX = d.x, drawY = d.y, walking = false, bubble = false, chat = null;
         if (!d.walk && t > walkStagger) {
-          let tx = null, ty = null, kind = null, pause = 0.6, outDur = 1.1, backDur = 1.1;
+          let tx = null, ty = null, kind = null, pause = 0.6, skipB = d.parentDeskId, phrase = null;
           if (agent.state === 'idle' || agent.state === 'done') {
-            if (d.nextBreakAt == null) d.nextBreakAt = t + 8 + Math.random() * 30; // first visit is staggered
+            if (d.nextBreakAt == null) d.nextBreakAt = t + 10 + Math.random() * 35; // first trip staggered
             if (t > d.nextBreakAt) {
-              const ang = d.seed * Math.PI * 2;                 // stand at a personal spot around the cooler
-              tx = cooler.x + Math.cos(ang) * 16;
-              ty = cooler.y - 12 + Math.sin(ang) * 7;
-              kind = 'break'; outDur = 1.3; backDur = 1.3; pause = 3 + Math.random() * 3; // hang 3–6s
-              d.nextBreakAt = t + 50 + Math.random() * 45;       // ≥50s, randomized, until next visit
+              // casually visit a random idle peer (chat) OR the water cooler
+              const peers = list.filter((a) => a.id !== agent.id && (a.state === 'idle' || a.state === 'done') && (desks.get(a.id) || {}).homeX != null);
+              if (peers.length && Math.random() < 0.5) {
+                const peer = peers[Math.floor(Math.random() * peers.length)];
+                const pk = desks.get(peer.id);
+                tx = pk.homeX + (d.seed < 0.5 ? -24 : 24); ty = pk.homeY;
+                kind = 'social'; pause = 2.5 + Math.random() * 3; skipB = peer.id;
+                phrase = PHRASES[Math.floor(Math.random() * PHRASES.length)];
+              } else {
+                const ang = d.seed * Math.PI * 2;
+                tx = cooler.x + Math.cos(ang) * 16; ty = cooler.y - 12 + Math.sin(ang) * 7;
+                kind = 'break'; pause = 3 + Math.random() * 3;
+              }
+              d.nextBreakAt = t + 50 + Math.random() * 45;
             }
           } else if (!isRoot && d.parentDeskId && ACTIVE.has(agent.state) && t > d.nextWalkAt) {
             const parent = desks.get(d.parentDeskId);
             if (parent) { tx = parent.x; ty = parent.y - 24; kind = 'report'; d.nextWalkAt = t + 6 + d.seed * 8; }
           }
           if (kind) {
-            const c = detour(d.x, d.y, tx, ty, agent.id, d.parentDeskId);
-            d.walk = { start: t, hx: d.x, hy: d.y, px: tx, py: ty, cx: c.cx, cy: c.cy, kind, outDur, pause, backDur };
+            const c = detour(d.x, d.y, tx, ty, agent.id, skipB);
+            const dist = Math.hypot(tx - d.x, ty - d.y);
+            const speed = kind === 'report' ? 95 : 46;          // px/s: hurried orders vs casual stroll
+            const dur = Math.max(0.6, dist / speed);
+            d.walk = { start: t, hx: d.x, hy: d.y, px: tx, py: ty, cx: c.cx, cy: c.cy, kind, pause, outDur: dur, backDur: dur, phrase };
             walkStagger = t + 0.7; // don't let two leave on the same frame
           }
         }
@@ -392,7 +419,7 @@
             const q = qbez(easeIO(tt / w.outDur), w.hx, w.hy, w.cx, w.cy, w.px, w.py);
             drawX = q.x; drawY = q.y; walking = true;
           } else if (tt < w.outDur + w.pause) {                  // hang out / chat
-            drawX = w.px; drawY = w.py; bubble = true;
+            drawX = w.px; drawY = w.py; bubble = true; chat = w.phrase || null;
           } else if (tt < w.outDur + w.pause + w.backDur) {      // walk back
             const k = (tt - w.outDur - w.pause) / w.backDur;
             const q = qbez(1 - easeIO(k), w.hx, w.hy, w.cx, w.cy, w.px, w.py);
@@ -411,7 +438,7 @@
         ctx.imageSmoothingEnabled = true;
         paintFigure(ctx, agent, frameN, { desk: false, walking });
         ctx.restore();
-        if (bubble) drawBubble(ctx, drawX, drawY, 1);
+        if (bubble) { if (chat) drawTextBubble(ctx, drawX, drawY, chat); else drawBubble(ctx, drawX, drawY, 1); }
         // name label below the figure
         ctx.fillStyle = 'rgba(130,130,140,0.95)';
         ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
