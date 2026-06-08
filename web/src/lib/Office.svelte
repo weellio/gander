@@ -263,8 +263,31 @@
       const live = new Set(list.map((a) => a.id));
       for (const k of desks.keys()) if (!live.has(k)) desks.delete(k);
 
-      // ── walkways from each root desk to its sub-agents (drawn under the figures) ──
+      // ── walkways from each root desk to its sub-agents (routed AROUND other desks) ──
+      // Every other desk near a straight path pushes the path's control point
+      // perpendicularly away, so the walkway bows around people instead of through.
+      const obstacles = [];
+      for (const a of list) { const dd = desks.get(a.id); if (dd && dd.homeX != null) obstacles.push({ id: a.id, x: dd.homeX, y: dd.homeY }); }
+      function detour(x1, y1, x2, y2, aId, bId) {
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len, ny = dx / len; // unit perpendicular
+        let push = 0;
+        for (const o of obstacles) {
+          if (o.id === aId || o.id === bId) continue;
+          const tt = ((o.x - x1) * dx + (o.y - y1) * dy) / (len * len);
+          if (tt < 0.12 || tt > 0.88) continue;        // only obstacles between the desks
+          const px = x1 + dx * tt, py = y1 + dy * tt;
+          const op = (o.x - px) * nx + (o.y - py) * ny; // signed distance from the line
+          const d = Math.abs(op), R = 38;               // clearance radius
+          if (d < R) push += -Math.sign(op || 1) * (R - d) * 1.6;
+        }
+        push = Math.max(-80, Math.min(80, push));
+        return { cx: mx + nx * push * 2, cy: my + ny * push * 2 }; // *2: control point overshoots the curve
+      }
+
       ctx.save();
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       for (const root of tree.roots) {
         const pd = desks.get(root.id);
         if (!pd || pd.homeX == null) continue;
@@ -272,15 +295,16 @@
           const sd = desks.get(sub.id);
           if (!sd || sd.homeX == null) continue;
           const x1 = pd.homeX, y1 = pd.homeY, x2 = sd.homeX, y2 = sd.homeY;
+          const c = detour(x1, y1, x2, y2, root.id, sub.id);
           // soft walkway carpet
           ctx.strokeStyle = 'rgba(150,150,165,0.10)';
-          ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.setLineDash([]);
-          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          ctx.lineWidth = 12; ctx.setLineDash([]);
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(c.cx, c.cy, x2, y2); ctx.stroke();
           // animated dashed centre line, tinted by the sub's state, flowing parent→child
           ctx.globalAlpha = 0.5;
           ctx.strokeStyle = STATE_COLORS[sub.state] || '#8891a0';
           ctx.lineWidth = 1.5; ctx.setLineDash([4, 5]); ctx.lineDashOffset = -(frameN * 0.5) % 9;
-          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(c.cx, c.cy, x2, y2); ctx.stroke();
           ctx.globalAlpha = 1; ctx.setLineDash([]);
         }
       }
