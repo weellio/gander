@@ -11,6 +11,7 @@
   import HistoryPanel from './lib/HistoryPanel.svelte';
   import HealthPanel from './lib/HealthPanel.svelte';
   import TranscriptPanel from './lib/TranscriptPanel.svelte';
+  import HelpPanel from './lib/HelpPanel.svelte';
   import Hierarchy from './lib/Hierarchy.svelte';
   import ThemeMenu from './lib/ThemeMenu.svelte';
   import Office from './lib/Office.svelte';
@@ -233,6 +234,7 @@
       </div>
 
       <ThemeMenu />
+      <HelpPanel />
     </div>
   </header>
 
