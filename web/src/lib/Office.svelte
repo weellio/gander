@@ -336,8 +336,10 @@
           const parent = desks.get(d.parentDeskId);
           if (parent) {
             if (!d.walk && ACTIVE.has(agent.state) && t > d.nextWalkAt && t > walkStagger) {
-              // start a trip to the parent's desk
-              d.walk = { start: t, dur: 2.4, px: parent.x, py: parent.y };
+              // start a trip to the parent's desk, following the same curved walkway
+              const px = parent.x, py = parent.y - 24;
+              const c = detour(d.x, d.y, px, py, agent.id, d.parentDeskId);
+              d.walk = { start: t, dur: 2.4, hx: d.x, hy: d.y, px, py, cx: c.cx, cy: c.cy };
               walkStagger = t + 0.8; // stagger global starts
               d.nextWalkAt = t + 6 + d.seed * 8; // cooldown
             }
@@ -345,22 +347,17 @@
               const w = d.walk;
               const p = (t - w.start) / w.dur; // 0..1 over whole trip
               // home -> parent (0..0.4), pause (0.4..0.6), parent -> home (0.6..1)
-              const hx = d.x, hy = d.y; // current resting (eased home)
               if (p >= 1) {
                 d.walk = null;
               } else if (p < 0.4) {
-                const k = p / 0.4;
-                drawX = lerp(hx, w.px, easeIO(k));
-                drawY = lerp(hy, w.py - 24, easeIO(k));
-                walking = true;
+                const q = qbez(easeIO(p / 0.4), w.hx, w.hy, w.cx, w.cy, w.px, w.py);
+                drawX = q.x; drawY = q.y; walking = true;
               } else if (p < 0.6) {
-                drawX = w.px; drawY = w.py - 24;
+                drawX = w.px; drawY = w.py;
                 bubble = true;
               } else {
-                const k = (p - 0.6) / 0.4;
-                drawX = lerp(w.px, hx, easeIO(k));
-                drawY = lerp(w.py - 24, hy, easeIO(k));
-                walking = true;
+                const q = qbez(1 - easeIO((p - 0.6) / 0.4), w.hx, w.hy, w.cx, w.cy, w.px, w.py);
+                drawX = q.x; drawY = q.y; walking = true;
               }
             }
           }
@@ -397,6 +394,11 @@
   }
 
   function easeIO(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+  // Point on a quadratic bezier at p∈[0,1].
+  function qbez(p, x0, y0, cx, cy, x1, y1) {
+    const u = 1 - p;
+    return { x: u * u * x0 + 2 * u * p * cx + p * p * x1, y: u * u * y0 + 2 * u * p * cy + p * p * y1 };
+  }
 
   onMount(() => {
     resize();
