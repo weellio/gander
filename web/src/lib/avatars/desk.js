@@ -60,27 +60,48 @@ function drawDesk(ctx, accent, isError) {
 // ── the person, seen from above ──────────────────────────────────────────────
 // dy shifts the whole figure vertically (idle leans back = sits lower in frame).
 function drawBody(ctx, shirt, dy) {
-  const neckY = 30 + dy;
-  // Shoulders: a rounded trapezoid-ish blob below the head.
+  const sy = 32 + dy;            // shoulder line (sits just behind the head)
+  // Short neck (skin) between head and collar.
+  ctx.fillStyle = SKIN;
+  rr(ctx, CX - 3.5, sy - 4, 7, 10, 3); ctx.fill();
+  // Shoulders: tapered "deltoid" shape — broad at the shoulder line, narrowing
+  // toward the desk (front). Reads as a person in a shirt, not a round pill.
   ctx.fillStyle = shirt;
-  rr(ctx, CX - 26, neckY + 6, 52, 30, 14); ctx.fill();
-  // Subtle shoulder highlight (light comes from the screen, "above" the head).
+  ctx.beginPath();
+  ctx.moveTo(CX - 25, sy + 16);                                  // outer left shoulder
+  ctx.quadraticCurveTo(CX - 27, sy + 3, CX - 13, sy + 1);        // round up to collar
+  ctx.lineTo(CX + 13, sy + 1);                                   // collar line
+  ctx.quadraticCurveTo(CX + 27, sy + 3, CX + 25, sy + 16);       // round down to right shoulder
+  ctx.lineTo(CX + 17, sy + 30);                                  // taper in toward the front
+  ctx.quadraticCurveTo(CX, sy + 33, CX - 17, sy + 30);
+  ctx.closePath(); ctx.fill();
+  // Collar V (darker shade) opening toward the desk.
+  ctx.fillStyle = shade(shirt, -0.28);
+  ctx.beginPath();
+  ctx.moveTo(CX - 8, sy + 2); ctx.lineTo(CX, sy + 12); ctx.lineTo(CX + 8, sy + 2);
+  ctx.lineTo(CX + 5, sy); ctx.lineTo(CX, sy + 8); ctx.lineTo(CX - 5, sy);
+  ctx.closePath(); ctx.fill();
+  // Subtle highlight along the shoulder line.
   ctx.fillStyle = rgba('#FFFFFF', 0.08);
-  rr(ctx, CX - 24, neckY + 6, 48, 8, 7); ctx.fill();
+  rr(ctx, CX - 19, sy + 2, 38, 4, 3); ctx.fill();
 }
 
 function drawHead(ctx, hair, turn, dy) {
   // turn (in px) nudges the head left/right for reading/searching glances.
   const hx = CX + turn, hy = 22 + dy;
-  // Hair = the dominant top-down shape (an oval); a small skin "forehead" peeks
-  // at the front edge so the head reads as a head from above.
+  // Head: an egg-shaped oval (taller front-to-back than wide) so it doesn't read
+  // as a round blob. Hair is the dominant shape with a swept part.
   ctx.fillStyle = hair;
-  ctx.beginPath(); ctx.ellipse(hx, hy, 13, 12, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = shade(hair, 0.15);
-  ctx.beginPath(); ctx.ellipse(hx, hy - 2, 11, 8, 0, 0, Math.PI * 2); ctx.fill();
-  // Forehead sliver toward the laptop (front of the figure).
+  ctx.beginPath(); ctx.ellipse(hx, hy, 10, 12.5, 0, 0, Math.PI * 2); ctx.fill();
+  // Swept hair sheen, offset to one side.
+  ctx.fillStyle = shade(hair, 0.18);
+  ctx.beginPath(); ctx.ellipse(hx - 2.4, hy - 1.5, 6, 9, -0.22, 0, Math.PI * 2); ctx.fill();
+  // Darker part line.
+  ctx.strokeStyle = shade(hair, -0.22); ctx.lineWidth = 1; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(hx + 1.5, hy - 9.5); ctx.quadraticCurveTo(hx + 4, hy - 1, hx + 2, hy + 6); ctx.stroke();
+  // Face/forehead sliver toward the front (laptop).
   ctx.fillStyle = SKIN;
-  ctx.beginPath(); ctx.ellipse(hx, hy + 8, 7, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(hx, hy + 9, 5.5, 4.5, 0, 0, Math.PI * 2); ctx.fill();
 }
 
 // One arm reaching from a shoulder to a target point (top-down "tube").
