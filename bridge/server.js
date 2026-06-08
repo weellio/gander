@@ -118,9 +118,13 @@ function takeCommand(sessionId, predicate) {
 const CFG_FILE = path.join(__dirname, 'aoc-config.json');
 let cfg = {};
 try { cfg = JSON.parse(fs.readFileSync(CFG_FILE, 'utf8')); } catch (_) {}
-const TG_TOKEN = process.env.AOC_TG_TOKEN || cfg.telegramToken || '';
-const TG_CHAT = process.env.AOC_TG_CHAT || cfg.telegramChatId || '';
-const DASH_URL = process.env.AOC_DASH_URL || cfg.dashboardUrl || `http://localhost:${argPort}/`;
+// Live-updatable Telegram config (settable from the dashboard via /api/telegram-config).
+const tg = {
+  token: process.env.AOC_TG_TOKEN || cfg.telegramToken || '',
+  chat: process.env.AOC_TG_CHAT || cfg.telegramChatId || '',
+  dash: process.env.AOC_DASH_URL || cfg.dashboardUrl || `http://localhost:${argPort}/`,
+};
+function saveConfig() { try { fs.writeFileSync(CFG_FILE, JSON.stringify(cfg, null, 2)); } catch (_) {} }
 const LICENSE_KEY = process.env.AOC_LICENSE || cfg.license || '';
 let licenseState = { licensed: true, mode: 'pending' };
 const alertedAt = new Map();        // sessionId -> ts (throttle)
@@ -130,10 +134,10 @@ let lastActiveSession = null;
 const awaitTimers = new Map();       // rootKey -> delayed-nudge timeout (Telegram after 30s unanswered)
 
 function sendTelegram(text, cb) {
-  if (!TG_TOKEN || !TG_CHAT) return;
-  const payload = JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: 'HTML', disable_web_page_preview: true });
+  if (!tg.token || !tg.chat) { if (cb) cb(null); return; }
+  const payload = JSON.stringify({ chat_id: tg.chat, text, parse_mode: 'HTML', disable_web_page_preview: true });
   const req = https.request({
-    host: 'api.telegram.org', path: `/bot${TG_TOKEN}/sendMessage`, method: 'POST',
+    host: 'api.telegram.org', path: `/bot${tg.token}/sendMessage`, method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }, timeout: 4000,
   }, (res) => {
     let b = ''; res.on('data', (d) => (b += d));
@@ -153,7 +157,7 @@ function maybeAlert(root) {
   const proj = root.project || 'a session';
   console.log(`[alert] ${proj} awaiting input`);
   sendTelegram(
-    `🔔 <b>Hivemind</b>\n<b>${proj}</b> needs your input.\nReply to this message to answer, or open: ${DASH_URL}`,
+    `🔔 <b>Hivemind</b>\n<b>${proj}</b> needs your input.\nReply to this message to answer, or open: ${tg.dash}`,
     (mid) => { if (mid) alertMsgMap.set(mid, sid); }
   );
 }
@@ -167,7 +171,7 @@ function sessionByProject(name) {
 // Needs a bot WITHOUT a webhook (getUpdates 409s otherwise) — set telegramReplyToken
 // in aoc-config.json to a dedicated bot if your main bot has a webhook.
 function handleTgMessage(m) {
-  if (!m || !m.text || String(m.chat.id) !== String(TG_CHAT)) return;
+  if (!m || !m.text || String(m.chat.id) !== String(tg.chat)) return;
   const text = m.text.trim();
   let sessionId = null;
   const replyId = m.reply_to_message && m.reply_to_message.message_id;
@@ -183,11 +187,13 @@ function handleTgMessage(m) {
   sendTelegram(`→ ${type === 'stop' ? 'STOP' : 'message'} queued for <b>${root ? root.project : sessionId}</b>`);
 }
 
+let tgPollStarted = false;
 function startTelegramPolling() {
-  if (!TG_TOKEN || !TG_CHAT) return;
-  const token = cfg.telegramReplyToken || TG_TOKEN;
+  if (!tg.token || !tg.chat || tgPollStarted) return;
+  tgPollStarted = true;
   let offset = 0, warned = false;
   const poll = () => {
+    const token = cfg.telegramReplyToken || tg.token;
     const req = https.request(
       { host: 'api.telegram.org', path: `/bot${token}/getUpdates?timeout=30&offset=${offset}`, method: 'GET', timeout: 40000 },
       (res) => {
@@ -686,6 +692,25 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { bridge, ...health.report() });
   }
 
+  if (url === '/api/telegram-config' && req.method === 'GET') {
+    return sendJson(res, 200, { configured: !!(tg.token && tg.chat), hasToken: !!tg.token, chatId: tg.chat, dashboardUrl: tg.dash });
+  }
+
+  if (url === '/api/telegram-config' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    if (body.token !== undefined) { cfg.telegramToken = String(body.token).trim(); tg.token = cfg.telegramToken; }
+    if (body.chatId !== undefined) { cfg.telegramChatId = String(body.chatId).trim(); tg.chat = cfg.telegramChatId; }
+    if (body.dashboardUrl !== undefined) { cfg.dashboardUrl = String(body.dashboardUrl).trim(); tg.dash = cfg.dashboardUrl || tg.dash; }
+    saveConfig();
+    startTelegramPolling();
+    if (body.test && tg.token && tg.chat) {
+      return sendTelegram('✅ Hivemind: Telegram is connected.', (mid) =>
+        sendJson(res, 200, { ok: true, configured: true, test: mid ? 'sent' : 'failed (check token/chat id)' }));
+    }
+    return sendJson(res, 200, { ok: true, configured: !!(tg.token && tg.chat) });
+  }
+
   if (url === '/api/github' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
@@ -703,7 +728,9 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/config' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
-    const r = configmgr.del(body.cwd, body.action === 'delHook' ? 'hook' : 'mcp', body.name);
+    let r;
+    if (body.action === 'addMcp') r = configmgr.addMcp(body.cwd, body.server || body);
+    else r = configmgr.del(body.cwd, body.action === 'delHook' ? 'hook' : 'mcp', body.name);
     return sendJson(res, r.error ? 400 : 200, r);
   }
 

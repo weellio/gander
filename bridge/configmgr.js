@@ -131,4 +131,28 @@ function del(dir, kind, name) {
   return { error: 'kind must be hook or mcp' };
 }
 
-module.exports = { read, del };
+// ── addMcp ───────────────────────────────────────────────────────────────────
+// Add (or overwrite) an MCP server entry in <dir>/.mcp.json.
+//   server: { name, command, args?, env? }   args is a space-separated string or array.
+function addMcp(dir, server) {
+  const name = (server && server.name || '').trim();
+  const nameErr = validateName(name);
+  if (nameErr) return { error: nameErr };
+  const command = (server && server.command || '').trim();
+  if (!command) return { error: 'command required' };
+  try {
+    const mcpPath = path.join(dir, '.mcp.json');
+    let obj = {};
+    const raw = safeRead(mcpPath);
+    if (raw) { try { obj = JSON.parse(raw); } catch (_) { obj = {}; } }
+    obj.mcpServers = obj.mcpServers || {};
+    const entry = { command };
+    if (server.args) entry.args = Array.isArray(server.args) ? server.args : String(server.args).split(/\s+/).filter(Boolean);
+    if (server.env && typeof server.env === 'object') entry.env = server.env;
+    obj.mcpServers[name] = entry;
+    fs.writeFileSync(mcpPath, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+    return { ok: true };
+  } catch (e) { return { error: e.message }; }
+}
+
+module.exports = { read, del, addMcp };
