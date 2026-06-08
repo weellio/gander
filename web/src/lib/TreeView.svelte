@@ -117,10 +117,66 @@
       drafts = { ...drafts, [id]: '' };
     } catch (_) {}
   }
+
+  // ── zoom / pan ──
+  let viewport = $state(null);
+  let zoom = $state(1);
+  let panX = $state(0);
+  let panY = $state(0);
+  let dragging = $state(false);
+  let drag = null;
+  let fitted = false;
+  const clamp = (lo, hi, v) => Math.max(lo, Math.min(hi, v));
+
+  function doFit() {
+    if (!viewport) return;
+    const vw = viewport.clientWidth, vh = viewport.clientHeight;
+    const tw = model.width, th = model.height;
+    if (!tw || !th || !vw || !vh) return;
+    zoom = clamp(0.15, 1.5, Math.min(vw / tw, vh / th) * 0.95);
+    panX = Math.max(0, (vw - tw * zoom) / 2);
+    panY = 14;
+  }
+  function zoomAt(cx, cy, nz) {
+    nz = clamp(0.15, 2.5, nz);
+    const wx = (cx - panX) / zoom, wy = (cy - panY) / zoom;
+    panX = cx - wx * nz; panY = cy - wy * nz; zoom = nz;
+  }
+  function zoomBy(f) { if (viewport) zoomAt(viewport.clientWidth / 2, viewport.clientHeight / 2, zoom * f); }
+  function onWheel(e) {
+    e.preventDefault();
+    const r = viewport.getBoundingClientRect();
+    zoomAt(e.clientX - r.left, e.clientY - r.top, zoom * (e.deltaY < 0 ? 1.12 : 0.89));
+  }
+  function onPointerDown(e) {
+    if (e.target.closest && e.target.closest('.node')) return; // don't pan when using a card
+    dragging = true;
+    drag = { x: e.clientX, y: e.clientY, px: panX, py: panY };
+    viewport.setPointerCapture?.(e.pointerId);
+  }
+  function onPointerMove(e) {
+    if (!dragging || !drag) return;
+    panX = drag.px + (e.clientX - drag.x);
+    panY = drag.py + (e.clientY - drag.y);
+  }
+  function onPointerUp() { dragging = false; drag = null; }
+
+  // Auto-fit once the viewport + model are ready.
+  $effect(() => {
+    if (!fitted && viewport && model.width > 0) { fitted = true; doFit(); }
+  });
 </script>
 
-<div class="tree-scroll">
-  <div class="canvas" style="width:{model.width}px; height:{model.height}px;">
+<div class="tree-scroll" class:dragging bind:this={viewport}
+     onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onpointerleave={onPointerUp}
+     onwheel={onWheel}>
+  <div class="zoom">
+    <button onclick={() => zoomBy(0.83)} title="Zoom out">−</button>
+    <span>{Math.round(zoom * 100)}%</span>
+    <button onclick={() => zoomBy(1.2)} title="Zoom in">+</button>
+    <button class="fit" onclick={doFit} title="Fit to screen">Fit</button>
+  </div>
+  <div class="canvas" style="width:{model.width}px; height:{model.height}px; transform: translate({panX}px, {panY}px) scale({zoom});">
     <svg class="links" width={model.width} height={model.height} viewBox="0 0 {model.width} {model.height}" aria-hidden="true">
       {#each model.links as l, i (i)}
         <path class="elbow" d={elbow(l)} style="--lc:{l.color}" />
@@ -155,13 +211,27 @@
 
 <style>
   .tree-scroll {
-    width: 100%; height: 100%; min-height: 360px;
-    overflow: auto; display: flex; justify-content: center;
+    position: relative; width: 100%; height: 100%; min-height: 360px;
+    overflow: hidden; cursor: grab; touch-action: none;
     background: var(--color-background-primary);
     border: 0.5px solid var(--color-border-tertiary);
     border-radius: var(--border-radius-lg);
   }
-  .canvas { position: relative; flex: 0 0 auto; margin: 0 auto; }
+  .tree-scroll.dragging { cursor: grabbing; user-select: none; }
+  .canvas { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+
+  .zoom {
+    position: absolute; top: 8px; right: 8px; z-index: 5; display: flex; align-items: center; gap: 4px;
+    background: var(--color-background-secondary); border: 0.5px solid var(--color-border-secondary);
+    border-radius: var(--border-radius-md); padding: 3px 5px;
+  }
+  .zoom button {
+    width: 22px; height: 22px; font-size: 13px; line-height: 1; cursor: pointer;
+    border: 0.5px solid var(--color-border-secondary); border-radius: 5px;
+    background: var(--color-background-primary); color: var(--color-text-primary);
+  }
+  .zoom button.fit { width: auto; padding: 0 8px; font-size: 11px; }
+  .zoom span { font-size: 11px; color: var(--color-text-secondary); min-width: 36px; text-align: center; }
 
   .links { position: absolute; inset: 0; pointer-events: none; z-index: 0; overflow: visible; }
   .elbow { fill: none; stroke: var(--lc, var(--color-border-secondary)); stroke-width: 1.5; opacity: 0.75; }
