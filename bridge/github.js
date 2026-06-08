@@ -57,7 +57,7 @@ function runGh(args, cwd) {
  */
 async function info(dir) {
   const raw = await runGh(
-    ['repo', 'view', '--json', 'nameWithOwner,url,defaultBranchRef,visibility'],
+    ['repo', 'view', '--json', 'nameWithOwner,url,defaultBranchRef,visibility,stargazerCount,forkCount,watchers'],
     dir
   );
   if (raw.error) return raw;
@@ -66,6 +66,9 @@ async function info(dir) {
     url:           raw.url || '',
     defaultBranch: (raw.defaultBranchRef && raw.defaultBranchRef.name) || 'main',
     visibility:    raw.visibility || '',
+    stars:         raw.stargazerCount || 0,
+    forks:         raw.forkCount || 0,
+    watchers:      (raw.watchers && raw.watchers.totalCount) || 0,
   };
 }
 

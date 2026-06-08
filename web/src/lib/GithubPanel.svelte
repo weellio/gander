@@ -126,6 +126,7 @@
           </button>
           <span class="badge vis">{repoInfo.visibility.toLowerCase()}</span>
           <span class="branch mono">⎇ {repoInfo.defaultBranch}</span>
+          <span class="vanity" title="{repoInfo.stars} stars · {repoInfo.forks} forks · {repoInfo.watchers} watchers">★ {repoInfo.stars} · ⑂ {repoInfo.forks}</span>
         </div>
 
         <!-- Open PRs -->
@@ -219,6 +220,7 @@
   }
   .repo-name:hover { opacity: 0.8; }
   .branch { font-size: 10px; color: var(--color-text-tertiary); margin-left: auto; }
+  .vanity { font-size: 10px; color: var(--color-text-secondary); font-family: var(--font-mono); white-space: nowrap; }
   .mono { font-family: var(--font-mono); }
   .badge {
     font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 99px;
