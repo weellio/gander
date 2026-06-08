@@ -202,6 +202,22 @@
     ctx.fillText(lbl, x, y + 30 * scale);
   }
 
+  // Water cooler (top-down) — a break destination for idle agents.
+  function drawCooler(ctx, x, y, t) {
+    ctx.fillStyle = 'rgba(120,130,145,0.9)';
+    ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill();           // base
+    ctx.fillStyle = 'rgba(56,189,248,0.9)';
+    ctx.beginPath(); ctx.arc(x, y, 7.5, 0, Math.PI * 2); ctx.fill();          // water bottle
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath(); ctx.arc(x - 2.2, y - 2.2, 2.6, 0, Math.PI * 2); ctx.fill(); // highlight
+    const b = Math.floor(t / 18) % 3;                                          // rising bubbles
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    for (let i = 0; i <= b; i++) { ctx.beginPath(); ctx.arc(x + 9, y - 7 - i * 4, 1.4, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = 'rgba(130,130,140,0.85)';
+    ctx.font = '8px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('water', x, y + 22);
+  }
+
   function drawBubble(ctx, x, y, scale) {
     ctx.save();
     ctx.translate(x + 16 * scale, y - 18 * scale);
@@ -258,6 +274,7 @@
       const list = agents || [];
       const tree = buildTree(list);
       layout(tree, W, H);
+      const cooler = { x: 42, y: H - 44 }; // break destination (bottom-left)
 
       // prune desks for agents that vanished
       const live = new Set(list.map((a) => a.id));
@@ -310,6 +327,8 @@
       }
       ctx.restore();
 
+      drawCooler(ctx, cooler.x, cooler.y, frameN);
+
       // draw root desks first (under), then subs
       const drawList = [];
       for (const root of tree.roots) {
@@ -330,36 +349,40 @@
         const color = STATE_COLORS[agent.state] || '#6B7280';
         const scale = isRoot ? 1.25 : 0.85;
 
-        // walking decision for active sub-agents
+        // Trips: active sub-agents walk to their parent to check in; idle/done
+        // agents occasionally wander to the water cooler for a break. Both follow
+        // the curved walkways (around other desks).
         let drawX = d.x, drawY = d.y, walking = false, bubble = false;
-        if (!isRoot && d.parentDeskId) {
-          const parent = desks.get(d.parentDeskId);
-          if (parent) {
-            if (!d.walk && ACTIVE.has(agent.state) && t > d.nextWalkAt && t > walkStagger) {
-              // start a trip to the parent's desk, following the same curved walkway
-              const px = parent.x, py = parent.y - 24;
-              const c = detour(d.x, d.y, px, py, agent.id, d.parentDeskId);
-              d.walk = { start: t, dur: 2.4, hx: d.x, hy: d.y, px, py, cx: c.cx, cy: c.cy };
-              walkStagger = t + 0.8; // stagger global starts
-              d.nextWalkAt = t + 6 + d.seed * 8; // cooldown
-            }
-            if (d.walk) {
-              const w = d.walk;
-              const p = (t - w.start) / w.dur; // 0..1 over whole trip
-              // home -> parent (0..0.4), pause (0.4..0.6), parent -> home (0.6..1)
-              if (p >= 1) {
-                d.walk = null;
-              } else if (p < 0.4) {
-                const q = qbez(easeIO(p / 0.4), w.hx, w.hy, w.cx, w.cy, w.px, w.py);
-                drawX = q.x; drawY = q.y; walking = true;
-              } else if (p < 0.6) {
-                drawX = w.px; drawY = w.py;
-                bubble = true;
-              } else {
-                const q = qbez(1 - easeIO((p - 0.6) / 0.4), w.hx, w.hy, w.cx, w.cy, w.px, w.py);
-                drawX = q.x; drawY = q.y; walking = true;
-              }
-            }
+        if (!d.walk && t > walkStagger) {
+          let tx = null, ty = null, kind = null;
+          if ((agent.state === 'idle' || agent.state === 'done') && t > (d.nextBreakAt || 0)) {
+            tx = cooler.x; ty = cooler.y - 14; kind = 'break';
+            d.nextBreakAt = t + 16 + d.seed * 22; // occasional, staggered per agent
+          } else if (!isRoot && d.parentDeskId && ACTIVE.has(agent.state) && t > d.nextWalkAt) {
+            const parent = desks.get(d.parentDeskId);
+            if (parent) { tx = parent.x; ty = parent.y - 24; kind = 'report'; d.nextWalkAt = t + 6 + d.seed * 8; }
+          }
+          if (kind) {
+            const c = detour(d.x, d.y, tx, ty, agent.id, d.parentDeskId);
+            d.walk = { start: t, dur: kind === 'break' ? 3.4 : 2.4, hx: d.x, hy: d.y, px: tx, py: ty, cx: c.cx, cy: c.cy, kind };
+            walkStagger = t + 0.7; // stagger global starts
+          }
+        }
+        if (d.walk) {
+          const w = d.walk;
+          const p = (t - w.start) / w.dur; // 0..1 over whole trip
+          // home -> target (0..0.4), pause (0.4..0.6), target -> home (0.6..1)
+          if (p >= 1) {
+            d.walk = null;
+          } else if (p < 0.4) {
+            const q = qbez(easeIO(p / 0.4), w.hx, w.hy, w.cx, w.cy, w.px, w.py);
+            drawX = q.x; drawY = q.y; walking = true;
+          } else if (p < 0.6) {
+            drawX = w.px; drawY = w.py;
+            bubble = w.kind === 'report'; // chat bubble only when reporting in
+          } else {
+            const q = qbez(1 - easeIO((p - 0.6) / 0.4), w.hx, w.hy, w.cx, w.cy, w.px, w.py);
+            drawX = q.x; drawY = q.y; walking = true;
           }
         }
 
