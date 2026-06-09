@@ -13,9 +13,9 @@
 
   Params: -Port 3131  -Text 'check running jobs'  -OnlyPending  -Match '<title>'  -DryRun
 
-  Schedule every 10 min (current user, no admin):
-    $ps = 'powershell -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File "' + $PWD + '\scripts\nudge-idle.ps1" -OnlyPending'
-    schtasks /Create /TN "Hivemind Nudge" /TR $ps /SC MINUTE /MO 10 /F
+  Schedule every 10 min with NO window flash — run it through the hidden VBS launcher
+  (powershell -WindowStyle Hidden still flashes a console; wscript.exe does not):
+    schtasks /Create /TN "Hivemind Nudge" /TR "wscript.exe \"%CD%\scripts\nudge-idle-hidden.vbs\" -OnlyPending" /SC MINUTE /MO 10 /F
     schtasks /Delete /TN "Hivemind Nudge" /F      # remove
 #>
 param(
