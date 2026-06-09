@@ -278,7 +278,7 @@
   <SettingsPanel bind:open={panels.config} />
   <HistoryPanel bind:open={panels.history} onView={(sid) => (transcriptId = sid)} />
   <HealthPanel bind:open={panels.health} />
-  <FeedPanel bind:open={panels.feed} />
+  <FeedPanel bind:open={panels.feed} onView={(sid) => (transcriptId = sid)} />
   <SearchPanel bind:open={panels.search} onView={(sid) => (transcriptId = sid)} />
   <TranscriptPanel bind:sessionId={transcriptId} />
 

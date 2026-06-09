@@ -348,7 +348,7 @@ function upsert(ev) {
   existing.updatedAt = Date.now();
   agents.set(id, existing);
   if (ev.state !== undefined || ev.log) {
-    pushFeed({ ts: Date.now(), agentId: id, agent: existing.name || id, project: existing.project || '', state: existing.state, log: ev.log ? String(ev.log) : '', error: existing.state === 'error' });
+    pushFeed({ ts: Date.now(), agentId: id, agent: existing.name || id, project: existing.project || '', sessionId: existing.sessionId || '', state: existing.state, log: ev.log ? String(ev.log) : '', error: existing.state === 'error' });
   }
   saveRegistry();
   return { ok: true, agent: existing };

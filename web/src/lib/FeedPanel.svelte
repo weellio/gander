@@ -1,7 +1,7 @@
 <script>
   import { STATE_COLORS, STATE_LABEL } from './states.js';
 
-  let { open = $bindable(false) } = $props();
+  let { open = $bindable(false), onView } = $props();
 
   let events = $state([]);
   let errorsOnly = $state(false);
@@ -90,7 +90,10 @@
         </div>
       {:else}
         {#each filtered as ev (ev.ts + ev.agentId + ev.log)}
-          <div class="row" class:is-error={ev.error || ev.state === 'error'}>
+          <div class="row" class:is-error={ev.error || ev.state === 'error'} class:clickable={ev.sessionId && onView}
+            role={ev.sessionId && onView ? 'button' : undefined}
+            title={ev.sessionId && onView ? 'Open transcript' : undefined}
+            onclick={() => ev.sessionId && onView && onView(ev.sessionId)}>
             <span class="dot" style="background:{dotColor(ev)}" title={STATE_LABEL[ev.state] ?? ev.state}></span>
             <span class="agent">{ev.agent ?? ev.agentId}</span>
             {#if ev.project}
@@ -173,6 +176,7 @@
     transition: background 0.1s;
   }
   .row:hover { background: var(--color-background-secondary); }
+  .row.clickable { cursor: pointer; }
   .row.is-error { background: rgba(239, 68, 68, 0.06); }
   .row.is-error:hover { background: rgba(239, 68, 68, 0.1); }
   .dot {
