@@ -401,16 +401,33 @@ function findVSCode() {
   return null;
 }
 
+// The `code` CLI (not Code.exe) reliably opens a single FILE in the running instance.
+function findVSCodeCli() {
+  const env = process.env;
+  const cands = process.platform === 'win32' ? [
+    path.join(env.LOCALAPPDATA || '', 'Programs', 'Microsoft VS Code', 'bin', 'code.cmd'),
+    'C:\\Program Files\\Microsoft VS Code\\bin\\code.cmd',
+    path.join(env.ProgramFiles || '', 'Microsoft VS Code', 'bin', 'code.cmd'),
+  ] : [];
+  for (const c of cands) { try { if (c && fs.existsSync(c)) return c; } catch (_) {} }
+  return null;
+}
+
 function openPath(p, target) {
   try {
     const win = process.platform === 'win32';
     const norm = win ? path.normalize(p) : p;
     if (target === 'editor') {
-      const exe = findVSCode();
-      if (exe) { spawnSafe(exe, [norm]); return; }
+      if (win) {
+        const cli = findVSCodeCli();
+        if (cli) { spawnSafe(`"${cli}" "${norm}"`, [], { shell: true, windowsHide: true }); return; }  // opens files + folders in the running instance
+        const exe = findVSCode();
+        if (exe) { spawnSafe(exe, [norm]); return; }
+        spawnSafe('code.cmd', [norm], { shell: true }, () => spawnSafe('explorer.exe', [norm]));
+        return;
+      }
       if (process.platform === 'darwin') { spawnSafe('open', ['-a', 'Visual Studio Code', norm], {}, () => spawnSafe('code', [norm], { shell: true })); return; }
-      // Windows/Linux: `code` on PATH (via shell), falling back to the folder on Windows
-      spawnSafe(win ? 'code.cmd' : 'code', [norm], { shell: true }, () => { if (win) spawnSafe('explorer.exe', [norm]); });
+      spawnSafe('code', [norm], { shell: true });
       return;
     }
     if (win) spawnSafe('explorer.exe', [norm]);
