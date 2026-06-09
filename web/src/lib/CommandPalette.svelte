@@ -38,7 +38,7 @@
       {/each}
       {#if filtered.length === 0}<div class="none">No matches</div>{/if}
     </div>
-    <div class="foot"><kbd>↑↓</kbd> navigate · <kbd>↵</kbd> select · <kbd>esc</kbd> close</div>
+    <div class="foot"><kbd>/</kbd> opens this · <kbd>↑↓</kbd> navigate · <kbd>↵</kbd> select · <kbd>esc</kbd> close</div>
   </div>
 {/if}
 

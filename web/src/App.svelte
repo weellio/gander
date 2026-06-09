@@ -122,7 +122,10 @@
   let paletteOpen = $state(false);
   let focusReq = $state(null);
   function onGlobalKey(e) {
-    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); paletteOpen = true; }
+    const tag = (e.target && e.target.tagName) || '';
+    const inField = /^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (e.target && e.target.isContentEditable);
+    if (e.metaKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); paletteOpen = true; return; } // ⌘K (Mac)
+    if (e.key === '/' && !inField && !paletteOpen) { e.preventDefault(); paletteOpen = true; }              // "/" (avoids Ctrl-K → browser)
   }
   let paletteItems = $derived.by(() => {
     const cmds = [
@@ -256,6 +259,8 @@
         <ActionImages />
       {/if}
       <input bind:this={fileInput} type="file" accept="image/*" multiple style="display:none" onchange={onFiles} />
+
+      <button class="select" onclick={() => (paletteOpen = true)} title="Command palette — jump to a panel or agent (press /)">🔍 Jump</button>
 
       <div class="menu-wrap">
         <button class="select" onclick={() => { menuOpen = !menuOpen; optsOpen = false; }} title="Manage your Claude Code projects & sessions">⚙ Manage ▾</button>
