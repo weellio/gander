@@ -8,7 +8,9 @@ A live, animated dashboard of your **Claude Code agents and sub-agents** — a H
 
 It attaches to any project automatically via Claude Code **hooks** — no manual wiring once installed.
 
-![states: idle · thinking · coding · spawning · reading · testing · error · done](dashboard/index.html)
+<!-- Demo: record per docs/DEMO.md, save as docs/demo.gif, then uncomment the next line -->
+<!-- ![Hivemind in action](docs/demo.gif) -->
+<p align="center"><em>idle · thinking · coding · spawning · reading · testing · error · done — every agent, live.</em></p>
 
 ## What you get
 
