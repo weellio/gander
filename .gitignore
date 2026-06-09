@@ -17,3 +17,6 @@ Thumbs.db
 
 # Local Claude settings
 .claude/settings.local.json
+
+# Raw demo recordings (ship the optimized .webp instead)
+docs/*.gif
