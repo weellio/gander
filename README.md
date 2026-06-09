@@ -1,3 +1,5 @@
+<p align="center"><img src="web/public/logo.png" width="120" alt="Hivemind" /></p>
+
 # Hivemind
 
 > *Agent Ops Center* — a NOC for everything your Claude Code agents are doing.
