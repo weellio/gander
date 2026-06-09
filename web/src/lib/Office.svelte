@@ -83,6 +83,7 @@
   }
 
   const ACTIVE = new Set(['spawning', 'coding', 'reading', 'thinking', 'testing']);
+  const CELEB = ['#10B981', '#6366F1', '#F59E0B', '#EC4899', '#06B6D4', '#A855F7'];
   // hex (#rrggbb / #rgb) -> rgba string with alpha, for activity glows
   function hexA(hex, a) {
     const h = (hex || '#888888').replace('#', '');
@@ -616,6 +617,12 @@
           d.walk = null;
         }
 
+        // celebrate the moment an agent finishes (transition into 'done')
+        if (agent.state === 'done' && d.prevState !== undefined && d.prevState !== 'done' && !d.celebrate && $animations) {
+          d.celebrate = { start: t, parts: Array.from({ length: 16 }, () => ({ a: Math.random() * Math.PI * 2, v: 28 + Math.random() * 66, c: CELEB[(Math.random() * CELEB.length) | 0], s: 1.6 + Math.random() * 2.2 })) };
+        }
+        d.prevState = agent.state;
+
         // Render with the shared top-down vector figure (+ its desk objects).
         const fs = isRoot ? 0.58 : 0.44; // figure scale on the floor
 
@@ -658,6 +665,21 @@
         ctx.imageSmoothingEnabled = true;
         paintFigure(ctx, agent, frameN, { desk: false, walking });
         ctx.restore();
+        if (d.celebrate) {
+          const cel = t - d.celebrate.start;
+          if (cel > 1.5) d.celebrate = null;
+          else {
+            ctx.save();
+            ctx.globalAlpha = 1 - cel / 1.5;
+            for (const p of d.celebrate.parts) {
+              ctx.fillStyle = p.c;
+              ctx.beginPath();
+              ctx.arc(drawX + Math.cos(p.a) * p.v * cel, drawY + Math.sin(p.a) * p.v * cel + 46 * cel * cel, p.s, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.restore();
+          }
+        }
         if (bubble) { if (chat) drawTextBubble(ctx, drawX, drawY, chat); else drawBubble(ctx, drawX, drawY, 1); }
         // name label below the figure
         ctx.fillStyle = 'rgba(130,130,140,0.95)';
