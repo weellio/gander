@@ -27,12 +27,18 @@
     loading = false;
   }
 
-  function openPanel() { open = true; cfg = null; cwd = ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); }
+  function openPanel() { open = true; cfg = null; cwd = ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); }
 
   // ── cost budget (global) ──
   let bud = $state(null); let budDaily = $state(''); let budSession = $state(''); let budStatus = $state(''); let budOpen = $state(false);
   async function loadBudget() { try { const r = await fetch('/api/budget'); bud = await r.json(); budDaily = bud.daily ? String(bud.daily) : ''; budSession = bud.session ? String(bud.session) : ''; } catch (_) {} }
   async function saveBudget() { budStatus = 'Saving…'; const r = await post('/api/budget', { daily: Number(budDaily) || 0, session: Number(budSession) || 0 }); if (r) { bud = r; budStatus = '✓ Saved'; } else budStatus = 'Error'; }
+
+  // ── editor command (for "Open in VS Code") ──
+  let edOpen = $state(false); let edCmd = $state(''); let edStatus = $state('');
+  async function loadEditor() { try { const r = await fetch('/api/editor'); const j = await r.json(); edCmd = (j && j.cmd) || ''; } catch (_) {} }
+  async function saveEditor() { edStatus = 'Saving…'; const r = await post('/api/editor', { cmd: edCmd }); edStatus = r && r.ok ? '✓ Saved' : 'Error'; }
+
   function closePanel() { open = false; }
 
   // ── Telegram (global bridge config) ──
@@ -145,6 +151,21 @@
           <div class="tg-btns"><button class="select" onclick={saveBudget}>Save</button></div>
           {#if budStatus}<div class="tg-status">{budStatus}</div>{/if}
           <div class="tg-hint">Alerts go to Telegram + a dashboard banner when crossed. Spend is estimated from transcripts.</div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="tg">
+      <button class="collapser" onclick={() => (edOpen = !edOpen)}>
+        <span class="caret">{edOpen ? '▾' : '▸'}</span> Open-in-editor command
+        {#if edCmd}<span class="tg-state">· custom</span>{/if}
+      </button>
+      {#if edOpen}
+        <div class="tg-form">
+          <input class="in" placeholder="blank = auto-detect VS Code" bind:value={edCmd} />
+          <div class="tg-btns"><button class="select" onclick={saveEditor}>Save</button></div>
+          {#if edStatus}<div class="tg-status">{edStatus}</div>{/if}
+          <div class="tg-hint">Set this only if “Open in VS Code” fails — a full path (e.g. C:\Users\you\AppData\Local\Programs\Microsoft VS Code\bin\code.cmd) or another editor command like codium / subl. Receives the file/folder as its argument.</div>
         </div>
       {/if}
     </div>

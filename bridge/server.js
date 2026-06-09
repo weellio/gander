@@ -418,6 +418,10 @@ function openPath(p, target) {
     const win = process.platform === 'win32';
     const norm = win ? path.normalize(p) : p;
     if (target === 'editor') {
+      // user override (aoc-config.json editorCmd or set from the Config panel) — e.g. a full
+      // path to Code.exe / code.cmd, or another editor command like "codium" / "subl".
+      const custom = cfg && cfg.editorCmd ? String(cfg.editorCmd).trim() : '';
+      if (custom) { spawnSafe(`"${custom}" "${norm}"`, [], { shell: true, windowsHide: true }); return; }
       if (win) {
         const cli = findVSCodeCli();
         if (cli) { spawnSafe(`"${cli}" "${norm}"`, [], { shell: true, windowsHide: true }); return; }  // opens files + folders in the running instance
@@ -855,6 +859,16 @@ const server = http.createServer(async (req, res) => {
       version,
     };
     return sendJson(res, 200, { bridge, ...health.report() });
+  }
+
+  if (url === '/api/editor' && req.method === 'GET') {
+    return sendJson(res, 200, { cmd: cfg.editorCmd || '' });
+  }
+  if (url === '/api/editor' && req.method === 'POST') {
+    const body = await readBody(req);
+    cfg.editorCmd = body && body.cmd ? String(body.cmd).trim() : '';
+    saveConfig();
+    return sendJson(res, 200, { ok: true, cmd: cfg.editorCmd });
   }
 
   if (url === '/api/telegram-config' && req.method === 'GET') {
