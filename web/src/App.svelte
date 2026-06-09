@@ -30,8 +30,10 @@
   let fileInput = $state();
   let license = $state({ licensed: true });
 
-  // chime when an agent newly needs input
+  // chime when an agent newly needs input / errors
   let prevAwaiting = new Set();
+  let prevErrors = new Set();
+  let healthInfo = $state(null);
   let firstPoll = true;
   let audioCtx = null;
   function playChime() {
@@ -83,6 +85,12 @@
         const fresh = agents.filter((a) => a.state === 'awaiting' && !prevAwaiting.has(a.id));
         if (fresh.length) { playChime(); if ($desktopNotify) fresh.forEach(notifyDesktop); }
       }
+      const nowErrors = new Set(agents.filter((a) => a.state === 'error').map((a) => a.id));
+      if (!firstPoll) {
+        const freshE = agents.filter((a) => a.state === 'error' && !prevErrors.has(a.id));
+        if (freshE.length) { playChime(); if ($desktopNotify) freshE.forEach((a) => notifyDesktop({ name: a.name, project: (a.project || '') + ' — error' })); }
+      }
+      prevErrors = nowErrors;
       budget = d.budget || null;
       if (!firstPoll && budget?.overDaily && !prevOverBudget) { playChime(); if ($desktopNotify) notifyDesktop({ name: 'Cost budget', project: `today $${budget.dailyCost.toFixed(2)} (cap $${budget.daily})` }); }
       if (budget && !budget.overDaily) budgetDismissed = false;
@@ -115,6 +123,7 @@
     poll();
     pollUsage();
     fetch('/api/license').then((r) => r.json()).then((s) => (license = s)).catch(() => {});
+    fetch('/api/health').then((r) => r.json()).then((s) => (healthInfo = s)).catch(() => {});
     // auto-refresh cost only when enabled (re-parsing transcripts is disk-heavy)
     const uid = setInterval(() => { if ($autoUsage) pollUsage(); }, 60000);
     return () => clearInterval(uid);
@@ -133,6 +142,7 @@
     const c = {}; for (const a of shown) c[a.state] = (c[a.state] || 0) + 1; return c;
   });
   let sessionCount = $derived(new Set(shown.map((a) => a.sessionId).filter(Boolean)).size);
+  let errorCount = $derived(shown.filter((a) => a.state === 'error').length);
 
   function pickProject(e) {
     selectedProject = e.target.value;
@@ -179,6 +189,11 @@
   {#if budget?.overDaily && !budgetDismissed}
     <div class="lic">💸 Daily spend ${budget.dailyCost.toFixed(2)} crossed your ${budget.daily} cap.
       <button onclick={() => (budgetDismissed = true)}>Dismiss</button>
+    </div>
+  {/if}
+  {#if healthInfo && healthInfo.hooks && healthInfo.hooks.installed === false}
+    <div class="lic">⚙ Hivemind hooks aren't installed yet — sessions won't report in. Run <code>node install.js</code>, then <code>/hooks</code> (or restart).
+      <button onclick={() => (panels.health = true)}>Check status</button>
     </div>
   {/if}
 
@@ -271,6 +286,7 @@
     <strong>{selectedProject || 'All projects'}</strong>
     <span>· {sessionCount} session{sessionCount === 1 ? '' : 's'} · {shown.length} agent{shown.length === 1 ? '' : 's'}</span>
     {#if usage?.totals}<span class="cost" title="Estimated from ~/.claude transcripts">💰 today ${todayCost?.toFixed(2) ?? '0.00'} · total ${usage.totals.costUSD.toFixed(0)}</span>{/if}
+    {#if errorCount > 0}<button class="errchip" onclick={() => openP('feed')} title="Open the activity feed">⚠ {errorCount} error{errorCount === 1 ? '' : 's'}</button>{/if}
     {#each Object.entries(counts) as [state, n] (state)}
       <span class="cnt"><i style="background:{STATE_COLORS[state] || '#888'}"></i>{STATE_LABEL[state] || state} {n}</span>
     {/each}
@@ -323,6 +339,9 @@
   .statusbar { font-size: 11px; color: var(--color-text-secondary); flex-wrap: wrap; }
   .cnt { display: inline-flex; align-items: center; gap: 4px; }
   .cost { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary); }
+  .errchip { font-size: 11px; padding: 2px 9px; border-radius: 99px; cursor: pointer; border: 0.5px solid #EF4444;
+    background: rgba(239, 68, 68, 0.12); color: #EF4444; font-weight: 600; animation: errpulse 1.6s ease-in-out infinite; }
+  @keyframes errpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
   .cnt i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
   .empty { padding: 40px; text-align: center; color: var(--color-text-tertiary); font-size: 13px; }
   .office-wrap { position: relative; height: calc(100vh - 175px); min-height: 440px; border: 0.5px solid var(--color-border-tertiary);

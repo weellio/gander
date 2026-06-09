@@ -35,6 +35,26 @@
 
   function close() { sessionId = null; }
 
+  function exportMd() {
+    if (!data) return;
+    const out = [`# Transcript — ${data.project || data.sessionId}`, '', `Session: \`${data.sessionId}\``];
+    if (data.cwd) out.push(`Path: \`${data.cwd}\``);
+    out.push(`${data.count} messages${data.truncated ? ' (last 500)' : ''}`, '', '---', '');
+    for (const m of data.messages) {
+      const who = m.role === 'assistant' ? 'Claude' : m.role === 'user' ? 'User' : 'System';
+      const ts = m.ts ? ` _(${new Date(m.ts).toLocaleString()})_` : '';
+      out.push(`### ${who}${ts}`);
+      if (m.text) out.push('', m.text);
+      if (m.tools && m.tools.length) out.push('', ...m.tools.map((t) => `- 🔧 \`${t.name}\`${t.input ? ' — ' + t.input : ''}`));
+      out.push('', '---', '');
+    }
+    const blob = new Blob([out.join('\n')], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `transcript-${(data.project || 'session')}-${String(data.sessionId).slice(0, 8)}.md`;
+    a.click(); URL.revokeObjectURL(url);
+  }
+
   function onKeydown(e) {
     if (e.key === 'Escape') close();
   }
@@ -84,7 +104,10 @@
           <span class="meta">Loading…</span>
         {/if}
       </div>
-      <button class="x" onclick={close} aria-label="Close">✕</button>
+      <div class="hd-actions">
+        {#if data}<button class="md" onclick={exportMd} title="Export to Markdown">⬇ .md</button>{/if}
+        <button class="x" onclick={close} aria-label="Close">✕</button>
+      </div>
     </div>
 
     {#if data}
@@ -190,6 +213,10 @@
     padding: 2px 4px;
   }
   .x:hover { color: var(--color-text-primary); }
+  .hd-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .md { font-size: 10px; padding: 2px 8px; border-radius: 99px; cursor: pointer; border: 0.5px solid var(--color-border-secondary);
+    background: var(--color-background-secondary); color: var(--color-text-secondary); }
+  .md:hover { color: var(--color-text-primary); }
 
   /* Sub-header: session id + cwd */
   .sub-hd {
