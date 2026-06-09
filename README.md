@@ -1,4 +1,4 @@
-<p align="center"><img src="web/public/logo.png" width="120" alt="Hivemind" /></p>
+<p align="center"><img src="web/public/logo.png" width="220" alt="Hivemind" /></p>
 
 # Hivemind
 
