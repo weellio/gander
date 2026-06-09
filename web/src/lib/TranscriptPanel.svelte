@@ -4,6 +4,9 @@
   let loading = $state(false);
   let error = $state('');
   let data = $state(null); // { sessionId, cwd, project, messages, count, truncated }
+  let bodyEl = $state();
+  // jump to the newest message (bottom) once a transcript loads
+  $effect(() => { if (data && bodyEl) requestAnimationFrame(() => { if (bodyEl) bodyEl.scrollTop = bodyEl.scrollHeight; }); });
 
   async function load() {
     if (!sessionId) return;
@@ -117,7 +120,7 @@
       </div>
     {/if}
 
-    <div class="body">
+    <div class="body" bind:this={bodyEl}>
       {#if loading}
         <div class="empty">Loading transcript…</div>
       {:else if error}
