@@ -48,12 +48,40 @@
   }
 
   // ── Add MCP server to the selected project ──
+  // Curated presets so users don't have to memorise package names. Placeholders
+  // (in <…>) and env keys are filled in by the user before adding.
+  const MCP_PRESETS = [
+    { label: 'Filesystem — expose local files', name: 'filesystem', command: 'npx', args: '-y @modelcontextprotocol/server-filesystem C:/path/to/folder', note: 'Replace the path with a folder to expose.' },
+    { label: 'GitHub', name: 'github', command: 'npx', args: '-y @modelcontextprotocol/server-github', env: 'GITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxx', note: 'Create a token at github.com → Settings → Developer settings.' },
+    { label: 'Supabase', name: 'supabase', command: 'npx', args: '-y @supabase/mcp-server-supabase@latest --read-only --project-ref=<project-ref>', env: 'SUPABASE_ACCESS_TOKEN=sbp_xxx', note: 'Token: Supabase → Account → Access Tokens. project-ref: Project Settings → General.' },
+    { label: 'PostgreSQL', name: 'postgres', command: 'npx', args: '-y @modelcontextprotocol/server-postgres postgresql://user:pass@localhost:5432/db', note: 'Replace the connection string.' },
+    { label: 'SQLite', name: 'sqlite', command: 'npx', args: '-y @modelcontextprotocol/server-sqlite --db-path C:/path/to.db', note: 'Replace the database path.' },
+    { label: 'Brave Search', name: 'brave-search', command: 'npx', args: '-y @modelcontextprotocol/server-brave-search', env: 'BRAVE_API_KEY=xxx', note: 'Free key at brave.com/search/api.' },
+    { label: 'Playwright — drive a browser', name: 'playwright', command: 'npx', args: '@playwright/mcp@latest' },
+    { label: 'Puppeteer — drive a browser', name: 'puppeteer', command: 'npx', args: '-y @modelcontextprotocol/server-puppeteer' },
+    { label: 'Memory — knowledge graph', name: 'memory', command: 'npx', args: '-y @modelcontextprotocol/server-memory' },
+    { label: 'Sequential thinking', name: 'sequential-thinking', command: 'npx', args: '-y @modelcontextprotocol/server-sequential-thinking' },
+    { label: 'Slack', name: 'slack', command: 'npx', args: '-y @modelcontextprotocol/server-slack', env: 'SLACK_BOT_TOKEN=xoxb-xxx, SLACK_TEAM_ID=Txxx', note: 'From your Slack app config.' },
+    { label: 'Fetch — web page → markdown', name: 'fetch', command: 'uvx', args: 'mcp-server-fetch', note: 'Requires uv/uvx (Python).' },
+  ];
   let mcpNew = $state({ name: '', command: '', args: '' });
+  let mcpEnv = $state(''); let mcpNote = $state('');
+  function applyPreset(e) {
+    const i = e.target.value; e.target.value = '';
+    if (i === '') return;
+    const p = MCP_PRESETS[+i];
+    mcpNew = { name: p.name, command: p.command, args: p.args };
+    mcpEnv = p.env || ''; mcpNote = p.note || '';
+  }
   async function addMcp() {
     if (!cwd || !mcpNew.name.trim() || !mcpNew.command.trim()) return;
     status = '';
-    const r = await post('/api/config', { cwd, action: 'addMcp', server: { name: mcpNew.name.trim(), command: mcpNew.command.trim(), args: mcpNew.args.trim() } });
-    if (r && r.ok) { status = `Added MCP server "${mcpNew.name.trim()}".`; mcpNew = { name: '', command: '', args: '' }; await loadConfig(); }
+    const env = {};
+    for (const pair of (mcpEnv || '').split(',')) { const k = pair.indexOf('='); if (k > 0) env[pair.slice(0, k).trim()] = pair.slice(k + 1).trim(); }
+    const server = { name: mcpNew.name.trim(), command: mcpNew.command.trim(), args: mcpNew.args.trim() };
+    if (Object.keys(env).length) server.env = env;
+    const r = await post('/api/config', { cwd, action: 'addMcp', server });
+    if (r && r.ok) { status = `Added MCP server "${mcpNew.name.trim()}".`; mcpNew = { name: '', command: '', args: '' }; mcpEnv = ''; mcpNote = ''; await loadConfig(); }
     else status = 'Error: ' + ((r && r.error) || 'failed');
   }
 
@@ -187,9 +215,15 @@
             {/each}
           {/if}
           <div class="mcp-add">
-            <input class="in" placeholder="name (e.g. playwright)" bind:value={mcpNew.name} />
+            <select class="in" onchange={applyPreset}>
+              <option value="">＋ add from a preset…</option>
+              {#each MCP_PRESETS as p, i (p.name)}<option value={i}>{p.label}</option>{/each}
+            </select>
+            <input class="in" placeholder="name (e.g. supabase)" bind:value={mcpNew.name} />
             <input class="in" placeholder="command (e.g. npx)" bind:value={mcpNew.command} />
-            <input class="in" placeholder="args (e.g. @playwright/mcp@latest)" bind:value={mcpNew.args} />
+            <input class="in" placeholder="args (e.g. -y @supabase/mcp-server-supabase@latest)" bind:value={mcpNew.args} />
+            <input class="in" placeholder="env (optional, KEY=value, KEY2=value)" bind:value={mcpEnv} />
+            {#if mcpNote}<div class="tg-hint">💡 {mcpNote}</div>{/if}
             <button class="select" onclick={addMcp} disabled={!mcpNew.name.trim() || !mcpNew.command.trim()}>+ Add MCP server</button>
           </div>
         </div>
