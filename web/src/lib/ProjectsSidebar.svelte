@@ -9,9 +9,11 @@
   let target = $state('');
   let result = $state('');
   let gitMap = $state({});
+  let costMap = $state({});
   let timer = null;
 
-  async function load() { try { const r = await fetch('/api/projects'); data = await r.json(); loadGit(); } catch (_) {} }
+  async function load() { try { const r = await fetch('/api/projects'); data = await r.json(); loadGit(); loadCost(); } catch (_) {} }
+  async function loadCost() { try { const r = await fetch('/api/usage'); const j = await r.json(); const m = {}; for (const p of (j.byProject || [])) m[String(p.path).toLowerCase()] = p.costUSD; costMap = m; } catch (_) {} }
   async function loadGit() {
     try {
       const paths = data.projects.map((p) => p.path);
@@ -130,6 +132,7 @@
                 ⎇{gitMap[p.path].branch}{#if gitMap[p.path].dirty}<i class="dirty">●{gitMap[p.path].dirty}</i>{/if}{#if gitMap[p.path].ahead}<i class="ah">↑{gitMap[p.path].ahead}</i>{/if}{#if gitMap[p.path].behind}<i class="bh">↓{gitMap[p.path].behind}</i>{/if}
               </span>
             {/if}
+            {#if costMap[p.path.toLowerCase()]}<span class="pcost" title="Estimated spend on this project">${costMap[p.path.toLowerCase()] >= 1 ? costMap[p.path.toLowerCase()].toFixed(0) : costMap[p.path.toLowerCase()].toFixed(2)}</span>{/if}
             <span class="counts">{p.skills.length}·{p.agents.length}·{p.commands.length}·{p.hooks.length}</span>
           </button>
           <button class="mute" onclick={() => toggleMute(p)} title={mutedSet.has(p.name) ? 'Unmute — show on the floor' : 'Mute — hide from the floor'}>{mutedSet.has(p.name) ? '🔇' : '🔊'}</button>
@@ -231,6 +234,7 @@
   .pname { flex: 1 1 auto; font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .run { font-size: 9px; color: #10B981; }
   .counts { font-size: 9px; color: var(--color-text-tertiary); font-family: var(--font-mono); }
+  .pcost { font-size: 9px; color: #10B981; font-family: var(--font-mono); flex-shrink: 0; }
   .git { display: inline-flex; align-items: center; gap: 3px; font-size: 9px; font-family: var(--font-mono); color: var(--color-text-tertiary); white-space: nowrap; }
   .git i { font-style: normal; }
   .git .dirty { color: #F59E0B; }

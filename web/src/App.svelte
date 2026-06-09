@@ -145,6 +145,16 @@
     return cmds;
   });
 
+  let bellOpen = $state(false);
+  function flyTo(a) { $layout = 'office'; focusReq = { id: a.id, t: Date.now() }; bellOpen = false; }
+  let attention = $derived.by(() => {
+    const items = [];
+    for (const a of shown) if (a.state === 'awaiting') items.push({ kind: 'awaiting', icon: '🔔', label: a.name, sub: 'needs input · ' + (a.project || ''), action: () => flyTo(a) });
+    for (const a of shown) if (a.state === 'error') items.push({ kind: 'error', icon: '⚠', label: a.name, sub: 'error · ' + (a.project || ''), action: () => flyTo(a) });
+    if (budget?.overDaily) items.push({ kind: 'budget', icon: '💸', label: 'Daily budget exceeded', sub: `$${budget.dailyCost.toFixed(2)} / $${budget.daily}`, action: () => { openP('config'); bellOpen = false; } });
+    return items;
+  });
+
   onMount(() => {
     poll();
     pollUsage();
@@ -296,12 +306,27 @@
         {/if}
       </div>
 
+      <div class="menu-wrap">
+        <button class="select bell" onclick={() => { bellOpen = !bellOpen; menuOpen = false; optsOpen = false; }} title="What needs you">🔔{#if attention.length}<span class="bellbadge">{attention.length}</span>{/if}</button>
+        {#if bellOpen}
+          <div class="dropdown" role="menu">
+            {#if attention.length === 0}
+              <div class="opt-note">All clear — nothing needs you. ✨</div>
+            {:else}
+              {#each attention as it (it.kind + it.label)}
+                <button class="select" onclick={it.action}>{it.icon} {it.label} <span class="dim">{it.sub}</span></button>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+      </div>
+
       <ThemeMenu />
       <HelpPanel />
     </div>
   </header>
 
-  {#if menuOpen || optsOpen}<div class="menu-backdrop" onclick={() => { menuOpen = false; optsOpen = false; }} role="presentation"></div>{/if}
+  {#if menuOpen || optsOpen || bellOpen}<div class="menu-backdrop" onclick={() => { menuOpen = false; optsOpen = false; bellOpen = false; }} role="presentation"></div>{/if}
 
   <!-- always-mounted panels, opened from the Manage menu (drawers are position:fixed) -->
   <ProjectsSidebar bind:open={panels.projects} />
@@ -373,6 +398,10 @@
   .opt { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--color-text-primary); padding: 3px 4px; cursor: pointer; }
   .opt .dim { color: var(--color-text-tertiary); font-size: 10px; }
   .menu-backdrop { position: fixed; inset: 0; z-index: 55; }
+  .bell { position: relative; }
+  .bellbadge { position: absolute; top: -5px; right: -4px; background: #EF4444; color: #fff; font-size: 8px; font-weight: 700;
+    min-width: 14px; height: 14px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; padding: 0 3px; }
+  .dropdown .dim { color: var(--color-text-tertiary); font-size: 10px; }
   .title { font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #9CA3AF; }
   .dot.online { background: #10B981; animation: pulse 2s infinite; }
