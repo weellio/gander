@@ -16,9 +16,20 @@
   import SearchPanel from './lib/SearchPanel.svelte';
   import CommandPalette from './lib/CommandPalette.svelte';
   import Hierarchy from './lib/Hierarchy.svelte';
-  import ThemeMenu from './lib/ThemeMenu.svelte';
   import Office from './lib/Office.svelte';
-  import { theme, applyTheme } from './lib/theme.js';
+  import { theme, applyTheme, PRESETS, BACKGROUNDS } from './lib/theme.js';
+
+  // appearance controls (merged in from the old Theme menu)
+  let bgFileInput = $state();
+  function setPreset(e) { theme.update((t) => ({ ...t, preset: e.target.value })); }
+  function setAccent(e) { theme.update((t) => ({ ...t, accent: e.target.value })); }
+  function setBg(e) { theme.update((t) => ({ ...t, bg: e.target.value, bgImage: '' })); }
+  async function onBgImage(e) {
+    const f = (e.target.files || [])[0];
+    if (f && /^image\//.test(f.type)) { const raw = await readFile(f); const ds = (await downscale(raw, 1600)) || raw; if (ds) theme.update((t) => ({ ...t, bgImage: ds, bg: 'none' })); }
+    e.target.value = '';
+  }
+  function clearBgImage() { theme.update((t) => ({ ...t, bgImage: '' })); }
 
   $effect(() => applyTheme($theme));
   // only Office + Mosaic remain; coerce any stale saved layout
@@ -290,9 +301,27 @@
       </div>
 
       <div class="menu-wrap">
-        <button class="select" onclick={() => { optsOpen = !optsOpen; menuOpen = false; }} title="Options & token conservation">Options</button>
+        <button class="select" onclick={() => { optsOpen = !optsOpen; menuOpen = false; bellOpen = false; }} title="Settings, appearance & token conservation">⚙ Settings ▾</button>
         {#if optsOpen}
           <div class="dropdown opts" role="menu">
+            <div class="opt-sec">Appearance</div>
+            <label class="opt apr"><span>Theme</span>
+              <select class="aprsel" value={$theme.preset} onchange={setPreset}>
+                {#each Object.entries(PRESETS) as [k, p] (k)}<option value={k}>{p.label}</option>{/each}
+              </select>
+            </label>
+            <label class="opt apr"><span>Accent</span><input class="aprcolor" type="color" value={$theme.accent} oninput={setAccent} /></label>
+            <label class="opt apr"><span>Background</span>
+              <select class="aprsel" value={$theme.bgImage ? '__img' : $theme.bg} onchange={setBg} disabled={!!$theme.bgImage}>
+                {#each Object.entries(BACKGROUNDS) as [k, b] (k)}<option value={k}>{b.label}</option>{/each}
+                {#if $theme.bgImage}<option value="__img">Custom image</option>{/if}
+              </select>
+            </label>
+            <div class="opt apr"><span>Background image</span>
+              <span class="aprimg"><button class="mini" onclick={() => bgFileInput.click()}>Upload…</button>{#if $theme.bgImage}<button class="mini" onclick={clearBgImage}>✕</button>{/if}</span>
+            </div>
+            <input bind:this={bgFileInput} type="file" accept="image/*" style="display:none" onchange={onBgImage} />
+
             <div class="opt-sec">Conserve Claude tokens</div>
             <p class="opt-note">Hivemind sends almost nothing to the model on its own. The real per-turn cost is the <b>MCP servers, skills &amp; agents</b> each project loads — trim ones you don't need.</p>
             <button class="select" onclick={() => { openP('config'); optsOpen = false; }}>Manage MCP &amp; skills →</button>
@@ -321,7 +350,6 @@
         {/if}
       </div>
 
-      <ThemeMenu />
       <HelpPanel />
     </div>
   </header>
@@ -397,6 +425,12 @@
   .opt-note { font-size: 10px; color: var(--color-text-secondary); line-height: 1.45; margin: 0 4px 5px; }
   .opt { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--color-text-primary); padding: 3px 4px; cursor: pointer; }
   .opt .dim { color: var(--color-text-tertiary); font-size: 10px; }
+  .opt.apr { justify-content: space-between; cursor: default; }
+  .aprsel { font-size: 11px; max-width: 140px; }
+  .aprcolor { width: 34px; height: 20px; padding: 0; border: 0.5px solid var(--color-border-secondary); border-radius: 4px; background: none; cursor: pointer; }
+  .aprimg { display: flex; gap: 4px; }
+  .opts .mini { font-size: 10px; padding: 2px 7px; border-radius: var(--border-radius-md); cursor: pointer;
+    border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-primary); }
   .menu-backdrop { position: fixed; inset: 0; z-index: 55; }
   .bell { position: relative; }
   .bellbadge { position: absolute; top: -5px; right: -4px; background: #EF4444; color: #fff; font-size: 8px; font-weight: 700;
