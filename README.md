@@ -35,21 +35,49 @@ Beyond visualization, Hivemind is a local control panel for everything Claude Co
 
 **Requirements:** [Node.js](https://nodejs.org) and Claude Code.
 
-### Quick install (recommended)
+### One-step setup (recommended)
 
-From the Hivemind folder:
+Clone the repo, then from the Hivemind folder run the setup script for your OS:
 
+```bash
+# Windows
+setup.bat                  # global: every Claude session on this machine reports in
+setup.bat --project        # only sessions started in this folder
+
+# macOS / Linux
+./setup.sh                 # global   (use --project to scope to this folder)
 ```
-node install.js            # global: every Claude session on this machine reports in
-node install.js --project  # only sessions started in the current folder
+
+It checks for Node, wires Hivemind's hooks into your Claude Code `settings.json` (without touching your other settings), and prints the next steps. The dashboard is **prebuilt** (`dashboard/dist`) — nothing to compile just to run it.
+
+Prefer to do it by hand? The setup scripts just call the installer:
+
+```bash
+node install.js            # global   (or: node install.js --project)
 ```
 
-This merges Hivemind's hooks into your Claude Code `settings.json` (without touching your other settings) and computes all paths automatically. Then, in any open session run `/hooks` (or restart) to load them.
+Then, in any open session run `/hooks` (or restart) to load the hooks. To remove everything:
 
-To remove it completely:
-
-```
+```bash
 node uninstall.js          # or: node uninstall.js --project
+```
+
+### Optional setup
+
+These are configured from the dashboard's **Manage → Config** panel (saved to `bridge/aoc-config.json`):
+
+- **Telegram** — paste a bot token + your chat id to get pinged when a session needs you, and reply or `/stop` from your phone.
+- **Cost budget** — a daily / per-session spend cap that alerts via banner + Telegram.
+- **Open-in-editor command** — only if "Open in VS Code" can't auto-detect your editor; point it at `code.cmd`, `codium`, etc.
+- **Idle nudge** — wake parked sessions so a queued reply delivers immediately. Set up the scheduled task with `scripts/nudge-idle.ps1` (Windows — run it hidden via `scripts/nudge-idle-hidden.vbs`) or `scripts/nudge-idle.sh` (macOS/Linux cron), then enable **"Wake on send"** in Config to fire it the moment you reply.
+
+### Develop / rebuild the dashboard
+
+Only needed if you change the UI (`web/src`):
+
+```bash
+cd web && npm install && npm run build   # outputs to dashboard/dist (what the bridge serves)
+cd web && npm run dev                    # hot-reload dev server
 ```
 
 ### Alternative: as a Claude Code plugin
