@@ -57,6 +57,19 @@
         ['Theme', 'Switch colour themes and background.'],
       ],
     },
+    {
+      title: 'FAQ / good to know',
+      items: [
+        ['“Waiting on you” but I can’t see the options?', 'Claude Code draws numbered prompts (plan approval, menus) in the terminal itself — it doesn’t send the option text through hooks, so Hivemind can’t display them. Open the session (Open in VS Code) to read the menu, then answer remotely with the ⌨ quick-keys. Permission prompts DO show their reason (e.g. “needs permission to use Bash”).'],
+        ['Answering prompts (⌨ quick-keys)', 'The ⌨ row in an agent’s modal types a keystroke into that session’s window (1/2/3 · ↑/↓ · ↵ · y/n · Esc). It steals focus and types into whatever’s focused there — keep the Claude terminal focused in that window.'],
+        ['“’claude’ is not recognized” on ▶ Start', 'Your claude CLI isn’t on PATH. Set its full path in Settings → New session options (find it with where claude / which claude).'],
+        ['“Trust this folder?” on Start / New task', 'Launching opens a fresh terminal, so Claude shows its one-time, per-folder trust prompt — choose “Yes”. It’s remembered after you accept once (you don’t see it from VS Code because the folder’s already trusted there).'],
+        ['Skip permission prompts', 'Settings → New session options → “skip ALL prompts” launches with --dangerously-skip-permissions, so Claude won’t ask before edits/commands. Only use it on projects you trust.'],
+        ['Sub-agents show no dollar amount', 'Cost is tracked per session (one transcript). A sub-agent’s spend is part of its parent session, so only the session (root) carries the figure.'],
+        ['Why does a session show “$X/min”?', 'Spend is estimated from token counts at API list prices — on a Max/subscription plan you aren’t literally paying that. Treat it as a relative “spending fast” signal.'],
+        ['Replies aren’t instant', 'Replies are queued and delivered when the session next runs a turn. Turn on Config → Wake idle sessions to nudge a parked session so it picks up your reply right away.'],
+      ],
+    },
   ];
 </script>
 
