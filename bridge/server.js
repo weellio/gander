@@ -31,6 +31,7 @@ const usage = require('./usage.js');
 const github = require('./github.js');
 const configmgr = require('./configmgr.js');
 const history = require('./history.js');
+const routines = require('./routines.js');
 const health = require('./health.js');
 const transcript = require('./transcript.js');
 const search = require('./search.js');
@@ -529,6 +530,15 @@ function buildLaunchFlags() {
   if (extra) parts.push(extra);
   return parts.join(' ');
 }
+
+// ── routines / briefings ─────────────────────────────────────────────────────
+function claudeCliRaw() { return (cfg.claudeCmd && String(cfg.claudeCmd).trim()) || 'claude'; }
+function onBriefing(b) {
+  pushFeed({ ts: Date.now(), agentId: 'routine', agent: b.name, project: b.project || '', sessionId: '', state: b.ok ? 'done' : 'error', log: b.ok ? `briefing ready (${Math.round(b.ms / 1000)}s)` : ('briefing failed: ' + b.error), error: !b.ok });
+  const r = routines.listRoutines().find((x) => x.id === b.routineId);
+  if (r && r.notify) sendTelegram(`📋 <b>${b.name}</b> ${b.ok ? 'ready' : 'failed'}\n${String(b.ok ? b.output : b.error).slice(0, 700)}`);
+}
+function runRoutineOpts() { return { cli: claudeCliRaw(), onDone: onBriefing }; }
 
 function launchSession(cwd, resume, prompt) {
   if (resume && !/^[\w-]+$/.test(resume)) return { error: 'bad session id' };
@@ -1075,6 +1085,27 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, r.error ? 400 : 200, r);
   }
 
+  if (url === '/api/routines' && req.method === 'GET') {
+    return sendJson(res, 200, { routines: routines.listRoutines(), briefings: routines.listBriefings(60) });
+  }
+  if (url === '/api/routines' && req.method === 'POST') {
+    const body = await readBody(req);
+    const r = routines.upsertRoutine(body || {});
+    return sendJson(res, r.error ? 400 : 200, r);
+  }
+  if (url === '/api/routines/delete' && req.method === 'POST') {
+    const body = await readBody(req);
+    return sendJson(res, 200, routines.deleteRoutine(body && body.id));
+  }
+  if (url === '/api/routines/run' && req.method === 'POST') {
+    const body = await readBody(req);
+    const r = routines.runRoutine(body && body.id, runRoutineOpts());
+    return sendJson(res, r.error ? 400 : 200, r);
+  }
+  if (url === '/api/briefings' && req.method === 'GET') {
+    return sendJson(res, 200, { briefings: routines.listBriefings(80) });
+  }
+
   if (url === '/api/sendkeys' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.sessionId || !body.keys) return sendJson(res, 400, { error: 'sessionId and keys required' });
@@ -1188,6 +1219,7 @@ server.listen(argPort, () => {
   setInterval(checkBudget, 180000); setTimeout(checkBudget, 8000);
   setInterval(sampleBurn, 30000); setTimeout(sampleBurn, 6000);
   rescheduleNudge();   // periodic idle-session nudge (cfg.nudgeInterval minutes; 0 = off)
+  setInterval(() => routines.tick(runRoutineOpts()), 30000);   // run scheduled routines (HH:MM)
   license.verify(LICENSE_KEY, cfg.gumroadProduct).then((s) => { licenseState = s; console.log(`[license] ${s.mode}`); });
 });
 

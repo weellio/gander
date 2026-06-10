@@ -6,6 +6,7 @@
   import AgentModal from './lib/AgentModal.svelte';
   import NewTask from './lib/NewTask.svelte';
   import Tour from './lib/Tour.svelte';
+  import RoutinesPanel from './lib/RoutinesPanel.svelte';
   import ActionImages from './lib/ActionImages.svelte';
   import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
   import CostPanel from './lib/CostPanel.svelte';
@@ -129,12 +130,25 @@
   // Manage / Options menus + the panels they control
   let menuOpen = $state(false);
   let optsOpen = $state(false);
-  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false });
+  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false });
   function openP(k) { panels[k] = true; menuOpen = false; }
   let transcriptId = $state(null);
   let tileModalId = $state(null);   // mosaic tile → full agent modal
   let newTaskOpen = $state(false);  // ＋ New task launcher
   let tourOpen = $state(false);     // first-run guided tour
+  let latestBrief = $state(null);   // newest routine briefing, for the "new briefing" card
+  let briefSeen = $state(Number(localStorage.getItem('aoc-briefseen')) || 0);
+  async function pollBriefings() { try { const r = await fetch('/api/briefings'); const j = await r.json(); latestBrief = (j.briefings || [])[0] || null; } catch (_) {} }
+  let freshBrief = $derived(latestBrief && latestBrief.ok && latestBrief.ts > briefSeen && (Date.now() - latestBrief.ts) < 14 * 3600 * 1000 ? latestBrief : null);
+  function seenBrief() { briefSeen = latestBrief ? latestBrief.ts : Date.now(); try { localStorage.setItem('aoc-briefseen', String(briefSeen)); } catch (_) {} }
+  function openBrief() { seenBrief(); openP('routines'); }
+  let _briefTs = 0;
+  $effect(() => {
+    if (latestBrief && latestBrief.ts > _briefTs) {
+      const first = _briefTs === 0; _briefTs = latestBrief.ts;
+      if (!first && latestBrief.ok && $desktopNotify) notifyDesktop({ name: '📋 ' + latestBrief.name, project: 'briefing ready' });
+    }
+  });
   const tourSteps = [
     { title: '👋 Welcome to Hivemind', body: "Live mission control for your Claude Code agents. Quick hands-on tour — you'll click a couple of things. (Skip anytime.)" },
     { sel: '[data-tour="newtask"]', title: '＋ New task', body: 'Kick off a goal from here: type what you want, pick a project, and it launches a fresh Claude session working on it.' },
@@ -165,6 +179,7 @@
       { label: 'Activity feed', sub: 'panel', action: () => openP('feed') },
       { label: 'Health / status', sub: 'panel', action: () => openP('health') },
       { label: 'New task — start a session on a goal', sub: 'launch', action: () => (newTaskOpen = true) },
+      { label: 'Routines & briefings', sub: 'panel', action: () => openP('routines') },
       { label: 'Take the tour', sub: 'walkthrough', action: () => (tourOpen = true) },
       { label: 'Export swarm snapshot', sub: 'Mermaid + PNG', action: exportSnapshot },
       { label: $soundOn ? 'Mute alert sound' : 'Unmute alert sound', sub: 'toggle', action: () => ($soundOn = !$soundOn) },
@@ -192,8 +207,10 @@
     // first-run guided tour (once per browser; replay from the command palette)
     try { if (!localStorage.getItem('aoc-toured')) setTimeout(() => (tourOpen = true), 800); } catch (_) {}
     // auto-refresh cost only when enabled (re-parsing transcripts is disk-heavy)
+    pollBriefings();
     const uid = setInterval(() => { if ($autoUsage) pollUsage(); }, 60000);
-    return () => clearInterval(uid);
+    const bid = setInterval(pollBriefings, 60000);
+    return () => { clearInterval(uid); clearInterval(bid); };
   });
 
   // agent-state polling — cadence follows the "fast updates" option
@@ -343,6 +360,7 @@
             <button class="select" onclick={() => openP('usage')}>Usage / cost</button>
             <button class="select" onclick={() => openP('github')}>GitHub</button>
             <button class="select" onclick={() => openP('config')}>Config (hooks · MCP)</button>
+            <button class="select" onclick={() => openP('routines')}>Routines &amp; briefings</button>
             <button class="select" onclick={() => openP('history')}>Session history</button>
             <button class="select" onclick={() => openP('search')}>Search</button>
             <button class="select" onclick={() => openP('feed')}>Activity feed</button>
@@ -419,6 +437,7 @@
   <GithubPanel bind:open={panels.github} />
   <SettingsPanel bind:open={panels.config} />
   <HistoryPanel bind:open={panels.history} onView={(sid) => (transcriptId = sid)} />
+  <RoutinesPanel bind:open={panels.routines} />
   <HealthPanel bind:open={panels.health} />
   <FeedPanel bind:open={panels.feed} onView={(sid) => (transcriptId = sid)} />
   <SearchPanel bind:open={panels.search} onView={(sid) => (transcriptId = sid)} />
@@ -436,6 +455,13 @@
       <span class="cnt"><i style="background:{STATE_COLORS[state] || '#888'}"></i>{STATE_LABEL[state] || state} {n}</span>
     {/each}
   </div>
+
+  {#if freshBrief}
+    <div class="briefcard" onclick={openBrief} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openBrief()}>
+      <span>📋 New briefing ready — <b>{freshBrief.name}</b> <span class="bc-dim">· click to read</span></span>
+      <span class="bc-x" onclick={(e) => { e.stopPropagation(); seenBrief(); }} role="button" tabindex="-1" aria-label="Dismiss">✕</span>
+    </div>
+  {/if}
 
   {#if latest && shown.length}
     <div class="ticker" title="Most recent activity">
@@ -495,6 +521,13 @@
   .opts .mini { font-size: 10px; padding: 2px 7px; border-radius: var(--border-radius-md); cursor: pointer;
     border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-primary); }
   .menu-backdrop { position: fixed; inset: 0; z-index: 55; }
+  .briefcard { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 12px 0;
+    padding: 8px 12px; border-radius: var(--border-radius-md); cursor: pointer; font-size: 12px;
+    background: color-mix(in srgb, var(--accent, #6366F1) 14%, var(--color-background-primary));
+    border: 0.5px solid color-mix(in srgb, var(--accent, #6366F1) 40%, transparent); color: var(--color-text-primary); }
+  .briefcard:hover { background: color-mix(in srgb, var(--accent, #6366F1) 20%, var(--color-background-primary)); }
+  .bc-dim { color: var(--color-text-tertiary); font-size: 11px; }
+  .bc-x { color: var(--color-text-tertiary); cursor: pointer; font-size: 12px; padding: 0 2px; }
   .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 200;
     background: var(--color-background-primary); color: var(--color-text-primary);
     border: 0.5px solid var(--color-border-secondary); border-left: 3px solid #10B981;
