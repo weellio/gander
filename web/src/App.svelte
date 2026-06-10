@@ -4,6 +4,7 @@
   import { avatarMode, layout, images, soundOn, autoUsage, fastPoll, animations, desktopNotify, costAlerts } from './lib/stores.js';
   import AgentTile from './lib/AgentTile.svelte';
   import AgentModal from './lib/AgentModal.svelte';
+  import NewTask from './lib/NewTask.svelte';
   import ActionImages from './lib/ActionImages.svelte';
   import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
   import CostPanel from './lib/CostPanel.svelte';
@@ -131,6 +132,7 @@
   function openP(k) { panels[k] = true; menuOpen = false; }
   let transcriptId = $state(null);
   let tileModalId = $state(null);   // mosaic tile → full agent modal
+  let newTaskOpen = $state(false);  // ＋ New task launcher
   let paletteOpen = $state(false);
   let focusReq = $state(null);
   function onGlobalKey(e) {
@@ -149,6 +151,7 @@
       { label: 'Search', sub: 'panel', action: () => openP('search') },
       { label: 'Activity feed', sub: 'panel', action: () => openP('feed') },
       { label: 'Health / status', sub: 'panel', action: () => openP('health') },
+      { label: 'New task — start a session on a goal', sub: 'launch', action: () => (newTaskOpen = true) },
       { label: 'Export swarm snapshot', sub: 'Mermaid + PNG', action: exportSnapshot },
       { label: $soundOn ? 'Mute alert sound' : 'Unmute alert sound', sub: 'toggle', action: () => ($soundOn = !$soundOn) },
       { label: 'Office floor view', sub: 'view', action: () => ($layout = 'office') },
@@ -285,6 +288,8 @@
     </div>
 
     <div class="controls">
+      <button class="newtask" onclick={() => (newTaskOpen = true)} title="Start a new Claude session on a goal">＋ New task</button>
+
       <select class="select" value={selectedProject} onchange={pickProject} title="Projects with a live or recently-active session. To browse every project on disk, use Manage → Projects.">
         <option value="">All open projects ({agents.length})</option>
         {#each projects as p (p.project)}
@@ -403,6 +408,7 @@
   <SearchPanel bind:open={panels.search} onView={(sid) => (transcriptId = sid)} />
   <TranscriptPanel bind:sessionId={transcriptId} />
   {#if tileModalId}<AgentModal id={tileModalId} onClose={() => (tileModalId = null)} />{/if}
+  <NewTask bind:open={newTaskOpen} />
 
   <div class="statusbar">
     <strong>{selectedProject || 'All open projects'}</strong>
@@ -452,6 +458,9 @@
   }
   .top-bar { justify-content: space-between; }
   .controls { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .newtask { font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: var(--border-radius-md); cursor: pointer;
+    border: none; background: var(--accent, #6366F1); color: #fff; white-space: nowrap; }
+  .newtask:hover { filter: brightness(1.08); }
   .menu-wrap { position: relative; display: inline-flex; }
   .dropdown { position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; display: flex; flex-direction: column; gap: 4px;
     min-width: 190px; padding: 6px; background: var(--color-background-secondary);
