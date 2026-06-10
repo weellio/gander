@@ -60,20 +60,62 @@ if (@($targets).Count -eq 0) {
   exit 0
 }
 
+# AppActivate only matches a title that STARTS or ENDS with the string, but the
+# project name sits in the MIDDLE of a VS Code title ("<tab> - <folder> - Visual
+# Studio Code"). So we enumerate visible windows, find one whose title CONTAINS the
+# project name, and activate it by PID (AppActivate accepts a PID and keeps its
+# reliable focus-stealing). Works for VS Code, Windows Terminal, etc.
+try {
+  Add-Type -ErrorAction Stop @"
+using System;
+using System.Text;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+public class HmWin {
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr p);
+  public delegate bool EnumWindowsProc(IntPtr h, IntPtr p);
+  [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  public static uint FindPid(string needle) {
+    uint found = 0;
+    EnumWindows((h, p) => {
+      if (!IsWindowVisible(h)) return true;
+      int len = GetWindowTextLength(h);
+      if (len <= 0) return true;
+      var sb = new StringBuilder(len + 1);
+      GetWindowText(h, sb, sb.Capacity);
+      if (sb.ToString().IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0) {
+        uint pid; GetWindowThreadProcessId(h, out pid); found = pid; return false;
+      }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
+}
+"@
+} catch {}
+
 $wsh = New-Object -ComObject WScript.Shell
 
 foreach ($a in $targets) {
   $title = $a.project
   if (-not $title) { continue }
-  Write-Host "[nudge] '$Text' -> window matching '$title' (session $($a.sessionId))"
+  $procId = [HmWin]::FindPid($title)
+  if (-not $procId) {
+    Write-Host "  [nudge] no open window contains '$title' - is that session's VS Code/terminal open?"
+    continue
+  }
+  Write-Host "[nudge] '$Text' -> window containing '$title' (pid $procId, session $($a.sessionId))"
   if ($DryRun) { continue }
-  if ($wsh.AppActivate($title)) {
+  if ($wsh.AppActivate([int]$procId)) {
     Start-Sleep -Milliseconds 350
     $wsh.SendKeys($Text)
     Start-Sleep -Milliseconds 120
     $wsh.SendKeys('{ENTER}')
     Start-Sleep -Milliseconds 200
   } else {
-    Write-Host "  [nudge] no window matched '$title' - open it or pass -Match"
+    Write-Host "  [nudge] found pid $procId but could not activate it"
   }
 }
