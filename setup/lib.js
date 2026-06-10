@@ -19,6 +19,7 @@ const COMPONENTS = [
   { src: path.join(ROOT, 'agents', 'component-smith.md'), rel: ['agents', 'component-smith.md'] },
   { src: path.join(ROOT, 'skills', 'context-audit'), rel: ['skills', 'context-audit'] },
   { src: path.join(ROOT, 'agents', 'context-auditor.md'), rel: ['agents', 'context-auditor.md'] },
+  { src: path.join(ROOT, 'commands', 'hivemind.md'), rel: ['commands', 'hivemind.md'] },
 ];
 function componentBase(opts) { return opts.project ? process.cwd() : os.homedir(); }
 function installComponents(opts) {
@@ -29,7 +30,7 @@ function installComponents(opts) {
     if (opts.dryRun) { console.log(`[dry-run] would copy ${fwd(c.src)} -> ${fwd(dest)}`); continue; }
     try { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.cpSync(c.src, dest, { recursive: true }); } catch (_) {}
   }
-  if (!opts.dryRun) console.log('✓ Installed Hivemind skills (component-builder, context-audit) + agents (component-smith, context-auditor)');
+  if (!opts.dryRun) console.log('✓ Installed Hivemind skills (component-builder, context-audit) + agents (component-smith, context-auditor) + command (/hivemind)');
 }
 function uninstallComponents(opts) {
   const base = componentBase(opts);
