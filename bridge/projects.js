@@ -209,4 +209,93 @@ function writeComponent(dir, filePath, content) {
   try { fs.writeFileSync(fp, String(content == null ? '' : content)); return { ok: true, path: fp }; } catch (e) { return { error: e.message }; }
 }
 
-module.exports = { getConfig, addRoot, removeRoot, noteKnown, discover, project, copyComponent, keyOf, diffComponent, readComponent, writeComponent };
+// ── create a new component (agent / skill / command) from form fields ──────────
+function slugify(name) {
+  return String(name || '').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+}
+// Quote a YAML scalar safely so a stray quote/colon can't break the front matter
+// (the classic "unclosed quote" footgun) — single line, escaped.
+function yamlStr(s) {
+  return '"' + String(s == null ? '' : s).replace(/[\r\n]+/g, ' ').replace(/\\/g, '\\\\').replace(/"/g, '\\"').trim() + '"';
+}
+
+function buildComponentMd(type, f) {
+  const slug = slugify(f.name);
+  const fm = ['---'];
+  if (type === 'agent' || type === 'skill') {
+    fm.push(`name: ${slug}`);
+    fm.push(`description: ${yamlStr(f.description)}`);
+  }
+  if (type === 'agent') {
+    if (f.tools && String(f.tools).trim()) fm.push(`tools: ${String(f.tools).trim()}`);
+    if (f.model && f.model !== 'inherit') fm.push(`model: ${String(f.model).trim()}`);
+    if (f.color && String(f.color).trim()) fm.push(`color: ${String(f.color).trim()}`);
+  }
+  if (type === 'command') {
+    if (f.description) fm.push(`description: ${yamlStr(f.description)}`);
+    if (f.argumentHint) fm.push(`argument-hint: ${yamlStr(f.argumentHint)}`);
+  }
+  // commands with nothing to declare get no front matter — just the body
+  const hasFm = fm.length > 1;
+  const body = (f.body && f.body.trim()) ? f.body.trim() + '\n' : defaultBody(type, f);
+  if (!hasFm && type === 'command') return body;
+  fm.push('---', '');
+  return fm.join('\n') + body;
+}
+function defaultBody(type, f) {
+  const name = f.name || 'this component';
+  if (type === 'agent') return `You are ${name}.\n\nWhen invoked:\n1. Understand the request and gather only the context you need.\n2. Do the work.\n3. Return a concise report to the main session — it never sees your full context, so summarize.\n`;
+  if (type === 'skill') return `# ${name}\n\nWhen this skill is invoked:\n\n1. Step one.\n2. Step two.\n3. Step three.\n`;
+  return `${f.description || ('Run ' + name + '.')}\n\n$ARGUMENTS\n`;
+}
+
+// Lightweight front-matter validator — catches the common footguns from the wild:
+// unclosed quotes, missing/weak/bloated descriptions, odd model names.
+function validateFrontMatter(content) {
+  const errors = [], warnings = [];
+  const m = /^---\n([\s\S]*?)\n---/.exec(String(content || ''));
+  if (!m) { return { ok: true, errors, warnings: ['No YAML front matter — fine for a plain command, but agents/skills need name + description to be discoverable.'] }; }
+  const keys = {};
+  for (const ln of m[1].split('\n')) {
+    if (!ln.trim()) continue;
+    const mm = /^([A-Za-z0-9_-]+):\s?(.*)$/.exec(ln);
+    if (!mm) { warnings.push(`Front-matter line isn't "key: value" → ${ln.trim()}`); continue; }
+    keys[mm[1]] = mm[2];
+    const dq = (mm[2].match(/(?<!\\)"/g) || []).length;
+    if (dq % 2 !== 0) errors.push(`Unclosed quote in "${mm[1]}" — this breaks the whole front matter.`);
+  }
+  const desc = (keys.description || '').replace(/^["']|["']$/g, '').trim();
+  if (!desc) warnings.push('No description — without it the agent/skill won\'t auto-trigger (it misfires).');
+  else if (desc.length < 15) warnings.push('Description is very short — say WHEN to use it (e.g. "use proactively when…") so it triggers reliably.');
+  else if (desc.length > 400) warnings.push('Description is long — front matter is read every turn; keep it tight (progressive disclosure).');
+  if (keys.model && !/^(opus|sonnet|haiku|inherit|claude-)/i.test(keys.model.trim())) warnings.push(`Unusual model "${keys.model.trim()}" — expected opus / sonnet / haiku / inherit or a model id.`);
+  return { ok: errors.length === 0, errors, warnings };
+}
+
+// Create a new component file under <dir>/.claude. Returns { ok, path, slug, warnings }
+// or { exists } / { error }. dir is a project path (or os.homedir() for global).
+function newComponent(opts) {
+  const o = opts || {};
+  const type = o.type;
+  if (!['agent', 'skill', 'command'].includes(type)) return { error: 'type must be agent | skill | command' };
+  if (!o.dir) return { error: 'target dir required' };
+  const slug = slugify(o.name);
+  if (!slug) return { error: 'a name is required' };
+  if (type !== 'command' && !String(o.description || '').trim()) return { error: 'a description is required for agents and skills' };
+
+  const rel = type === 'skill' ? ['skills', slug, 'SKILL.md']
+    : type === 'agent' ? ['agents', slug + '.md']
+    : ['commands', slug + '.md'];
+  const base = path.resolve(path.join(o.dir, '.claude'));
+  const fp = path.resolve(path.join(base, ...rel));
+  if (!(fp === base || fp.startsWith(base + path.sep))) return { error: 'resolved path is outside .claude' };
+  if (fs.existsSync(fp) && !o.overwrite) return { exists: true, path: fp };
+
+  const content = buildComponentMd(type, o);
+  const v = validateFrontMatter(content);
+  try { fs.mkdirSync(path.dirname(fp), { recursive: true }); fs.writeFileSync(fp, content); }
+  catch (e) { return { error: e.message }; }
+  return { ok: true, path: fp, slug, warnings: v.warnings, content };
+}
+
+module.exports = { getConfig, addRoot, removeRoot, noteKnown, discover, project, copyComponent, keyOf, diffComponent, readComponent, writeComponent, newComponent, validateFrontMatter };

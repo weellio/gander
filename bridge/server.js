@@ -19,6 +19,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { spawn, execFile } = require('child_process');
 const readline = require('readline');
 const { createParser } = require('./parser.js');
@@ -214,6 +215,36 @@ async function checkBudget() {
     }
   } catch (_) {}
 }
+
+// ── live burn-rate ($/min) — flag agents that are spending money fast. ──────────
+// The budget alerts above are about TOTAL spend. This samples each live session's
+// cost over time so a stuck/looping agent shows a red "runaway" highlight on its
+// tile in real time. Threshold is $/min; demo/manual agents can set it directly.
+const BURN_ALERT = Number(cfg.burnAlert) > 0 ? Number(cfg.burnAlert) : 1.0; // $/min
+const costSamples = new Map();   // sessionId -> { cost, ts }
+function sidOf(a) { return a.sessionId || (String(a.id).startsWith('sess:') ? String(a.id).slice(5) : null); }
+async function sampleBurn() {
+  try {
+    const u = await usage.summaryAsync();
+    if (!u || !u.bySession) return;
+    const now = Date.now();
+    for (const a of agents.values()) {
+      if (a.costManual) continue;                       // explicit override (e.g. demo) wins
+      const sid = sidOf(a);
+      if (!sid) continue;
+      const s = u.bySession[sid];
+      if (!s) continue;
+      const prev = costSamples.get(sid);
+      a.costUSD = s.costUSD;
+      if (prev && now > prev.ts) {
+        const rate = (s.costUSD - prev.cost) / ((now - prev.ts) / 60000);
+        a.burnRate = Math.max(0, rate);
+      }
+      costSamples.set(sid, { cost: s.costUSD, ts: now });
+    }
+  } catch (_) {}
+}
+
 const LICENSE_KEY = process.env.AOC_LICENSE || cfg.license || '';
 let licenseState = { licensed: true, mode: 'pending' };
 const alertedAt = new Map();        // sessionId -> ts (throttle)
@@ -343,6 +374,9 @@ function upsert(ev) {
   if (ev.root !== undefined) existing.root = ev.root;
   if (ev.lastMessage !== undefined && ev.lastMessage) existing.lastMessage = ev.lastMessage;
   if (ev.detail !== undefined) existing.detail = ev.detail;
+  if (ev.costUSD !== undefined) { existing.costUSD = Number(ev.costUSD) || 0; existing.costManual = true; }
+  if (ev.burnRate !== undefined) { existing.burnRate = Number(ev.burnRate) || 0; existing.costManual = true; }
+  if (ev.runaway !== undefined) existing.runawayManual = !!ev.runaway;
   if (ev.state !== undefined) {
     if (!VALID_STATES.includes(ev.state)) return { error: `invalid state: ${ev.state}` };
     existing.state = ev.state;
@@ -454,7 +488,11 @@ function launchSession(cwd, resume, prompt) {
   if (resume && !/^[\w-]+$/.test(resume)) return { error: 'bad session id' };
   // optional initial task: strip quotes/newlines, cap length, wrap for the shell
   const task = prompt ? String(prompt).replace(/["\r\n]+/g, ' ').trim().slice(0, 1500) : '';
-  const inner = resume ? `claude --resume ${resume}` : (task ? `claude "${task}"` : 'claude');
+  // the launcher uses `claude` on PATH by default; let users point at a full path
+  // (aoc-config.json claudeCmd or the Config panel) if `claude` isn't on PATH.
+  const rawCli = (cfg.claudeCmd && String(cfg.claudeCmd).trim()) || 'claude';
+  const cli = (/\s/.test(rawCli) && !/^["']/.test(rawCli)) ? `"${rawCli}"` : rawCli;
+  const inner = resume ? `${cli} --resume ${resume}` : (task ? `${cli} "${task}"` : cli);
   try {
     if (process.platform === 'win32') {
       spawn(`start "Hivemind: Claude" cmd /k ${inner}`, { cwd, shell: true, detached: true, stdio: 'ignore' }).unref();
@@ -509,6 +547,10 @@ async function gitAction(cwd, action, message, arg) {
 
 function snapshot() {
   const list = Array.from(agents.values());
+  for (const a of list) {
+    const active = a.state !== 'idle' && a.state !== 'done';
+    a.runaway = active && (a.runawayManual || (Number(a.burnRate) || 0) >= BURN_ALERT);
+  }
   const byProject = {};
   for (const a of list) {
     const pj = a.project || 'unknown';
@@ -881,6 +923,16 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true, cmd: cfg.editorCmd });
   }
 
+  if (url === '/api/claude-config' && req.method === 'GET') {
+    return sendJson(res, 200, { cmd: cfg.claudeCmd || '' });
+  }
+  if (url === '/api/claude-config' && req.method === 'POST') {
+    const body = await readBody(req);
+    cfg.claudeCmd = body && body.cmd ? String(body.cmd).trim() : '';
+    saveConfig();
+    return sendJson(res, 200, { ok: true, cmd: cfg.claudeCmd });
+  }
+
   if (url === '/api/nudge-config' && req.method === 'GET') {
     return sendJson(res, 200, { onSend: !!cfg.nudgeOnSend, taskName: cfg.nudgeTaskName || 'Hivemind Nudge' });
   }
@@ -957,6 +1009,42 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, r.error ? 400 : 200, r);
   }
 
+  if (url === '/api/component-generate' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.type || !body.prompt) return sendJson(res, 400, { error: 'type and prompt required' });
+    // hand the request to a LIVE Claude session (no nested `claude -p`): queue an
+    // instruction to use the component-builder skill, then nudge it awake.
+    const roots = Array.from(agents.values()).filter((a) => a.root && !a.closed);
+    const tcwds = (Array.isArray(body.targets) ? body.targets : []).filter((t) => t && t !== 'global').map((x) => String(x).toLowerCase());
+    let sess = roots.find((a) => a.cwd && tcwds.includes(String(a.cwd).toLowerCase()));
+    if (!sess) sess = roots.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+    if (!sess) return sendJson(res, 200, { error: 'No running Claude session to hand off to — open one and try again.' });
+    const sid = sess.sessionId || String(sess.id).replace(/^sess:/, '');
+    const tg = (Array.isArray(body.targets) && body.targets.length ? body.targets : ['global']).map((t) => (t === 'global' ? 'global (~/.claude)' : t)).join(', ');
+    const text = `Use the component-builder skill to create a ${body.type} from this request: "${String(body.prompt).replace(/"/g, "'").slice(0, 600)}". Deploy it to: ${tg}. Prefer the Hivemind bridge (POST http://localhost:3131/api/component-new) so it is validated, then tell me where it landed.`;
+    queueCommand(sid, 'message', text);
+    maybeNudge();
+    return sendJson(res, 200, { ok: true, session: sess.project || sid.slice(0, 8), sid });
+  }
+
+  if (url === '/api/component-new' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.type || !body.name) return sendJson(res, 400, { error: 'type and name required' });
+    const targets = Array.isArray(body.targets) && body.targets.length ? body.targets : [body.cwd];
+    const results = [];
+    for (const t of targets) {
+      const dir = (t === 'global' || !t) ? os.homedir() : t;
+      const r = projects.newComponent({
+        type: body.type, dir, overwrite: !!body.overwrite,
+        name: body.name, description: body.description, model: body.model,
+        color: body.color, tools: body.tools, argumentHint: body.argumentHint, body: body.body,
+      });
+      results.push({ target: t === 'global' ? 'global' : dir, ...r });
+      if (r.ok) console.log(`[new ${body.type}] ${r.path}`);
+    }
+    return sendJson(res, 200, { results });
+  }
+
   if (url === '/api/copy-component' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
@@ -992,6 +1080,7 @@ server.listen(argPort, () => {
   startTelegramPolling();
   setInterval(retireSweep, 12000);
   setInterval(checkBudget, 180000); setTimeout(checkBudget, 8000);
+  setInterval(sampleBurn, 30000); setTimeout(sampleBurn, 6000);
   license.verify(LICENSE_KEY, cfg.gumroadProduct).then((s) => { licenseState = s; console.log(`[license] ${s.mode}`); });
 });
 
