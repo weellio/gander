@@ -33,6 +33,9 @@ Beyond visualization, Hivemind is a local control panel for everything Claude Co
 - **Config** — view a project's hooks, MCP servers, and raw `settings.json`; delete a hook event or MCP server.
 - **History** — recent sessions across all projects with their first prompt; **▶ Resume** any one (`claude --resume <id>` in a terminal) or copy the command.
 - **Telegram** — get pinged when a session is waiting on you, and reply or `/stop` from your phone.
+- **＋ New task** — a top-bar button (and `/`-palette entry): type a goal, pick a project, and it opens a new Claude session working on it.
+
+> **Note:** **▶ Start** / **＋ New task** open a *fresh terminal* session, so Claude Code shows its one-time **"trust this folder"** prompt for that project — choose **"1. Yes, I trust this folder"** to continue. You normally don't see this when opening from VS Code because the folder is already trusted there.
 
 ## Screenshots
 
