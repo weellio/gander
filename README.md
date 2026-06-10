@@ -230,6 +230,19 @@ States: `idle · thinking · coding · spawning · reading · testing · error �
 - **Replies aren't instant.** They're queued and delivered when the session next runs a turn; enable **Config → Wake idle sessions** to nudge a parked session so it picks up your reply right away.
 - **My scheduled routine's email/calendar didn't work.** Routines run **headlessly** (`claude -p`), and **interactively-authenticated MCP servers** (e.g. the claude.ai Gmail/Calendar connectors) often **aren't available unattended** — they need an interactive login the headless run can't do. Skills and token-based/local MCP servers work fine. Test a routine with **Run now** first to see what's available before relying on a schedule. Also: routines run with the permission mode you pick (default **skip all prompts**, since nothing's there to answer them) — keep briefing routines **read-only**.
 
+## Platform support & contributing
+
+Hivemind is developed and exercised daily on **Windows**. The dashboard, bridge, and all the data features (projects, usage, GitHub, history, routines/briefings) are plain Node + browser and should work anywhere. The **OS-specific surface is the window automation** — launching sessions and typing into them:
+
+| What | Windows | macOS | Linux |
+|------|---------|-------|-------|
+| Launch a session (▶ Start / ＋ New task) | `cmd` + captured window PID | `osascript` (Terminal) | `x-terminal-emulator` |
+| Idle nudge / ⌨ quick-keys (type into a session window) | WScript + PID/title | `osascript` keystrokes | `xdotool` |
+| Open folder / editor | ✓ | `open` | `xdg-open` |
+| Audio (TTS + voice input) | browser Web Speech | browser Web Speech | browser Web Speech |
+
+**On macOS or Linux? Please give it a spin and open issues/PRs** — that's the fastest way to make it solid everywhere. The window-automation scripts (`scripts/nudge-idle.sh`, `scripts/sendkeys.sh`) and the launch/open paths in `bridge/server.js` are the most likely places to need a tweak. Bug reports, "it didn't work on my distro" notes, and PRs are all welcome. 🙏
+
 ## Support
 
 Hivemind is free and always will be. If it saves you time (or money), you can [**buy me a coffee** ☕](https://www.paypal.com/ncp/payment/G8NNLNUHD6SFW) — and a ⭐ on the repo genuinely helps.
