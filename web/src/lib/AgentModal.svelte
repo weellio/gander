@@ -75,6 +75,8 @@
     try { await fetch('/api/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: agent.cwd, target }) }); } catch (_) {}
   }
   function onKey(e) { if (e.key === 'Escape') onClose(); }
+  function onReplyKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send('message'); } }
+  function autogrow(e) { const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(160, t.scrollHeight) + 'px'; }
   function rel(ts) { if (!ts) return ''; const s = Math.max(0, Math.floor((Date.now() - ts) / 1000)); if (s < 60) return s + 's'; const m = Math.floor(s / 60); if (m < 60) return m + 'm'; const h = Math.floor(m / 60); if (h < 24) return h + 'h'; return Math.floor(h / 24) + 'd'; }
 </script>
 
@@ -130,9 +132,11 @@
       {/if}
 
       <div class="reply">
-        <input bind:value={msg} placeholder="reply / send a task…" onkeydown={(e) => e.key === 'Enter' && send('message')} />
-        <button class="act" disabled={busy === 'message'} onclick={() => send('message')}>{busy === 'message' ? 'Sending…' : 'Send'}</button>
-        <button class="act stop" disabled={busy === 'stop'} onclick={() => send('stop')}>{busy === 'stop' ? 'Stopping…' : 'Stop'}</button>
+        <textarea bind:value={msg} rows="1" placeholder="reply / send a task…  (Enter to send · Shift+Enter for a new line)" onkeydown={onReplyKey} oninput={autogrow}></textarea>
+        <div class="rbtns">
+          <button class="act" disabled={busy === 'message'} onclick={() => send('message')}>{busy === 'message' ? 'Sending…' : 'Send'}</button>
+          <button class="act stop" disabled={busy === 'stop'} onclick={() => send('stop')}>{busy === 'stop' ? 'Stopping…' : 'Stop'}</button>
+        </div>
       </div>
       {#if flash}<div class="flash" class:err={flash[0] === '✗' || flash[0] === '⚠'}>{flash}</div>{/if}
       <div class="foot">Replies are delivered when the agent next checks in. “Stop” halts it at its next tool.</div>
@@ -177,10 +181,12 @@
   .chips { flex-direction: row; flex-wrap: wrap; gap: 6px; }
   .chip { font-size: 10px; background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary);
     border-radius: 99px; padding: 3px 8px; color: var(--color-text-secondary); }
-  .reply { display: flex; gap: 6px; }
-  .reply input { flex: 1 1 auto; min-width: 0; font-size: 12px; padding: 6px 8px;
+  .reply { display: flex; gap: 6px; align-items: flex-end; }
+  .reply textarea { flex: 1 1 auto; min-width: 0; font-size: 12px; padding: 6px 8px; font-family: inherit;
+    line-height: 1.4; resize: none; overflow-y: auto; max-height: 160px;
     border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md);
     background: var(--color-background-secondary); color: var(--color-text-primary); }
+  .rbtns { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
   .reply button { font-size: 11px; padding: 6px 10px; border-radius: var(--border-radius-md); cursor: pointer;
     border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); }
   .reply button.stop { color: #EF4444; border-color: #EF4444; }

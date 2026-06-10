@@ -3,6 +3,7 @@
   import { STATE_COLORS, STATE_LABEL } from './lib/states.js';
   import { avatarMode, layout, images, soundOn, autoUsage, fastPoll, animations, desktopNotify, costAlerts } from './lib/stores.js';
   import AgentTile from './lib/AgentTile.svelte';
+  import AgentModal from './lib/AgentModal.svelte';
   import ActionImages from './lib/ActionImages.svelte';
   import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
   import CostPanel from './lib/CostPanel.svelte';
@@ -129,6 +130,7 @@
   let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false });
   function openP(k) { panels[k] = true; menuOpen = false; }
   let transcriptId = $state(null);
+  let tileModalId = $state(null);   // mosaic tile → full agent modal
   let paletteOpen = $state(false);
   let focusReq = $state(null);
   function onGlobalKey(e) {
@@ -400,6 +402,7 @@
   <FeedPanel bind:open={panels.feed} onView={(sid) => (transcriptId = sid)} />
   <SearchPanel bind:open={panels.search} onView={(sid) => (transcriptId = sid)} />
   <TranscriptPanel bind:sessionId={transcriptId} />
+  {#if tileModalId}<AgentModal id={tileModalId} onClose={() => (tileModalId = null)} />{/if}
 
   <div class="statusbar">
     <strong>{selectedProject || 'All open projects'}</strong>
@@ -428,7 +431,7 @@
   {:else}
     <div class="grid">
       {#each shown as agent (agent.id)}
-        <AgentTile {agent} />
+        <AgentTile {agent} onOpen={(id) => (tileModalId = id)} />
       {/each}
     </div>
   {/if}

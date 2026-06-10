@@ -84,12 +84,10 @@
 {#if isCanvas}
   <canvas bind:this={canvas} width="240" height="200" class="av-canvas" class:smooth={$avatarMode === 'desk'}></canvas>
 {:else}
-  <div class="img-wrap" class:plain={$avatarMode === 'gif'} data-state={agent.state} style="--c:{color}"
-       role="button" tabindex="0"
-       title="Click: set this agent's image · Shift-click: set for this state · Alt-click: reset"
-       onclick={pickImage} onkeydown={(e) => e.key === 'Enter' && pickImage(e)}>
+  <div class="img-wrap" class:plain={$avatarMode === 'gif'} data-state={agent.state} style="--c:{color}">
     <img class="img" src={imgSrc} alt="" onerror={onImgErr} />
-    <div class="edit">✎</div>
+    <button class="edit" title="Set image · Shift-click: for this state · Alt-click: reset"
+            onclick={(e) => { e.stopPropagation(); pickImage(e); }}>✎</button>
     <input bind:this={fileInput} type="file" accept="image/*" style="display:none"
            onclick={(e) => e.stopPropagation()} onchange={onPick} />
     <div class="fx">
@@ -118,8 +116,9 @@
   .img-wrap.plain .fx { display: none; }
   .img-wrap { cursor: pointer; }
   .edit { position: absolute; bottom: 4px; left: 4px; display: none; font-size: 11px; color: #fff;
-    background: rgba(0,0,0,0.5); border-radius: 4px; padding: 0 4px; z-index: 3; }
+    background: rgba(0,0,0,0.5); border: none; border-radius: 4px; padding: 1px 5px; z-index: 3; cursor: pointer; }
   .img-wrap:hover .edit { display: block; }
+  .edit:hover { background: rgba(0,0,0,0.75); }
   @keyframes pulse { 0%,100%{ box-shadow:0 0 0 2px var(--c);} 50%{ box-shadow:0 0 9px 2px var(--c);} }
   @keyframes shake { 0%,100%{transform:translateX(0);} 25%{transform:translateX(-2px);} 75%{transform:translateX(2px);} }
   .img { width: 100%; height: 100%; object-fit: cover; display: block; }
