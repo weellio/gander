@@ -211,7 +211,10 @@ States: `idle · thinking · coding · spawning · reading · testing · error �
 - **Telegram alerts/replies** — `{ "telegramToken": "...", "telegramChatId": "...", "dashboardUrl": "..." }` (or `AOC_TG_TOKEN` / `AOC_TG_CHAT` / `AOC_DASH_URL`). For inbound replies, the bot must have no webhook — use a dedicated bot via `"telegramReplyToken"` if needed.
 - **Avatar images** — imported from the dashboard (**Images…** / **Action images…**), stored in the browser's localStorage.
 - **Runaway burn threshold** — `{ "burnAlert": 5.0 }` ($/min, default `5.0`). An active session gets the red "runaway" highlight only when its smoothed spend stays above this for two samples in a row (so a single big turn doesn't trip it). The visual can be toggled per-browser in Settings → *Cost & burn alerts*. Note: spend is *estimated* from token counts at API list prices.
-- **Claude command / path** — `{ "claudeCmd": "" }`. The **▶ Start** / Resume buttons run `claude` (on PATH) by default. If you get *"'claude' is not recognized"*, set this to the full path to the CLI — find it with `where claude` (Windows) / `which claude` (macOS/Linux), e.g. `C:\Users\you\.local\bin\claude.exe`. Also settable from Settings → *Claude command / path*.
+- **New session options** (Settings → *New session options*, applied to **▶ Start** and **＋ New task**):
+  - **Claude command / path** — `{ "claudeCmd": "" }`. Runs `claude` on PATH by default; if you get *"'claude' is not recognized"*, set the full path (`where claude` / `which claude`, e.g. `C:\Users\you\.local\bin\claude.exe`).
+  - **Permission mode** — `{ "launchPermMode": "" }`: `""` (ask, default) · `acceptEdits` · `plan` · `bypass`. **`bypass`** launches with `--dangerously-skip-permissions` so Claude won't prompt before edits/commands — handy if you don't want to babysit prompts, but only use it on projects you trust. *(The one-time "trust this folder" prompt has no bypass flag, but Claude remembers it per folder after you accept once.)*
+  - **Extra flags** — `{ "launchFlags": "" }`: appended verbatim, e.g. `--model sonnet`.
 
 ## Support
 
