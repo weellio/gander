@@ -40,6 +40,7 @@
         ['Usage / cost', 'Token & cost analytics from your transcripts: totals, 30-day chart, per-project/model, priciest sessions.'],
         ['GitHub', 'Open PRs & issues per project (★ stars · ⑂ forks), click to open in the browser, and create a pull request.'],
         ['Config', 'View a project’s hooks, MCP servers & raw settings; add or delete an MCP server, delete a hook — plus set up Telegram (live, no restart).'],
+        ['Routines & briefings', 'Save reusable prompts (that can call skills/MCP), Run now or schedule daily. They run headlessly and post their output as a “briefing” — a morning brief, a nightly digest, etc. A fresh one greets you with a card.'],
         ['Session history', 'Recent sessions across all projects with their first prompt — View the transcript or ▶ Resume any one.'],
         ['Search', 'Search across every session transcript + project — find which session touched a file or topic, then open it.'],
         ['Activity feed', 'A live chronological ticker of agent events, with an errors-only filter to spotlight failures.'],
@@ -68,6 +69,7 @@
         ['Sub-agents show no dollar amount', 'Cost is tracked per session (one transcript). A sub-agent’s spend is part of its parent session, so only the session (root) carries the figure.'],
         ['Why does a session show “$X/min”?', 'Spend is estimated from token counts at API list prices — on a Max/subscription plan you aren’t literally paying that. Treat it as a relative “spending fast” signal.'],
         ['Replies aren’t instant', 'Replies are queued and delivered when the session next runs a turn. Turn on Config → Wake idle sessions to nudge a parked session so it picks up your reply right away.'],
+        ['Routine email/calendar didn’t work', 'Routines run headlessly (claude -p). Interactively-authenticated MCP (claude.ai Gmail/Calendar connectors) often isn’t available unattended; skills and token-based MCP are fine. Use Run now to see what’s available, and keep briefing routines read-only.'],
       ],
     },
   ];

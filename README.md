@@ -31,6 +31,7 @@ Beyond visualization, Hivemind is a local control panel for everything Claude Co
 - **Usage** — token & cost analytics parsed from your `~/.claude` transcripts (including sub-agent sessions): total spend, 30-day chart, per-project / per-model breakdowns, priciest sessions. Today's + total spend also show live in the status bar.
 - **GitHub** — open PRs and issues per project via the `gh` CLI, click to open in the browser.
 - **Config** — view a project's hooks, MCP servers, and raw `settings.json`; delete a hook event or MCP server.
+- **Routines & briefings** — save reusable prompts that call your skills/MCP (e.g. a *Morning Brief* that checks mail, calendar & news), **Run now** or **schedule** them daily at a set time. They run **headlessly** (`claude -p`) and their output lands on the dashboard as a **briefing** — a fresh one greets you with a card and can ping Telegram/desktop. "What did I miss overnight?", answered.
 - **History** — recent sessions across all projects with their first prompt; **▶ Resume** any one (`claude --resume <id>` in a terminal) or copy the command.
 - **Telegram** — get pinged when a session is waiting on you, and reply or `/stop` from your phone.
 - **＋ New task** — a top-bar button (and `/`-palette entry): type a goal, pick a project, and it opens a new Claude session working on it.
@@ -227,6 +228,7 @@ States: `idle · thinking · coding · spawning · reading · testing · error �
 - **A sub-agent shows no cost.** Cost is per **session** (one transcript); a sub-agent's spend rolls up into its parent session, so only the session (root) carries the figure.
 - **Why "$X/min" / why so high?** Spend is **estimated** from token counts at API list prices — on a Max/subscription plan you aren't literally paying that; treat it as a relative "spending fast" signal.
 - **Replies aren't instant.** They're queued and delivered when the session next runs a turn; enable **Config → Wake idle sessions** to nudge a parked session so it picks up your reply right away.
+- **My scheduled routine's email/calendar didn't work.** Routines run **headlessly** (`claude -p`), and **interactively-authenticated MCP servers** (e.g. the claude.ai Gmail/Calendar connectors) often **aren't available unattended** — they need an interactive login the headless run can't do. Skills and token-based/local MCP servers work fine. Test a routine with **Run now** first to see what's available before relying on a schedule. Also: routines run with the permission mode you pick (default **skip all prompts**, since nothing's there to answer them) — keep briefing routines **read-only**.
 
 ## Support
 
