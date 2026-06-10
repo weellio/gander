@@ -517,6 +517,18 @@ function openPath(p, target) {
 }
 
 // Launch a Claude Code session in a new terminal at cwd (optionally resuming one).
+// Flags appended to `claude` for ▶ Start / ＋ New task, from the Config panel.
+// permMode: '' (ask, default) | 'acceptEdits' | 'plan' | 'bypass' (skip all prompts).
+function buildLaunchFlags() {
+  const parts = [];
+  if (cfg.launchPermMode === 'bypass') parts.push('--dangerously-skip-permissions');
+  else if (cfg.launchPermMode === 'acceptEdits') parts.push('--permission-mode acceptEdits');
+  else if (cfg.launchPermMode === 'plan') parts.push('--permission-mode plan');
+  const extra = cfg.launchFlags ? String(cfg.launchFlags).replace(/[\r\n]+/g, ' ').trim() : '';
+  if (extra) parts.push(extra);
+  return parts.join(' ');
+}
+
 function launchSession(cwd, resume, prompt) {
   if (resume && !/^[\w-]+$/.test(resume)) return { error: 'bad session id' };
   // optional initial task: strip quotes/newlines, cap length, wrap for the shell
@@ -525,7 +537,9 @@ function launchSession(cwd, resume, prompt) {
   // (aoc-config.json claudeCmd or the Config panel) if `claude` isn't on PATH.
   const rawCli = (cfg.claudeCmd && String(cfg.claudeCmd).trim()) || 'claude';
   const cli = (/\s/.test(rawCli) && !/^["']/.test(rawCli)) ? `"${rawCli}"` : rawCli;
-  const inner = resume ? `${cli} --resume ${resume}` : (task ? `${cli} "${task}"` : cli);
+  const flags = buildLaunchFlags();
+  const base = flags ? `${cli} ${flags}` : cli;
+  const inner = resume ? `${base} --resume ${resume}` : (task ? `${base} "${task}"` : base);
   // The bridge is usually started by a Claude session, so it carries CLAUDECODE /
   // CLAUDE_CODE_* — a child terminal would inherit them and Claude refuses to launch
   // ("cannot be launched inside another Claude Code session"). Strip them so the new
@@ -972,13 +986,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url === '/api/claude-config' && req.method === 'GET') {
-    return sendJson(res, 200, { cmd: cfg.claudeCmd || '' });
+    return sendJson(res, 200, { cmd: cfg.claudeCmd || '', permMode: cfg.launchPermMode || '', flags: cfg.launchFlags || '' });
   }
   if (url === '/api/claude-config' && req.method === 'POST') {
     const body = await readBody(req);
-    cfg.claudeCmd = body && body.cmd ? String(body.cmd).trim() : '';
+    if (body && body.cmd !== undefined) cfg.claudeCmd = String(body.cmd).trim();
+    if (body && body.permMode !== undefined) cfg.launchPermMode = ['acceptEdits', 'plan', 'bypass'].includes(body.permMode) ? body.permMode : '';
+    if (body && body.flags !== undefined) cfg.launchFlags = String(body.flags).replace(/[\r\n]+/g, ' ').trim();
     saveConfig();
-    return sendJson(res, 200, { ok: true, cmd: cfg.claudeCmd });
+    return sendJson(res, 200, { ok: true, cmd: cfg.claudeCmd || '', permMode: cfg.launchPermMode || '', flags: cfg.launchFlags || '' });
   }
 
   if (url === '/api/nudge-config' && req.method === 'GET') {

@@ -39,10 +39,10 @@
   async function loadEditor() { try { const r = await fetch('/api/editor'); const j = await r.json(); edCmd = (j && j.cmd) || ''; } catch (_) {} }
   async function saveEditor() { edStatus = 'Saving…'; const r = await post('/api/editor', { cmd: edCmd }); edStatus = r && r.ok ? '✓ Saved' : 'Error'; }
 
-  // ── claude command / path (for the ▶ Start button) ──
-  let clOpen = $state(false); let clCmd = $state(''); let clStatus = $state('');
-  async function loadClaude() { try { const r = await fetch('/api/claude-config'); const j = await r.json(); clCmd = (j && j.cmd) || ''; } catch (_) {} }
-  async function saveClaude() { clStatus = 'Saving…'; const r = await post('/api/claude-config', { cmd: clCmd }); clStatus = r && r.ok ? '✓ Saved' : 'Error'; }
+  // ── new-session options (▶ Start / ＋ New task: claude path, permission mode, flags) ──
+  let clOpen = $state(false); let clCmd = $state(''); let clPerm = $state(''); let clFlags = $state(''); let clStatus = $state('');
+  async function loadClaude() { try { const r = await fetch('/api/claude-config'); const j = await r.json(); clCmd = (j && j.cmd) || ''; clPerm = (j && j.permMode) || ''; clFlags = (j && j.flags) || ''; } catch (_) {} }
+  async function saveClaude() { clStatus = 'Saving…'; const r = await post('/api/claude-config', { cmd: clCmd, permMode: clPerm, flags: clFlags }); clStatus = r && r.ok ? '✓ Saved' : 'Error'; }
 
   // ── idle-session nudge (the bridge runs it itself — no external task needed) ──
   let nzOpen = $state(false); let nzOn = $state(false); let nzInterval = $state(0); let nzStatus = $state('');
@@ -182,15 +182,22 @@
 
     <div class="tg">
       <button class="collapser" onclick={() => (clOpen = !clOpen)}>
-        <span class="caret">{clOpen ? '▾' : '▸'}</span> Claude command / path
-        {#if clCmd}<span class="tg-state">· custom</span>{/if}
+        <span class="caret">{clOpen ? '▾' : '▸'}</span> New session options
+        {#if clPerm === 'bypass'}<span class="tg-state">· skip prompts</span>{:else if clCmd || clPerm || clFlags}<span class="tg-state">· custom</span>{/if}
       </button>
       {#if clOpen}
         <div class="tg-form">
-          <input class="in" placeholder="blank = 'claude' on PATH" bind:value={clCmd} />
+          <select class="in" bind:value={clPerm}>
+            <option value="">Permission prompts: Ask (Claude's default)</option>
+            <option value="acceptEdits">Permissions: auto-accept edits</option>
+            <option value="plan">Permissions: plan only (read-only)</option>
+            <option value="bypass">Permissions: skip ALL prompts</option>
+          </select>
+          <input class="in" placeholder="extra flags, e.g. --model sonnet" bind:value={clFlags} />
+          <input class="in" placeholder="claude path (blank = 'claude' on PATH)" bind:value={clCmd} />
           <div class="tg-btns"><button class="select" onclick={saveClaude}>Save</button></div>
           {#if clStatus}<div class="tg-status">{clStatus}</div>{/if}
-          <div class="tg-hint">Set this if ▶ Start says “'claude' is not recognized”. Use the full path to the Claude CLI — find it with <code>where claude</code> (Windows) or <code>which claude</code> (macOS/Linux), e.g. C:\Users\you\AppData\Roaming\npm\claude.cmd. Used by ▶ Start and Resume.</div>
+          <div class="tg-hint">Applies to ▶ Start and ＋ New task. <b>Skip ALL prompts</b> launches with <code>--dangerously-skip-permissions</code> — Claude won't ask before edits/commands, so only use it on projects you trust. The one-time <b>“trust this folder”</b> prompt has no bypass flag, but Claude remembers it per folder after you accept once. Set the path if Start says “'claude' is not recognized” (<code>where claude</code> / <code>which claude</code>).</div>
         </div>
       {/if}
     </div>
