@@ -1073,6 +1073,21 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, r.error ? 400 : 200, r);
   }
 
+  if (url === '/api/sendkeys' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.sessionId || !body.keys) return sendJson(res, 400, { error: 'sessionId and keys required' });
+    // type a keystroke into the session's window (to answer interactive prompts).
+    const root = agents.get('sess:' + body.sessionId) || Array.from(agents.values()).find((a) => a.sessionId === body.sessionId);
+    const match = (root && root.project) || String(body.sessionId);
+    const keys = String(body.keys).slice(0, 40);
+    if (process.platform === 'win32') {
+      spawnSafe('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(SCRIPTS_DIR, 'sendkeys.ps1'), '-Match', match, '-Keys', keys], { windowsHide: true });
+    } else {
+      spawnSafe('bash', [path.join(SCRIPTS_DIR, 'sendkeys.sh'), '--match', match, '--keys', keys], {});
+    }
+    return sendJson(res, 200, { ok: true, match });
+  }
+
   if (url === '/api/drop-image' && req.method === 'POST') {
     const body = await readBodyLarge(req);
     if (!body || !body.dataUrl || !body.sessionId) return sendJson(res, 400, { error: 'sessionId and dataUrl required' });

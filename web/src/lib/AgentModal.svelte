@@ -105,6 +105,18 @@
     if (!agent || !agent.cwd) return;
     try { await fetch('/api/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: agent.cwd, target }) }); } catch (_) {}
   }
+  // type a keystroke into the session's terminal window — answers interactive
+  // numbered prompts / y-n / arrow menus that the message queue can't reach.
+  async function sendKey(keys) {
+    if (!agent) return;
+    const sid = agent.sessionId || String(agent.id).replace(/^sess:/, '');
+    try {
+      const r = await fetch('/api/sendkeys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: sid, keys }) });
+      const j = await r.json();
+      const pretty = keys.replace('{ENTER}', '↵').replace('{ESC}', 'Esc').replace('{UP}', '↑').replace('{DOWN}', '↓');
+      showFlash(j && j.ok ? '⌨ sent ' + pretty : '✗ ' + ((j && j.error) || 'failed'));
+    } catch (_) { showFlash('✗ Failed — is the bridge running?'); }
+  }
   function onKey(e) { if (e.key === 'Escape') onClose(); }
   function onReplyKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send('message'); } }
   function autogrow(e) { const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(160, t.scrollHeight) + 'px'; }
@@ -159,6 +171,23 @@
           {#if sid}<button class="select" onclick={() => (txId = sid)}>📄 Transcript</button>{/if}
           {#if agent.cwd}<button class="select" onclick={() => openIn('folder')}>📂 Open folder</button>{/if}
           {#if agent.cwd}<button class="select" onclick={() => openIn('editor')}>Open in VS Code</button>{/if}
+        </div>
+      {/if}
+
+      {#if agent.cwd}
+        <div class="keys" class:awaiting={agent.state === 'awaiting'} title="Types the key into this session's terminal window — keep the Claude terminal focused there.">
+          <span class="klbl">⌨ Answer a prompt{#if agent.state === 'awaiting'} <span class="now">· waiting on you</span>{/if}</span>
+          <div class="kbtns">
+            <button onclick={() => sendKey('1{ENTER}')}>1</button>
+            <button onclick={() => sendKey('2{ENTER}')}>2</button>
+            <button onclick={() => sendKey('3{ENTER}')}>3</button>
+            <button onclick={() => sendKey('{UP}')} title="Arrow up">↑</button>
+            <button onclick={() => sendKey('{DOWN}')} title="Arrow down">↓</button>
+            <button onclick={() => sendKey('{ENTER}')} title="Enter">↵</button>
+            <button onclick={() => sendKey('y')}>y</button>
+            <button onclick={() => sendKey('n')}>n</button>
+            <button onclick={() => sendKey('{ESC}')}>Esc</button>
+          </div>
         </div>
       {/if}
 
@@ -248,4 +277,13 @@
   .burn { color: #EF4444; font-weight: 600; }
   .foot { font-size: 10px; color: var(--color-text-tertiary); }
   .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .keys { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 9px; border-radius: 8px;
+    background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); }
+  .keys.awaiting { border-color: #F59E0B; background: color-mix(in srgb, #F59E0B 10%, var(--color-background-secondary)); }
+  .klbl { font-size: 10px; color: var(--color-text-tertiary); }
+  .now { color: #F59E0B; font-weight: 600; }
+  .kbtns { display: flex; gap: 4px; flex-wrap: wrap; }
+  .kbtns button { min-width: 26px; font-size: 11px; padding: 4px 7px; border-radius: var(--border-radius-md); cursor: pointer;
+    border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); font-family: var(--font-mono); }
+  .kbtns button:hover { border-color: var(--accent, #6366F1); }
 </style>
