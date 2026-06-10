@@ -246,6 +246,10 @@ async function sampleBurn() {
     const now = Date.now();
     for (const a of agents.values()) {
       if (a.costManual) continue;                       // explicit override (e.g. demo) wins
+      // Cost is tracked per SESSION (one transcript). A sub-agent's sessionId is its
+      // parent's, so attributing the session total to each sub-agent shows the same
+      // number on all of them — only the root session should carry the cost.
+      if (!a.root) { if (a.costUSD != null || a.burnRate) { a.costUSD = null; a.burnRate = 0; a.burnStreak = 0; } continue; }
       const sid = sidOf(a);
       if (!sid) continue;
       const s = u.bySession[sid];
