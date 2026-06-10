@@ -27,7 +27,7 @@
     loading = false;
   }
 
-  function openPanel() { open = true; cfg = null; cwd = ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadNudge(); }
+  function openPanel() { open = true; cfg = null; cwd = ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); }
 
   // ── cost budget (global) ──
   let bud = $state(null); let budDaily = $state(''); let budSession = $state(''); let budStatus = $state(''); let budOpen = $state(false);
@@ -38,6 +38,11 @@
   let edOpen = $state(false); let edCmd = $state(''); let edStatus = $state('');
   async function loadEditor() { try { const r = await fetch('/api/editor'); const j = await r.json(); edCmd = (j && j.cmd) || ''; } catch (_) {} }
   async function saveEditor() { edStatus = 'Saving…'; const r = await post('/api/editor', { cmd: edCmd }); edStatus = r && r.ok ? '✓ Saved' : 'Error'; }
+
+  // ── claude command / path (for the ▶ Start button) ──
+  let clOpen = $state(false); let clCmd = $state(''); let clStatus = $state('');
+  async function loadClaude() { try { const r = await fetch('/api/claude-config'); const j = await r.json(); clCmd = (j && j.cmd) || ''; } catch (_) {} }
+  async function saveClaude() { clStatus = 'Saving…'; const r = await post('/api/claude-config', { cmd: clCmd }); clStatus = r && r.ok ? '✓ Saved' : 'Error'; }
 
   // ── wake-on-send (fire the nudge scheduled task when a message is sent) ──
   let nzOpen = $state(false); let nzOn = $state(false); let nzTask = $state('Hivemind Nudge'); let nzStatus = $state('');
@@ -171,6 +176,21 @@
           <div class="tg-btns"><button class="select" onclick={saveEditor}>Save</button></div>
           {#if edStatus}<div class="tg-status">{edStatus}</div>{/if}
           <div class="tg-hint">Set this only if “Open in VS Code” fails — a full path (e.g. C:\Users\you\AppData\Local\Programs\Microsoft VS Code\bin\code.cmd) or another editor command like codium / subl. Receives the file/folder as its argument.</div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="tg">
+      <button class="collapser" onclick={() => (clOpen = !clOpen)}>
+        <span class="caret">{clOpen ? '▾' : '▸'}</span> Claude command / path
+        {#if clCmd}<span class="tg-state">· custom</span>{/if}
+      </button>
+      {#if clOpen}
+        <div class="tg-form">
+          <input class="in" placeholder="blank = 'claude' on PATH" bind:value={clCmd} />
+          <div class="tg-btns"><button class="select" onclick={saveClaude}>Save</button></div>
+          {#if clStatus}<div class="tg-status">{clStatus}</div>{/if}
+          <div class="tg-hint">Set this if ▶ Start says “'claude' is not recognized”. Use the full path to the Claude CLI — find it with <code>where claude</code> (Windows) or <code>which claude</code> (macOS/Linux), e.g. C:\Users\you\AppData\Roaming\npm\claude.cmd. Used by ▶ Start and Resume.</div>
         </div>
       {/if}
     </div>

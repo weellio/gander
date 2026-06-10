@@ -1,4 +1,5 @@
 <script>
+  import ComponentBuilder from './ComponentBuilder.svelte';
   let { open = $bindable(false) } = $props();
   let _wasOpen = false;
   $effect(() => { if (open && !_wasOpen) openPanel(); _wasOpen = open; });
@@ -11,6 +12,11 @@
   let gitMap = $state({});
   let costMap = $state({});
   let timer = null;
+
+  // component builder (new agent/skill/command)
+  let builderOpen = $state(false);
+  let builderCwd = $state('');
+  function openBuilder() { const ex = Object.keys(expanded).find((k) => expanded[k]); builderCwd = ex || ''; builderOpen = true; }
 
   // lightweight poll: just the project list + running badges (NOT git/cost — those are heavy)
   async function load() { try { const r = await fetch('/api/projects'); data = await r.json(); } catch (_) {} }
@@ -148,7 +154,7 @@
 {#if open}
   <div class="ov" onclick={closePanel} role="presentation"></div>
   <aside class="drawer" role="dialog" aria-label="Claude projects">
-    <div class="hd"><strong>Claude Projects</strong><button class="x" onclick={closePanel} aria-label="Close">✕</button></div>
+    <div class="hd"><strong>Claude Projects</strong><span class="hd-actions"><button class="newbtn" onclick={openBuilder} title="Create a new agent, skill, or command">+ New</button><button class="x" onclick={closePanel} aria-label="Close">✕</button></span></div>
 
     <div class="roots">
       <div class="lbl">Project folders</div>
@@ -306,8 +312,14 @@
   </aside>
 {/if}
 
+<ComponentBuilder bind:open={builderOpen} defaultCwd={builderCwd} onCreated={loadAll} />
+
 <style>
   .ov { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, 0.25); }
+  .hd-actions { display: flex; align-items: center; gap: 8px; }
+  .newbtn { font-size: 11px; padding: 2px 9px; border-radius: 99px; cursor: pointer;
+    border: 0.5px solid var(--accent, #6366F1); background: transparent; color: var(--accent, #6366F1); font-weight: 600; }
+  .newbtn:hover { background: color-mix(in srgb, var(--accent, #6366F1) 12%, transparent); }
   .drawer {
     position: fixed; top: 0; left: 0; bottom: 0; z-index: 91; width: 360px; max-width: 92vw;
     background: var(--color-background-primary); border-right: 0.5px solid var(--color-border-secondary);

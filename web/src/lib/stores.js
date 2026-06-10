@@ -18,3 +18,4 @@ export const autoUsage = persisted('aoc-auto-usage', true);       // auto-repars
 export const fastPoll = persisted('aoc-fast-poll', true);         // poll agent state at 0.5s (vs 2s) — set false to ease CPU
 export const animations = persisted('aoc-animations', true);      // office micro-animations (wandering, water cooler, chatter)
 export const desktopNotify = persisted('aoc-desktop-notify', false); // browser Notification when an agent needs input
+export const costAlerts = persisted('aoc-cost-alerts', true);     // show per-agent cost chips + the red "runaway" burn highlight

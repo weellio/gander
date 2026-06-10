@@ -1,5 +1,6 @@
 <script>
   import { STATE_COLORS, STATE_LABEL } from './states.js';
+  import { costAlerts } from './stores.js';
   import Avatar from './Avatar.svelte';
   import SessionInfo from './SessionInfo.svelte';
 
@@ -7,27 +8,45 @@
 
   let msg = $state('');
   let expanded = $state(false);
+  let flash = $state('');
+  let busy = $state('');
+  let flashTimer;
   let color = $derived(STATE_COLORS[agent.state] || '#6B7280');
   let awaiting = $derived(agent.state === 'awaiting');
   function hash(id) { let h = 0; const s = String(id); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
   let fd = $derived((hash(agent.id) % 50) / 10);
 
+  function showFlash(text) {
+    flash = text;
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => { flash = ''; }, 2200);
+  }
   async function send(type) {
+    if (busy) return;
+    if (type === 'message' && !msg.trim()) { showFlash('⚠ type a message first'); return; }
     const sessionId = agent.sessionId || String(agent.id).replace(/^sess:/, '');
+    busy = type;
     try {
-      await fetch('/api/command', {
+      const r = await fetch('/api/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, type, text: msg }),
       });
-      msg = '';
-    } catch (_) {}
+      if (r.ok) { showFlash(type === 'stop' ? '■ Stop sent' : '✓ Message sent'); if (type === 'message') msg = ''; }
+      else showFlash('✗ Failed');
+    } catch (_) { showFlash('✗ Failed'); }
+    finally { busy = ''; }
   }
 </script>
 
-<div class="tile" class:idle={agent.state === 'idle'} class:working={agent.state !== 'idle' && agent.state !== 'done' && !awaiting} class:sub={!!agent.parentId} class:awaiting style="--c:{color}; --fd:{fd}s" data-id={agent.id}>
+<div class="tile" class:idle={agent.state === 'idle'} class:working={agent.state !== 'idle' && agent.state !== 'done' && !awaiting} class:runaway={agent.runaway && $costAlerts} class:sub={!!agent.parentId} class:awaiting style="--c:{color}; --fd:{fd}s" data-id={agent.id}>
   <button class="head" onclick={() => (expanded = !expanded)} title="Toggle details">
     <span class="name">{agent.parentId ? '↳ ' : ''}{agent.name}</span>
+    {#if $costAlerts && agent.costUSD != null}
+      <span class="cost" class:hot={agent.runaway} title={agent.runaway ? `Burning ~$${(agent.burnRate || 0).toFixed(2)}/min — click and Stop it` : `Session cost ≈ $${agent.costUSD.toFixed(2)}`}>
+        {#if agent.runaway}💸 ${(agent.burnRate || 0).toFixed(2)}/min{:else}${agent.costUSD.toFixed(2)}{/if}
+      </span>
+    {/if}
     <span class="badge">{awaiting ? '🔔 ' : ''}{STATE_LABEL[agent.state] || agent.state}</span>
   </button>
 
@@ -54,9 +73,10 @@
   {#if agent.root}
     <div class="ctl">
       <input bind:value={msg} placeholder="message / question…" onkeydown={(e) => e.key === 'Enter' && send('message')} />
-      <button onclick={() => send('message')}>Send</button>
-      <button class="stop" onclick={() => send('stop')}>Stop</button>
+      <button disabled={busy === 'message'} onclick={() => send('message')}>{busy === 'message' ? '…' : 'Send'}</button>
+      <button class="stop" disabled={busy === 'stop'} onclick={() => send('stop')}>{busy === 'stop' ? '…' : 'Stop'}</button>
     </div>
+    {#if flash}<div class="flash" class:err={flash[0] === '✗' || flash[0] === '⚠'}>{flash}</div>{/if}
   {/if}
 </div>
 
@@ -81,6 +101,13 @@
   .tile.working::after { content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
     box-shadow: 0 0 14px -1px var(--c); animation: workglow 2.4s ease-in-out infinite; }
   @keyframes workglow { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.7; } }
+  .tile.runaway { border-left-color: #EF4444; border-color: color-mix(in srgb, #EF4444 55%, var(--color-border-tertiary)); }
+  .tile.runaway::after { content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); animation: burnpulse 1s ease-in-out infinite; }
+  @keyframes burnpulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } 50% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0.6); } }
+  .cost { font-size: 9px; font-family: var(--font-mono); padding: 2px 6px; border-radius: 99px; white-space: nowrap;
+    background: var(--color-background-secondary); color: var(--color-text-secondary); border: 0.5px solid var(--color-border-tertiary); }
+  .cost.hot { background: #EF4444; color: #fff; border-color: #EF4444; }
   .tile.sub { margin-left: 6px; }
   .tile.awaiting { opacity: 1; border-left-color: #F59E0B; }
   .tile.awaiting::after { content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
@@ -117,4 +144,10 @@
     background: var(--color-background-primary); color: var(--color-text-primary);
   }
   .ctl button.stop { color: #EF4444; border-color: #EF4444; }
+  .ctl button { transition: transform 0.06s ease, background 0.12s ease, box-shadow 0.12s ease; }
+  .ctl button:active:not(:disabled) { transform: translateY(1px) scale(0.96); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.25); }
+  .ctl button:disabled { opacity: 0.6; cursor: default; }
+  .flash { font-size: 10px; font-weight: 600; color: #10B981; margin-top: 2px; animation: flashin 0.18s ease; }
+  .flash.err { color: #EF4444; }
+  @keyframes flashin { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
 </style>

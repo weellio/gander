@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { STATE_COLORS, STATE_LABEL } from './states.js';
   import { paintFigure } from './avatars/desk.js';
-  import { animations } from './stores.js';
+  import { animations, costAlerts } from './stores.js';
   import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
@@ -662,6 +662,17 @@
           ctx.restore();
         }
 
+        // runaway cost highlight — bold red pulsing ring behind the figure
+        // (the $/min pill is drawn on TOP of the figure, further down).
+        if (agent.runaway && $costAlerts) {
+          const bp = 0.5 + 0.5 * Math.sin(t * 6 + (d.seed || 0) * 6.28);
+          ctx.save();
+          ctx.strokeStyle = hexA('#EF4444', 0.5 + 0.5 * bp);
+          ctx.lineWidth = 3; ctx.setLineDash([]);
+          ctx.beginPath(); ctx.arc(drawX, drawY, haloR * 0.92, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
+        }
+
         hitTargets.push({ id: agent.id, x: drawX, y: drawY, r: Math.max(30, 55 * fs) });
         ctx.globalAlpha = retireAlpha;
         ctx.save();
@@ -693,6 +704,32 @@
         ctx.textAlign = 'center';
         const lbl = agent.name && agent.name.length > 16 ? agent.name.slice(0, 15) + '…' : (agent.name || '');
         ctx.fillText(lbl, drawX, drawY + 50 * fs + 6);
+
+        // runaway burn badge — a bold red pill centered over the figure's chest, drawn
+        // on top so it stands out instead of blending into the name/state text.
+        if (agent.runaway && $costAlerts) {
+          const bp = 0.5 + 0.5 * Math.sin(t * 6 + (d.seed || 0) * 6.28);
+          const txt = '💸 $' + (Number(agent.burnRate) || 0).toFixed(2) + '/min';
+          ctx.save();
+          ctx.globalAlpha = 1;
+          ctx.font = 'bold 13px ui-sans-serif, system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const tw = ctx.measureText(txt).width;
+          const padX = 9, h = 22, w = tw + padX * 2;
+          const cx = drawX, cy = drawY - 16 * fs;        // upper chest
+          const bx = cx - w / 2, by = cy - h / 2, r = h / 2;
+          ctx.shadowColor = hexA('#EF4444', 0.55 + 0.4 * bp); ctx.shadowBlur = 12;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(bx, by, w, h, r);
+          else { ctx.moveTo(bx + r, by); ctx.arcTo(bx + w, by, bx + w, by + h, r); ctx.arcTo(bx + w, by + h, bx, by + h, r); ctx.arcTo(bx, by + h, bx, by, r); ctx.arcTo(bx, by, bx + w, by, r); }
+          ctx.fillStyle = '#DC2626'; ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.stroke();
+          ctx.fillStyle = '#fff';
+          ctx.fillText(txt, cx, cy + 0.5);
+          ctx.restore();
+        }
 
         // small state badge for root desks
         if (isRoot) {

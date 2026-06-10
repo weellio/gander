@@ -74,6 +74,10 @@
   }
 
   const notRepo = (x) => x && typeof x === 'object' && !Array.isArray(x) && x.error;
+
+  const CI_ICON = { success: '✓', failure: '✗', pending: '●' };
+  const REVIEW_LABEL = { approved: '✓ approved', changes: '✗ changes', review: '○ review' };
+  const REVIEW_TITLE = { approved: 'Approved', changes: 'Changes requested', review: 'Review required' };
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -163,12 +167,14 @@
             <div class="row-empty">No open pull requests.</div>
           {:else if Array.isArray(prList)}
             {#each prList as pr (pr.number)}
-              <button class="item-row" onclick={() => openUrl(pr.url)}>
+              <button class="item-row" class:needs={pr.priority === 0} class:soon={pr.priority === 1} onclick={() => openUrl(pr.url)}>
                 <span class="num mono">#{pr.number}</span>
                 <span class="title">{pr.title}</span>
                 <span class="meta-right">
                   {#if pr.isDraft}<span class="badge draft">draft</span>{/if}
-                  <span class="badge pr-state">{pr.state.toLowerCase()}</span>
+                  {#if pr.conflict}<span class="badge bad" title="Merge conflicts">conflict</span>{/if}
+                  {#if pr.ci && pr.ci !== 'none'}<span class="badge ci-{pr.ci}" title="CI {pr.ci}">{CI_ICON[pr.ci]} CI</span>{/if}
+                  {#if pr.review}<span class="badge rv-{pr.review}" title={REVIEW_TITLE[pr.review]}>{REVIEW_LABEL[pr.review]}</span>{/if}
                   <span class="author">@{pr.author}</span>
                   <span class="date">{fmtDate(pr.updatedAt)}</span>
                 </span>
@@ -258,6 +264,13 @@
   .draft { background: #7c3aed22; color: #7c3aed; }
   .pr-state { background: #16803322; color: #168033; }
   .iss-state { background: #16803322; color: #168033; }
+  .bad { background: #ef444422; color: #ef4444; }
+  .ci-success { background: #16803322; color: #168033; }
+  .ci-failure { background: #ef444422; color: #ef4444; }
+  .ci-pending { background: #f59e0b22; color: #b7791f; }
+  .rv-approved { background: #16803322; color: #168033; }
+  .rv-changes { background: #ef444422; color: #ef4444; }
+  .rv-review { background: var(--color-background-secondary); color: var(--color-text-tertiary); border: 0.5px solid var(--color-border-tertiary); }
   .section { padding: 8px 0; border-bottom: 0.5px solid var(--color-border-tertiary); }
   .section:last-child { border-bottom: none; }
   .sec-hd { display: flex; align-items: center; gap: 6px; padding: 4px 14px 6px; }
@@ -271,6 +284,8 @@
   }
   .item-row:last-child { border-bottom: none; }
   .item-row:hover { background: var(--color-background-secondary); }
+  .item-row.needs { border-left: 3px solid #ef4444; }
+  .item-row.soon { border-left: 3px solid #f59e0b; }
   .num { font-size: 10px; color: var(--color-text-tertiary); flex-shrink: 0; width: 32px; }
   .title { flex: 1 1 auto; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .meta-right { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }

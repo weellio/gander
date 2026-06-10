@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { STATE_COLORS, STATE_LABEL } from './states.js';
+  import { costAlerts } from './stores.js';
   import TranscriptPanel from './TranscriptPanel.svelte';
 
   let { id, onClose } = $props();
@@ -10,6 +11,9 @@
   let cost = $state(null);
   let gh = $state(null);
   let txId = $state(null);
+  let flash = $state('');
+  let busy = $state('');
+  let flashTimer;
   let sid = $derived(agent ? (agent.sessionId || String(agent.id).replace(/^sess:/, '')) : '');
 
   async function refresh() {
@@ -46,16 +50,25 @@
     return () => clearInterval(t);
   });
 
+  function showFlash(text) {
+    flash = text;
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => { flash = ''; }, 2200);
+  }
   async function send(type) {
-    if (!agent) return;
+    if (!agent || busy) return;
+    if (type === 'message' && !msg.trim()) { showFlash('⚠ type a message first'); return; }
     const sid = agent.sessionId || String(agent.id).replace(/^sess:/, '');
+    busy = type;
     try {
-      await fetch('/api/command', {
+      const r = await fetch('/api/command', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: sid, type, text: msg }),
       });
-      msg = '';
-    } catch (_) {}
+      if (r.ok) { showFlash(type === 'stop' ? '■ Stop sent — halts at next tool' : '✓ Message sent — delivered on next check-in'); if (type === 'message') msg = ''; }
+      else showFlash('✗ Failed — is the bridge running?');
+    } catch (_) { showFlash('✗ Failed — is the bridge running?'); }
+    finally { busy = ''; }
   }
   async function openIn(target) {
     if (!agent || !agent.cwd) return;
@@ -84,6 +97,7 @@
         {#if agent.role}<span title="Agent type">· {agent.role}</span>{/if}
         {#if agent.updatedAt}<span class="mono" title="Time since last event">· ⏱ {rel(agent.updatedAt)}</span>{/if}
         {#if cost}<span class="mono" title="This session's estimated spend">· 💰 ${cost.costUSD.toFixed(2)}</span>{/if}
+        {#if agent.runaway && $costAlerts}<span class="mono burn" title="Burning fast right now — consider Stop">· 💸 ${(agent.burnRate || 0).toFixed(2)}/min</span>{/if}
       </div>
       {#if agent.cwd}<div class="path mono">{agent.cwd}</div>{/if}
 
@@ -116,9 +130,10 @@
 
       <div class="reply">
         <input bind:value={msg} placeholder="reply / send a task…" onkeydown={(e) => e.key === 'Enter' && send('message')} />
-        <button onclick={() => send('message')}>Send</button>
-        <button class="stop" onclick={() => send('stop')}>Stop</button>
+        <button class="act" disabled={busy === 'message'} onclick={() => send('message')}>{busy === 'message' ? 'Sending…' : 'Send'}</button>
+        <button class="act stop" disabled={busy === 'stop'} onclick={() => send('stop')}>{busy === 'stop' ? 'Stopping…' : 'Stop'}</button>
       </div>
+      {#if flash}<div class="flash" class:err={flash[0] === '✗' || flash[0] === '⚠'}>{flash}</div>{/if}
       <div class="foot">Replies are delivered when the agent next checks in. “Stop” halts it at its next tool.</div>
     {:else}
       <div class="dim" style="padding:8px 4px">Agent not found — it may have finished.</div>
@@ -168,6 +183,14 @@
   .reply button { font-size: 11px; padding: 6px 10px; border-radius: var(--border-radius-md); cursor: pointer;
     border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); }
   .reply button.stop { color: #EF4444; border-color: #EF4444; }
+  .reply button.act { transition: transform 0.06s ease, background 0.12s ease, box-shadow 0.12s ease; }
+  .reply button.act:hover:not(:disabled) { background: var(--color-background-secondary); }
+  .reply button.act:active:not(:disabled) { transform: translateY(1px) scale(0.97); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.25); }
+  .reply button.act:disabled { opacity: 0.6; cursor: default; }
+  .flash { font-size: 11px; font-weight: 600; color: #10B981; padding: 2px 2px; animation: flashin 0.18s ease; }
+  .flash.err { color: #EF4444; }
+  @keyframes flashin { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: translateY(0); } }
+  .burn { color: #EF4444; font-weight: 600; }
   .foot { font-size: 10px; color: var(--color-text-tertiary); }
   .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 </style>

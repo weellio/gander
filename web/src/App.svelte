@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { STATE_COLORS, STATE_LABEL } from './lib/states.js';
-  import { avatarMode, layout, images, soundOn, autoUsage, fastPoll, animations, desktopNotify } from './lib/stores.js';
+  import { avatarMode, layout, images, soundOn, autoUsage, fastPoll, animations, desktopNotify, costAlerts } from './lib/stores.js';
   import AgentTile from './lib/AgentTile.svelte';
   import ActionImages from './lib/ActionImages.svelte';
   import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
@@ -147,6 +147,7 @@
       { label: 'Search', sub: 'panel', action: () => openP('search') },
       { label: 'Activity feed', sub: 'panel', action: () => openP('feed') },
       { label: 'Health / status', sub: 'panel', action: () => openP('health') },
+      { label: 'Export swarm snapshot', sub: 'Mermaid + PNG', action: exportSnapshot },
       { label: $soundOn ? 'Mute alert sound' : 'Unmute alert sound', sub: 'toggle', action: () => ($soundOn = !$soundOn) },
       { label: 'Office floor view', sub: 'view', action: () => ($layout = 'office') },
       { label: 'Mosaic view', sub: 'view', action: () => ($layout = 'mosaic') },
@@ -189,6 +190,39 @@
   let sessionCount = $derived(new Set(shown.map((a) => a.sessionId).filter(Boolean)).size);
   let errorCount = $derived(shown.filter((a) => a.state === 'error').length);
   let latest = $derived.by(() => { let b = null; for (const a of shown) if (!b || (a.updatedAt || 0) > (b.updatedAt || 0)) b = a; return b; });
+
+  // ── Export the current swarm as a shareable snapshot (Mermaid diagram + PNG) ──
+  let exportMsg = $state('');
+  function downloadBlob(name, blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function mermaidFromAgents(list) {
+    const idMap = new Map(); list.forEach((a, i) => idMap.set(a.id, 'n' + i));
+    const esc = (s) => String(s || '').replace(/["[\]{}|<>]/g, ' ').replace(/\s+/g, ' ').trim();
+    let out = 'flowchart TD\n';
+    for (const a of list) out += `  ${idMap.get(a.id)}["${esc(a.name || a.id)}<br/>${esc(a.state || '')}"]\n`;
+    for (const a of list) if (a.parentId && idMap.has(a.parentId)) out += `  ${idMap.get(a.parentId)} --> ${idMap.get(a.id)}\n`;
+    return out;
+  }
+  async function exportSnapshot() {
+    const list = shown;
+    if (!list.length) { exportMsg = 'Nothing to export yet'; setTimeout(() => (exportMsg = ''), 2500); return; }
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    const mer = mermaidFromAgents(list);
+    const md = `# Hivemind swarm — ${new Date().toLocaleString()}\n\n${list.length} agents · ${sessionCount} sessions\n\n\`\`\`mermaid\n${mer}\`\`\`\n`;
+    downloadBlob(`hivemind-swarm-${stamp}.md`, new Blob([md], { type: 'text/markdown' }));
+    let copied = false;
+    try { await navigator.clipboard.writeText(mer); copied = true; } catch (_) {}
+    // PNG of the office floor canvas, if that view is up
+    const cv = document.querySelector('canvas');
+    let png = false;
+    if (cv && cv.toBlob) { try { cv.toBlob((b) => { if (b) downloadBlob(`hivemind-floor-${stamp}.png`, b); }); png = true; } catch (_) {} }
+    exportMsg = `Exported ${png ? 'Mermaid + PNG' : 'Mermaid'}${copied ? ' · copied to clipboard' : ''} ✓`;
+    setTimeout(() => (exportMsg = ''), 3000);
+  }
 
   function pickProject(e) {
     selectedProject = e.target.value;
@@ -249,8 +283,8 @@
     </div>
 
     <div class="controls">
-      <select class="select" value={selectedProject} onchange={pickProject}>
-        <option value="">All projects ({agents.length})</option>
+      <select class="select" value={selectedProject} onchange={pickProject} title="Projects with a live or recently-active session. To browse every project on disk, use Manage → Projects.">
+        <option value="">All open projects ({agents.length})</option>
         {#each projects as p (p.project)}
           <option value={p.project}>{p.project} ({p.total})</option>
         {/each}
@@ -319,10 +353,14 @@
             <div class="opt-sec">Conserve Claude tokens</div>
             <p class="opt-note">Hivemind sends almost nothing to the model on its own. The real per-turn cost is the <b>MCP servers, skills &amp; agents</b> each project loads — trim ones you don't need.</p>
             <button class="select" onclick={() => { openP('config'); optsOpen = false; }}>Manage MCP &amp; skills →</button>
+            <div class="opt-sec">Share</div>
+            <button class="select" onclick={() => { exportSnapshot(); optsOpen = false; }}>📷 Export swarm snapshot <span class="dim">(Mermaid + PNG of the floor)</span></button>
+
             <div class="opt-sec">Dashboard performance</div>
             <label class="opt"><input type="checkbox" bind:checked={$soundOn} /> Alert sound</label>
             <label class="opt"><input type="checkbox" checked={$desktopNotify} onchange={toggleNotify} /> Desktop notifications <span class="dim">(when waiting)</span></label>
             <label class="opt"><input type="checkbox" bind:checked={$autoUsage} /> Auto-refresh cost <span class="dim">(re-reads transcripts)</span></label>
+            <label class="opt"><input type="checkbox" bind:checked={$costAlerts} /> Cost &amp; burn alerts <span class="dim">(tile $ + runaway flag)</span></label>
             <label class="opt"><input type="checkbox" bind:checked={$fastPoll} /> Fast agent updates <span class="dim">(0.5s vs 2s)</span></label>
             <label class="opt"><input type="checkbox" bind:checked={$animations} /> Office animations <span class="dim">(CPU)</span></label>
           </div>
@@ -350,6 +388,8 @@
 
   {#if menuOpen || optsOpen || bellOpen}<div class="menu-backdrop" onclick={() => { menuOpen = false; optsOpen = false; bellOpen = false; }} role="presentation"></div>{/if}
 
+  {#if exportMsg}<div class="toast">{exportMsg}</div>{/if}
+
   <!-- always-mounted panels, opened from the Manage menu (drawers are position:fixed) -->
   <ProjectsSidebar bind:open={panels.projects} />
   <CostPanel bind:open={panels.usage} />
@@ -362,7 +402,7 @@
   <TranscriptPanel bind:sessionId={transcriptId} />
 
   <div class="statusbar">
-    <strong>{selectedProject || 'All projects'}</strong>
+    <strong>{selectedProject || 'All open projects'}</strong>
     <span>· {sessionCount} session{sessionCount === 1 ? '' : 's'} · {shown.length} agent{shown.length === 1 ? '' : 's'}</span>
     {#if usage?.totals}<span class="cost" title="Estimated from ~/.claude transcripts">💰 today ${todayCost?.toFixed(2) ?? '0.00'} · total ${usage.totals.costUSD.toFixed(0)}</span>{/if}
     {#if errorCount > 0}<button class="errchip" onclick={() => openP('feed')} title="Open the activity feed">⚠ {errorCount} error{errorCount === 1 ? '' : 's'}</button>{/if}
@@ -426,6 +466,12 @@
   .opts .mini { font-size: 10px; padding: 2px 7px; border-radius: var(--border-radius-md); cursor: pointer;
     border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-primary); }
   .menu-backdrop { position: fixed; inset: 0; z-index: 55; }
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 200;
+    background: var(--color-background-primary); color: var(--color-text-primary);
+    border: 0.5px solid var(--color-border-secondary); border-left: 3px solid #10B981;
+    border-radius: var(--border-radius-md); padding: 8px 14px; font-size: 12px; font-weight: 500;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); animation: toastin 0.2s ease; }
+  @keyframes toastin { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
   .bell { position: relative; }
   .bellbadge { position: absolute; top: -5px; right: -4px; background: #EF4444; color: #fff; font-size: 8px; font-weight: 700;
     min-width: 14px; height: 14px; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; padding: 0 3px; }

@@ -53,6 +53,12 @@
       : sessions
   );
 
+  function fmtBytes(n) {
+    if (!n) return '0 B';
+    const u = ['B', 'KB', 'MB', 'GB'];
+    let i = Math.min(3, Math.floor(Math.log(n) / Math.log(1024)));
+    return (n / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + u[i];
+  }
   function relTime(iso) {
     if (!iso) return '';
     const diff = Date.now() - new Date(iso).getTime();
@@ -101,7 +107,7 @@
           <div class="row">
             <div class="row-top">
               <span class="project" title={s.cwd}>{s.project}</span>
-              <span class="meta">{s.messageCount} msgs · {relTime(s.lastActive)}</span>
+              <span class="meta" title="Transcript size">{fmtBytes(s.bytes)} · {relTime(s.lastActive)}</span>
             </div>
             <div class="prompt" title={s.firstPrompt || '(no prompt)'}>
               {s.firstPrompt || '(no prompt recorded)'}
