@@ -194,7 +194,7 @@
     background: rgba(0, 0, 0, 0.35); backdrop-filter: blur(1px);
   }
   .modal {
-    width: 420px; max-width: calc(100vw - 32px); max-height: calc(100vh - 80px); overflow: auto;
+    width: 580px; max-width: calc(100vw - 32px); max-height: calc(100vh - 64px); overflow: auto;
     background: var(--color-background-primary); color: var(--color-text-primary);
     border: 0.5px solid var(--color-border-secondary); border-left: 3px solid var(--c);
     border-radius: var(--border-radius-lg); padding: 14px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -213,8 +213,8 @@
   .mono { font-family: var(--font-mono); }
   .sec { display: flex; flex-direction: column; gap: 5px; }
   .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-tertiary); }
-  .lm { font-size: 12px; line-height: 1.45; white-space: pre-wrap; background: var(--color-background-secondary);
-    border-radius: 8px; padding: 8px; max-height: 200px; overflow: auto; }
+  .lm { font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; background: var(--color-background-secondary);
+    border-radius: 8px; padding: 10px; max-height: 46vh; overflow: auto; }
   .dim { font-size: 11px; color: var(--color-text-tertiary); }
   .logs { margin: 0; padding-left: 16px; font-family: var(--font-mono); font-size: 10px; color: var(--color-text-secondary); }
   .chips { flex-direction: row; flex-wrap: wrap; gap: 6px; }
