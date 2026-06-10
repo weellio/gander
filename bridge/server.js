@@ -149,12 +149,28 @@ const tg = {
 };
 function saveConfig() { try { fs.writeFileSync(CFG_FILE, JSON.stringify(cfg, null, 2)); } catch (_) {} }
 
-// Optionally kick the (hidden) "Hivemind Nudge" scheduled task right after a reply is queued,
-// so a parked/idle session is woken immediately instead of waiting for the timer.
-function maybeNudge() {
-  if (process.platform === 'win32' && cfg.nudgeOnSend) {
-    spawnSafe('schtasks', ['/Run', '/TN', cfg.nudgeTaskName || 'Hivemind Nudge'], { windowsHide: true });
-  }
+// Wake parked/idle sessions so queued replies deliver. The bridge runs the nudge
+// script itself (it's a local process with desktop access) — no external Windows
+// scheduled task or cron entry needed. Windows uses the hidden VBS launcher (no
+// console flash); macOS/Linux uses the shell twin.
+const SCRIPTS_DIR = path.join(__dirname, '..', 'scripts');
+function runNudgeSweep() {
+  try {
+    if (process.platform === 'win32') {
+      spawnSafe('wscript.exe', [path.join(SCRIPTS_DIR, 'nudge-idle-hidden.vbs'), '-OnlyPending'], { windowsHide: true });
+    } else {
+      spawnSafe('bash', [path.join(SCRIPTS_DIR, 'nudge-idle.sh'), '--only-pending'], {});
+    }
+  } catch (_) {}
+}
+// Fired right after a reply is queued (when "Wake on send" is on).
+function maybeNudge() { if (cfg.nudgeOnSend) runNudgeSweep(); }
+// Periodic sweep — interval in minutes (cfg.nudgeInterval; 0 = off). Reschedulable.
+let nudgeTimer = null;
+function rescheduleNudge() {
+  if (nudgeTimer) { clearInterval(nudgeTimer); nudgeTimer = null; }
+  const mins = Number(cfg.nudgeInterval) || 0;
+  if (mins > 0) nudgeTimer = setInterval(runNudgeSweep, Math.max(1, mins) * 60000);
 }
 
 // ── auto-retire ("clock out") — prune stale tiles so the floor reflects reality.
@@ -934,16 +950,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url === '/api/nudge-config' && req.method === 'GET') {
-    return sendJson(res, 200, { onSend: !!cfg.nudgeOnSend, taskName: cfg.nudgeTaskName || 'Hivemind Nudge' });
+    return sendJson(res, 200, { onSend: !!cfg.nudgeOnSend, interval: Number(cfg.nudgeInterval) || 0 });
   }
   if (url === '/api/nudge-config' && req.method === 'POST') {
     const body = await readBody(req);
     if (body) {
       if (body.onSend !== undefined) cfg.nudgeOnSend = !!body.onSend;
-      if (body.taskName !== undefined) cfg.nudgeTaskName = String(body.taskName).trim() || 'Hivemind Nudge';
+      if (body.interval !== undefined) { cfg.nudgeInterval = Math.max(0, Math.min(1440, Number(body.interval) || 0)); rescheduleNudge(); }
       saveConfig();
     }
-    return sendJson(res, 200, { ok: true, onSend: !!cfg.nudgeOnSend, taskName: cfg.nudgeTaskName || 'Hivemind Nudge' });
+    return sendJson(res, 200, { ok: true, onSend: !!cfg.nudgeOnSend, interval: Number(cfg.nudgeInterval) || 0 });
   }
 
   if (url === '/api/telegram-config' && req.method === 'GET') {
@@ -1081,6 +1097,7 @@ server.listen(argPort, () => {
   setInterval(retireSweep, 12000);
   setInterval(checkBudget, 180000); setTimeout(checkBudget, 8000);
   setInterval(sampleBurn, 30000); setTimeout(sampleBurn, 6000);
+  rescheduleNudge();   // periodic idle-session nudge (cfg.nudgeInterval minutes; 0 = off)
   license.verify(LICENSE_KEY, cfg.gumroadProduct).then((s) => { licenseState = s; console.log(`[license] ${s.mode}`); });
 });
 

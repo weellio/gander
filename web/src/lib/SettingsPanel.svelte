@@ -44,10 +44,10 @@
   async function loadClaude() { try { const r = await fetch('/api/claude-config'); const j = await r.json(); clCmd = (j && j.cmd) || ''; } catch (_) {} }
   async function saveClaude() { clStatus = 'Saving…'; const r = await post('/api/claude-config', { cmd: clCmd }); clStatus = r && r.ok ? '✓ Saved' : 'Error'; }
 
-  // ── wake-on-send (fire the nudge scheduled task when a message is sent) ──
-  let nzOpen = $state(false); let nzOn = $state(false); let nzTask = $state('Hivemind Nudge'); let nzStatus = $state('');
-  async function loadNudge() { try { const r = await fetch('/api/nudge-config'); const j = await r.json(); nzOn = !!j.onSend; nzTask = j.taskName || 'Hivemind Nudge'; } catch (_) {} }
-  async function saveNudge() { nzStatus = 'Saving…'; const r = await post('/api/nudge-config', { onSend: nzOn, taskName: nzTask }); nzStatus = r && r.ok ? '✓ Saved' : 'Error'; }
+  // ── idle-session nudge (the bridge runs it itself — no external task needed) ──
+  let nzOpen = $state(false); let nzOn = $state(false); let nzInterval = $state(0); let nzStatus = $state('');
+  async function loadNudge() { try { const r = await fetch('/api/nudge-config'); const j = await r.json(); nzOn = !!j.onSend; nzInterval = Number(j.interval) || 0; } catch (_) {} }
+  async function saveNudge() { nzStatus = 'Saving…'; const r = await post('/api/nudge-config', { onSend: nzOn, interval: Number(nzInterval) || 0 }); nzStatus = r && r.ok ? '✓ Saved' : 'Error'; }
 
   function closePanel() { open = false; }
 
@@ -197,16 +197,16 @@
 
     <div class="tg">
       <button class="collapser" onclick={() => (nzOpen = !nzOpen)}>
-        <span class="caret">{nzOpen ? '▾' : '▸'}</span> Wake on send
-        {#if nzOn}<span class="tg-state">· on</span>{/if}
+        <span class="caret">{nzOpen ? '▾' : '▸'}</span> Wake idle sessions
+        {#if nzOn || nzInterval > 0}<span class="tg-state">· {nzInterval > 0 ? `every ${nzInterval}m` : 'on send'}</span>{/if}
       </button>
       {#if nzOpen}
         <div class="tg-form">
-          <label class="cbrow"><input type="checkbox" bind:checked={nzOn} /> Run the nudge task when I send a message</label>
-          <input class="in" placeholder="scheduled task name" bind:value={nzTask} />
+          <label class="cbrow"><input type="checkbox" bind:checked={nzOn} /> Wake on send <span class="dim">— the moment I reply</span></label>
+          <label class="cbrow">Also nudge every <input class="in num" type="number" min="0" max="1440" bind:value={nzInterval} /> minutes <span class="dim">(0 = off)</span></label>
           <div class="tg-btns"><button class="select" onclick={saveNudge}>Save</button></div>
           {#if nzStatus}<div class="tg-status">{nzStatus}</div>{/if}
-          <div class="tg-hint">Runs schtasks /Run /TN "&lt;name&gt;" after a reply so a parked/idle session wakes immediately (instead of waiting for the timer). Needs the scheduled task set up — see scripts/nudge-idle.ps1. Windows only.</div>
+          <div class="tg-hint">The bridge runs the nudge itself — <b>no Windows scheduled task or cron needed</b>. It finds each idle session's window (VS Code or terminal) by PID and types a wake so queued replies deliver. Keep the Claude terminal focused in each window. If you set up the old "Hivemind Nudge" task, you can delete it now.</div>
         </div>
       {/if}
     </div>
@@ -356,4 +356,5 @@
   .tg-status { font-size: 11px; color: var(--color-text-secondary); }
   .tg-hint { font-size: 10px; color: var(--color-text-tertiary); line-height: 1.4; }
   .cbrow { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--color-text-secondary); cursor: pointer; }
+  .in.num { width: 56px; flex: 0 0 auto; text-align: center; }
 </style>

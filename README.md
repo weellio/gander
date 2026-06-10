@@ -87,7 +87,7 @@ These are configured from the dashboard's **Manage → Config** panel (saved to 
 - **Telegram** — paste a bot token + your chat id to get pinged when a session needs you, and reply or `/stop` from your phone.
 - **Cost budget** — a daily / per-session spend cap that alerts via banner + Telegram.
 - **Open-in-editor command** — only if "Open in VS Code" can't auto-detect your editor; point it at `code.cmd`, `codium`, etc.
-- **Idle nudge** — wake parked sessions so a queued reply delivers immediately. Set up the scheduled task with `scripts/nudge-idle.ps1` (Windows — run it hidden via `scripts/nudge-idle-hidden.vbs`) or `scripts/nudge-idle.sh` (macOS/Linux cron), then enable **"Wake on send"** in Config to fire it the moment you reply.
+- **Idle nudge** — wake parked sessions so a queued reply delivers immediately. **The bridge runs this itself — no Windows scheduled task or cron needed.** In **Config → Wake idle sessions**, turn on **Wake on send** (fires the moment you reply) and/or set a **nudge interval** in minutes (0 = off). It finds each idle session's window (VS Code or terminal) by PID and types a wake — keep the Claude terminal focused in each window.
 
 ### Develop / rebuild the dashboard
 
