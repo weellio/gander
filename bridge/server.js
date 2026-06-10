@@ -526,13 +526,19 @@ function launchSession(cwd, resume, prompt) {
   const rawCli = (cfg.claudeCmd && String(cfg.claudeCmd).trim()) || 'claude';
   const cli = (/\s/.test(rawCli) && !/^["']/.test(rawCli)) ? `"${rawCli}"` : rawCli;
   const inner = resume ? `${cli} --resume ${resume}` : (task ? `${cli} "${task}"` : cli);
+  // The bridge is usually started by a Claude session, so it carries CLAUDECODE /
+  // CLAUDE_CODE_* — a child terminal would inherit them and Claude refuses to launch
+  // ("cannot be launched inside another Claude Code session"). Strip them so the new
+  // session starts as an independent top-level session.
+  const env = { ...process.env };
+  for (const k of Object.keys(env)) if (/^CLAUDE_?CODE/i.test(k)) delete env[k];
   try {
     if (process.platform === 'win32') {
-      spawn(`start "Hivemind: Claude" cmd /k ${inner}`, { cwd, shell: true, detached: true, stdio: 'ignore' }).unref();
+      spawn(`start "Hivemind: Claude" cmd /k ${inner}`, { cwd, shell: true, detached: true, stdio: 'ignore', env }).unref();
     } else if (process.platform === 'darwin') {
-      spawn('osascript', ['-e', `tell app "Terminal" to do script "cd '${cwd}' && ${inner}"`], { detached: true, stdio: 'ignore' }).unref();
+      spawn('osascript', ['-e', `tell app "Terminal" to do script "cd '${cwd}' && unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT && ${inner}"`], { detached: true, stdio: 'ignore', env }).unref();
     } else {
-      spawn('x-terminal-emulator', ['-e', `bash -c "cd '${cwd}'; ${inner}; exec bash"`], { detached: true, stdio: 'ignore' }).unref();
+      spawn('x-terminal-emulator', ['-e', `bash -c "cd '${cwd}'; unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT; ${inner}; exec bash"`], { detached: true, stdio: 'ignore', env }).unref();
     }
     return { ok: true };
   } catch (e) { return { error: e.message }; }
