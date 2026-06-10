@@ -23,6 +23,7 @@ param(
   [string]$Text = 'check running jobs',
   [switch]$OnlyPending,
   [string]$Match = '',
+  [int]$MinIdleSec = 120,   # a session you're conversing in goes 'idle' between turns; only nudge ones parked longer than this
   [switch]$DryRun
 )
 
@@ -33,8 +34,14 @@ try {
   exit 0
 }
 
-# idle root sessions (orchestrators)
-$idle = @($state.agents | Where-Object { $_.root -eq $true -and $_.state -eq 'idle' })
+# idle root sessions (orchestrators) that have been parked a while. A session you're
+# actively working in flips to 'idle' between turns, so skip ones updated recently —
+# don't type into the conversation you're in the middle of.
+$nowMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+$idle = @($state.agents | Where-Object {
+  $_.root -eq $true -and $_.state -eq 'idle' -and
+  $_.updatedAt -and (($nowMs - [double]$_.updatedAt) -gt ($MinIdleSec * 1000))
+})
 
 # optionally keep only those with a queued message waiting
 if ($OnlyPending) {
@@ -78,6 +85,8 @@ public class HmWin {
   [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr h);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  public static uint ForegroundPid() { IntPtr h = GetForegroundWindow(); uint pid; GetWindowThreadProcessId(h, out pid); return pid; }
   public static uint FindPid(string needle) {
     uint found = 0;
     EnumWindows((h, p) => {
@@ -105,6 +114,10 @@ foreach ($a in $targets) {
   $procId = [HmWin]::FindPid($title)
   if (-not $procId) {
     Write-Host "  [nudge] no open window contains '$title' - is that session's VS Code/terminal open?"
+    continue
+  }
+  if ($procId -eq [HmWin]::ForegroundPid()) {
+    Write-Host "  [nudge] skipping '$title' - it's your active (foreground) window"
     continue
   }
   Write-Host "[nudge] '$Text' -> window containing '$title' (pid $procId, session $($a.sessionId))"

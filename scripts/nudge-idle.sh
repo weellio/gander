@@ -15,25 +15,29 @@
 #
 # Schedule with cron (every 10 min):  */10 * * * * /path/to/scripts/nudge-idle.sh --only-pending
 
-PORT=3131; TEXT="check running jobs"; ONLY_PENDING=0; MATCH=""; DRYRUN=""
+PORT=3131; TEXT="check running jobs"; ONLY_PENDING=0; MATCH=""; DRYRUN=""; MIN_IDLE_SEC=120
 while [ $# -gt 0 ]; do case "$1" in
   --port)         PORT="$2"; shift 2;;
   --text)         TEXT="$2"; shift 2;;
   --only-pending) ONLY_PENDING=1; shift;;
   --match)        MATCH="$2"; shift 2;;
+  --min-idle-sec) MIN_IDLE_SEC="$2"; shift 2;;
   --dry-run)      DRYRUN=1; shift;;
   *) shift;;
 esac; done
 
 state=$(curl -s --max-time 5 "http://localhost:$PORT/api/state") || { echo "[nudge] bridge not reachable on :$PORT"; exit 0; }
 
-titles=$(printf '%s' "$state" | ONLY_PENDING="$ONLY_PENDING" node -e '
+titles=$(printf '%s' "$state" | ONLY_PENDING="$ONLY_PENDING" MIN_IDLE_SEC="$MIN_IDLE_SEC" node -e '
 let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
   let j; try{j=JSON.parse(d)}catch(_){process.exit(0)}
   const onlyPending = process.env.ONLY_PENDING === "1";
+  const minIdle = (Number(process.env.MIN_IDLE_SEC)||0) * 1000;   // skip sessions active within this window (you are likely still in them)
+  const now = Date.now();
   const pend = j.pending || {};
   for (const a of (j.agents || [])) {
     if (a.root !== true || a.state !== "idle") continue;
+    if (minIdle && !(a.updatedAt && (now - a.updatedAt) > minIdle)) continue;
     if (onlyPending && !(a.sessionId && pend[a.sessionId] > 0)) continue;
     if (a.project) console.log(a.project);
   }
@@ -54,6 +58,8 @@ while IFS= read -r title; do
     if command -v xdotool >/dev/null 2>&1; then
       wid=$(xdotool search --name "$title" 2>/dev/null | head -1)
       if [ -n "$wid" ]; then
+        active=$(xdotool getactivewindow 2>/dev/null)
+        if [ "$wid" = "$active" ]; then echo "  [nudge] skipping '$title' - it's your active window"; continue; fi
         xdotool windowactivate --sync "$wid"; xdotool type --clearmodifiers "$TEXT"; xdotool key Return
       else
         echo "  [nudge] no window matched '$title' (xdotool)"
