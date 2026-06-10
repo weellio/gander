@@ -136,13 +136,15 @@
   let newTaskOpen = $state(false);  // ＋ New task launcher
   let tourOpen = $state(false);     // first-run guided tour
   const tourSteps = [
-    { title: '👋 Welcome to Hivemind', body: "Live mission control for your Claude Code agents — watch them work, manage every project, and kick off new tasks. Here's a 30-second tour." },
-    { sel: '[data-tour="newtask"]', title: '＋ New task', body: 'Kick off a goal from anywhere: type what you want, pick a project, and it launches a fresh Claude session working on it.' },
-    { sel: '[data-tour="layout"]', title: 'Two views', body: 'Office floor (agents walk around, gather at the cooler) or Mosaic (a tile per agent). Switch anytime — try both.' },
-    { sel: '[data-tour="manage"]', title: 'Control center', body: 'Projects, Usage & cost, GitHub, Session history, Telegram — manage Claude Code on your machine, not just watch it.' },
-    { sel: '[data-tour="settings"]', title: 'Make it yours', body: 'Personalize avatars, cost alerts, and New session options — e.g. skip permission prompts so you don\'t babysit launches. Set up Telegram to get pinged on your phone.' },
+    { title: '👋 Welcome to Hivemind', body: "Live mission control for your Claude Code agents. Quick hands-on tour — you'll click a couple of things. (Skip anytime.)" },
+    { sel: '[data-tour="newtask"]', title: '＋ New task', body: 'Kick off a goal from here: type what you want, pick a project, and it launches a fresh Claude session working on it.' },
+    { sel: '[data-tour="layout"]', title: 'Two views', body: 'Office floor (agents walk around, gather at the cooler) or Mosaic (a tile per agent). Switch anytime.' },
+    { sel: '[data-tour="manage"]', title: 'Open the control center', body: 'Go ahead — click ⚙ Manage to open it.', click: true },
+    { free: true, title: 'The control center', body: 'Projects · Usage & cost · GitHub · Session history · Telegram. This is where you manage Claude Code, not just watch it — open any of these later. Next →' },
+    { sel: '[data-tour="settings"]', title: 'Make it yours', body: 'Now click ⚙ Settings to open your options.', click: true },
+    { free: true, title: 'Personalize', body: 'Avatars, cost alerts, and New session options — e.g. skip permission prompts so you don\'t babysit launches, and set up Telegram to get pinged on your phone. Tweak what you like, then Next →' },
     { sel: '[data-tour="status"]', title: 'Live pulse', body: "Today's and total spend, plus a live count of what every agent is doing." },
-    { title: "You're set 🎉", body: 'Click any agent to read its task, reply, stop it, or drop an image to ask about. Replay this tour anytime: press / and choose “Take the tour”.' },
+    { title: "You're set 🎉", body: 'Click any agent to read its task, reply, stop it, or drop an image to ask about. Replay this tour anytime: press / → “Take the tour”.' },
   ];
   let paletteOpen = $state(false);
   let focusReq = $state(null);
