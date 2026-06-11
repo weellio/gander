@@ -249,7 +249,7 @@
             <div class="proc">
               <span class="pn">{p.name}</span>
               <span class="pp mono">pid {p.pid}</span>
-              {#each (p.ports || []) as port (port)}<span class="pport">:{port}</span>{/each}
+              {#each (p.ports || []) as port (port)}<a class="pport" href="http://localhost:{port}" target="_blank" rel="noopener" title="Open http://localhost:{port} in a new tab">:{port} ↗</a>{/each}
               <span class="pu mono">{upShort(p.uptimeMs)}</span>
               <button class="pk" onclick={() => killProc(p)} title={p.cmd}>Kill</button>
             </div>
@@ -369,7 +369,8 @@
   .proc { display: flex; align-items: center; gap: 7px; margin-top: 5px; }
   .proc .pn { font-size: 12px; font-weight: 600; color: var(--color-text-primary); }
   .proc .pp { font-size: 10px; color: var(--color-text-tertiary); }
-  .proc .pport { font-size: 10px; font-family: var(--font-mono); padding: 1px 6px; border-radius: 999px; background: #10B9811a; color: #10B981; }
+  .proc .pport { font-size: 10px; font-family: var(--font-mono); padding: 1px 6px; border-radius: 999px; background: #10B9811a; color: #10B981; text-decoration: none; cursor: pointer; white-space: nowrap; }
+  .proc .pport:hover { background: #10B98133; text-decoration: underline; }
   .proc .pu { font-size: 10px; color: var(--color-text-tertiary); margin-left: auto; }
   .proc .pk { flex-shrink: 0; padding: 2px 9px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600;
     background: #EF44441a; border: 0.5px solid #EF444455; color: #EF4444; }

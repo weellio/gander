@@ -102,7 +102,7 @@
                 <div class="pmain">
                   <span class="pname">{p.name}</span>
                   <span class="ppid mono">pid {p.pid}</span>
-                  {#each (p.ports || []) as port (port)}<span class="port">:{port}</span>{/each}
+                  {#each (p.ports || []) as port (port)}<a class="port" href="http://localhost:{port}" target="_blank" rel="noopener" title="Open http://localhost:{port} in a new tab — check it before you kill it">:{port} ↗</a>{/each}
                   <span class="age mono">{uptime(p.uptimeMs)}</span>
                   <button class="kill" disabled={killing === p.pid} onclick={() => kill(p)} title="Force-kill this process and its children">{killing === p.pid ? '…' : 'Kill'}</button>
                 </div>
@@ -138,7 +138,8 @@
   .pmain { display: flex; align-items: center; gap: 7px; }
   .pname { font-size: 12px; font-weight: 600; color: var(--color-text-primary); }
   .ppid { font-size: 10px; color: var(--color-text-tertiary); }
-  .port { font-size: 10px; font-family: var(--font-mono); padding: 1px 6px; border-radius: 999px; background: #10B9811a; color: #10B981; }
+  .port { font-size: 10px; font-family: var(--font-mono); padding: 1px 6px; border-radius: 999px; background: #10B9811a; color: #10B981; text-decoration: none; cursor: pointer; white-space: nowrap; }
+  .port:hover { background: #10B98133; text-decoration: underline; }
   .age { font-size: 10px; color: var(--color-text-tertiary); margin-left: auto; }
   .kill { flex-shrink: 0; padding: 3px 10px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600;
     background: #EF44441a; border: 0.5px solid #EF444455; color: #EF4444; }
