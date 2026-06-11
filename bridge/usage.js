@@ -250,11 +250,15 @@ async function build() {
       const pk = projKey(cwd);
       let p = projects.get(pk);
       if (!p) {
-        p = { path: cwd, tokens: 0, costUSD: 0, sessions: new Set(), lastActive: null };
+        p = { path: cwd, tokens: 0, costUSD: 0, sessions: new Set(), lastActive: null, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
         projects.set(pk, p);
       }
       p.tokens += tokens;
       p.costUSD += cost;
+      p.input += input;
+      p.output += output;
+      p.cacheWrite += cacheWrite;
+      p.cacheRead += cacheRead;
       p.sessions.add(sessionId);
       if (ts && (!p.lastActive || ts > p.lastActive)) p.lastActive = ts;
 
@@ -310,14 +314,20 @@ async function build() {
 
   // byProject
   const byProject = Array.from(projects.values())
-    .map((p) => ({
-      project: basenameOf(p.path),
-      path: p.path,
-      tokens: p.tokens,
-      costUSD: p.costUSD,
-      sessions: p.sessions.size,
-      lastActive: p.lastActive,
-    }))
+    .map((p) => {
+      const inputSide = p.input + p.cacheWrite + p.cacheRead;
+      return {
+        project: basenameOf(p.path),
+        path: p.path,
+        tokens: p.tokens,
+        costUSD: p.costUSD,
+        sessions: p.sessions.size,
+        lastActive: p.lastActive,
+        // why two projects with very different token counts can cost the same:
+        effRate: p.tokens > 0 ? p.costUSD / (p.tokens / 1e6) : 0,   // $ per million tokens
+        cacheHit: inputSide > 0 ? p.cacheRead / inputSide : 0,      // share of input-side tokens served from cache
+      };
+    })
     .sort((a, b) => b.costUSD - a.costUSD);
 
   // byModel

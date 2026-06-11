@@ -34,6 +34,8 @@
     const v = Number(n) || 0;
     return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  function rate(n) { return '$' + (Number(n) || 0).toFixed(2); }   // effective $ per million tokens
+  function pct(x) { return Math.round((Number(x) || 0) * 100) + '%'; }
   function compact(n) {
     const v = Number(n) || 0;
     if (v >= 1e9) return (v / 1e9).toFixed(v >= 1e10 ? 0 : 1) + 'B';
@@ -111,17 +113,18 @@
           <div class="lbl">By project</div>
           <table>
             <thead>
-              <tr><th>Project</th><th class="num">Tokens</th><th class="num">Cost</th></tr>
+              <tr><th>Project</th><th class="num">Tokens</th><th class="num" title="Effective $ per million tokens — why two projects with different token counts can cost the same">$/M</th><th class="num">Cost</th></tr>
             </thead>
             <tbody>
               {#each data.byProject as p (p.path)}
                 <tr>
-                  <td class="name" title={p.path}>{p.project}</td>
+                  <td class="name" title={p.path}>{p.project}{#if p.cacheHit != null}<span class="psub" title="Share of input-side tokens served from cache — high = cheap tokens">♻ {pct(p.cacheHit)} cache</span>{/if}</td>
                   <td class="num mono">{compact(p.tokens)}</td>
+                  <td class="num mono" title="Effective $ per million tokens">{rate(p.effRate)}</td>
                   <td class="num mono">{money(p.costUSD)}</td>
                 </tr>
               {/each}
-              {#if !data.byProject.length}<tr><td colspan="3" class="muted">No projects.</td></tr>{/if}
+              {#if !data.byProject.length}<tr><td colspan="4" class="muted">No projects.</td></tr>{/if}
             </tbody>
           </table>
         </div>
@@ -196,7 +199,8 @@
   table { width: 100%; border-collapse: collapse; font-size: 11px; }
   th { text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-tertiary); font-weight: 500; padding: 2px 4px; border-bottom: 0.5px solid var(--color-border-tertiary); }
   td { padding: 4px 4px; border-bottom: 0.5px solid var(--color-border-tertiary); color: var(--color-text-primary); vertical-align: top; }
-  td.name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .psub { display: block; font-size: 9px; color: var(--color-text-tertiary); font-weight: 400; margin-top: 1px; }
   .num { text-align: right; white-space: nowrap; }
   .dim { color: var(--color-text-tertiary); }
 
