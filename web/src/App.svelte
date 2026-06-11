@@ -16,6 +16,7 @@
   import HistoryPanel from './lib/HistoryPanel.svelte';
   import HealthPanel from './lib/HealthPanel.svelte';
   import ProcessesPanel from './lib/ProcessesPanel.svelte';
+  import MemoryPanel from './lib/MemoryPanel.svelte';
   import TranscriptPanel from './lib/TranscriptPanel.svelte';
   import HelpPanel from './lib/HelpPanel.svelte';
   import FeedPanel from './lib/FeedPanel.svelte';
@@ -132,7 +133,7 @@
   // Manage / Options menus + the panels they control
   let menuOpen = $state(false);
   let optsOpen = $state(false);
-  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false });
+  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false });
   function openP(k) { panels[k] = true; menuOpen = false; }
   // Settings/Config is one drawer with two scopes: 'app' (global: Telegram, budget,
   // sessions, nudge, editor) opened from Settings ▾, and 'project' (this project's
@@ -140,6 +141,11 @@
   // Settings drawer is app-wide only now (Telegram, budget, sessions, nudge, editor).
   // Per-project config (hooks/MCP/settings.json) lives inline in the Projects panel.
   function openAppSettings() { panels.config = true; menuOpen = false; optsOpen = false; }
+  // Memory: CLAUDE.md + .claude/memory facts. Global from the Manage menu, or
+  // targeted to a project from the Projects panel's 📝 Memory button.
+  let memScope = $state('global');
+  let memCwd = $state('');
+  function openMemory(cwd) { if (cwd) { memScope = 'project'; memCwd = cwd; panels.projects = false; } else { memScope = 'global'; memCwd = ''; } panels.memory = true; menuOpen = false; }
   let transcriptId = $state(null);
   let tileModalId = $state(null);   // mosaic tile → full agent modal
   let newTaskOpen = $state(false);  // ＋ New task launcher
@@ -372,6 +378,7 @@
             <button class="select" onclick={() => openP('projects')}>Projects · components · config</button>
             <button class="select" onclick={() => openP('usage')}>Usage / cost</button>
             <button class="select" onclick={() => openP('github')}>GitHub</button>
+            <button class="select" onclick={() => openMemory()}>Memory (CLAUDE.md · facts)</button>
             <button class="select" onclick={() => openP('routines')}>Routines &amp; briefings</button>
             <button class="select" onclick={() => openP('history')}>Session history</button>
             <button class="select" onclick={() => openP('search')}>Search</button>
@@ -459,7 +466,7 @@
   {#if exportMsg}<div class="toast">{exportMsg}</div>{/if}
 
   <!-- always-mounted panels, opened from the Manage menu (drawers are position:fixed) -->
-  <ProjectsSidebar bind:open={panels.projects} />
+  <ProjectsSidebar bind:open={panels.projects} onMemory={openMemory} />
   <CostPanel bind:open={panels.usage} />
   <GithubPanel bind:open={panels.github} />
   <SettingsPanel bind:open={panels.config} scope="app" />
@@ -467,6 +474,7 @@
   <RoutinesPanel bind:open={panels.routines} />
   <HealthPanel bind:open={panels.health} />
   <ProcessesPanel bind:open={panels.procs} />
+  <MemoryPanel bind:open={panels.memory} initialScope={memScope} initialCwd={memCwd} />
   <FeedPanel bind:open={panels.feed} onView={(sid) => (transcriptId = sid)} />
   <SearchPanel bind:open={panels.search} onView={(sid) => (transcriptId = sid)} />
   <TranscriptPanel bind:sessionId={transcriptId} />

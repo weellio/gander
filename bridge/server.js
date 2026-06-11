@@ -519,6 +519,41 @@ function openPath(p, target) {
   } catch (_) {}
 }
 
+// ── Claude memory: CLAUDE.md + .claude/memory/*.md fact files ────────────────
+// scope 'global' = ~/.claude · scope 'project' = a project's cwd. Writes are
+// constrained to .md files inside the chosen root (no path traversal).
+function memCtx(body) {
+  const home = os.homedir();
+  const scope = body && body.scope === 'project' && body.cwd ? 'project' : 'global';
+  const root = scope === 'project' ? path.resolve(String(body.cwd)) : home;
+  const memoryDir = path.join(scope === 'project' ? root : home, '.claude', 'memory');
+  return { scope, root, memoryDir, home };
+}
+function readTextSafe(p) { try { return fs.readFileSync(p, 'utf8'); } catch (_) { return null; } }
+function claudeMdFor(scope, root, home) {
+  if (scope === 'global') return path.join(home, '.claude', 'CLAUDE.md');
+  const a = path.join(root, 'CLAUDE.md'), b = path.join(root, '.claude', 'CLAUDE.md');
+  if (fs.existsSync(a)) return a;
+  if (fs.existsSync(b)) return b;
+  return a;   // default to project-root CLAUDE.md when neither exists yet
+}
+function factMeta(content) {
+  const out = { name: '', description: '', type: '' };
+  const m = /^---\s*\r?\n([\s\S]*?)\r?\n---/.exec(content || '');
+  if (m) {
+    const fm = m[1];
+    let x;
+    if ((x = /(?:^|\n)name:\s*(.+)/.exec(fm))) out.name = x[1].trim();
+    if ((x = /(?:^|\n)description:\s*(.+)/.exec(fm))) out.description = x[1].trim();
+    if ((x = /(?:^|\n)\s*type:\s*(.+)/.exec(fm))) out.type = x[1].trim();
+  }
+  return out;
+}
+function memPathAllowed(target, scope, root, home) {
+  const okRoot = path.resolve(scope === 'global' ? home : root);
+  return path.resolve(target).startsWith(okRoot) && /\.md$/i.test(target);
+}
+
 // Launch a Claude Code session in a new terminal at cwd (optionally resuming one).
 // Flags appended to `claude` for ▶ Start / ＋ New task, from the Config panel.
 // permMode: '' (ask, default) | 'acceptEdits' | 'plan' | 'bypass' (skip all prompts).
@@ -1244,6 +1279,60 @@ const server = http.createServer(async (req, res) => {
       });
     }
     return;
+  }
+
+  if (url === '/api/memory-read' && req.method === 'POST') {
+    const body = await readBody(req);
+    const { scope, root, memoryDir, home } = memCtx(body);
+    if (scope === 'project' && !fs.existsSync(root)) return sendJson(res, 400, { error: 'project path not found' });
+    const cmPath = claudeMdFor(scope, root, home);
+    const claudeMd = { path: cmPath, exists: fs.existsSync(cmPath), content: readTextSafe(cmPath) || '' };
+    const indexPath = path.join(memoryDir, 'MEMORY.md');
+    const index = { path: indexPath, exists: fs.existsSync(indexPath), content: readTextSafe(indexPath) || '' };
+    const facts = [];
+    try {
+      for (const f of fs.readdirSync(memoryDir)) {
+        if (!/\.md$/i.test(f) || f.toLowerCase() === 'memory.md') continue;
+        const fp = path.join(memoryDir, f);
+        const content = readTextSafe(fp) || '';
+        facts.push({ file: f, path: fp, content, ...factMeta(content) });
+      }
+    } catch (_) {}
+    facts.sort((a, b) => (a.name || a.file).localeCompare(b.name || b.file));
+    return sendJson(res, 200, { ok: true, scope, root, memoryDir, claudeMd, index, facts });
+  }
+
+  if (url === '/api/memory-write' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || typeof body.content !== 'string') return sendJson(res, 400, { error: 'content required' });
+    if (body.content.length > 2e6) return sendJson(res, 400, { error: 'content too large' });
+    const { scope, root, memoryDir, home } = memCtx(body);
+    let target;
+    if (body.target === 'claudemd') target = claudeMdFor(scope, root, home);
+    else if (body.target === 'index') target = path.join(memoryDir, 'MEMORY.md');
+    else if (body.target === 'fact') {
+      const file = String(body.file || '').replace(/[\\/]/g, '').trim();
+      if (!/^[\w.-]+\.md$/i.test(file)) return sendJson(res, 400, { error: 'bad fact filename' });
+      target = path.join(memoryDir, file);
+    } else return sendJson(res, 400, { error: 'bad target' });
+    if (!memPathAllowed(target, scope, root, home)) return sendJson(res, 400, { error: 'path not allowed' });
+    try {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, body.content);
+      console.log(`[memory] wrote ${target}`);
+      return sendJson(res, 200, { ok: true, path: target });
+    } catch (e) { return sendJson(res, 500, { error: e.message }); }
+  }
+
+  if (url === '/api/memory-delete' && req.method === 'POST') {
+    const body = await readBody(req);
+    const { scope, root, memoryDir, home } = memCtx(body);
+    const file = String((body && body.file) || '').replace(/[\\/]/g, '').trim();
+    if (!/^[\w.-]+\.md$/i.test(file) || file.toLowerCase() === 'memory.md') return sendJson(res, 400, { error: 'bad fact filename' });
+    const target = path.join(memoryDir, file);
+    if (!memPathAllowed(target, scope, root, home)) return sendJson(res, 400, { error: 'path not allowed' });
+    try { if (fs.existsSync(target)) fs.rmSync(target); console.log(`[memory] deleted ${target}`); return sendJson(res, 200, { ok: true }); }
+    catch (e) { return sendJson(res, 500, { error: e.message }); }
   }
 
   if (url === '/api/drop-image' && req.method === 'POST') {
