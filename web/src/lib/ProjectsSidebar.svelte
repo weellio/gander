@@ -316,18 +316,11 @@
 <ComponentBuilder bind:open={builderOpen} defaultCwd={builderCwd} onCreated={loadAll} />
 
 <style>
-  .ov { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, 0.25); }
   .hd-actions { display: flex; align-items: center; gap: 8px; }
   .newbtn { font-size: 11px; padding: 2px 9px; border-radius: 99px; cursor: pointer;
     border: 0.5px solid var(--accent, #6366F1); background: transparent; color: var(--accent, #6366F1); font-weight: 600; }
   .newbtn:hover { background: color-mix(in srgb, var(--accent, #6366F1) 12%, transparent); }
-  .drawer {
-    position: fixed; top: 0; left: 0; bottom: 0; z-index: 91; width: 360px; max-width: 92vw;
-    background: var(--color-background-primary); border-right: 0.5px solid var(--color-border-secondary);
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18); display: flex; flex-direction: column;
-  }
-  .hd { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 0.5px solid var(--color-border-tertiary); }
-  .x { background: none; border: none; cursor: pointer; font-size: 14px; color: var(--color-text-tertiary); }
+  .drawer { --drawer-w: 360px; }   /* shell (.ov/.drawer/.hd/.x) is shared in app.css — right-anchored like the others */
   .roots { padding: 10px 14px; border-bottom: 0.5px solid var(--color-border-tertiary); display: flex; flex-direction: column; gap: 5px; }
   .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-tertiary); }
   .root { display: flex; align-items: center; gap: 6px; font-size: 11px; }
