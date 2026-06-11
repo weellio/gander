@@ -10,6 +10,12 @@
   --font-mono: "Cascadia Code", "Consolas", ui-monospace, SFMono-Regular, Menlo, monospace;
   --border-radius-md: 8px;
   --border-radius-lg: 12px;
+  /* Semantic status palette — one source of truth so green/amber/red read the
+     same in every panel (cost, processes, health, gauges…). */
+  --hm-ok: #10b981;
+  --hm-warn: #f59e0b;
+  --hm-err: #ef4444;
+  --hm-info: var(--accent, #6366f1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -46,3 +52,22 @@ select.select {
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23999' stroke-width='1.5' stroke-linecap='round'/></svg>");
   background-repeat: no-repeat; background-position: right 8px center;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Shared slide-in panel (drawer) shell — ONE source of truth for every
+   Manage/Settings panel so they stop looking like separate programs. A panel
+   only needs <div class="ov"> + <aside class="drawer"> with a <div class="hd">
+   header; set its width with `.drawer { --drawer-w: 460px }` (or a local width).
+   These are plain selectors, so any panel that still defines its own scoped
+   rule keeps overriding them — migration is incremental and safe.
+   ───────────────────────────────────────────────────────────────────────── */
+.ov { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, 0.25); }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 91; width: var(--drawer-w, 380px); max-width: 96vw;
+  background: var(--color-background-primary); border-left: 0.5px solid var(--color-border-secondary);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.18); display: flex; flex-direction: column;
+}
+.hd { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+.hd strong { font-size: 14px; }
+.x { background: none; border: none; cursor: pointer; font-size: 14px; color: var(--color-text-tertiary); transition: color .12s ease; }
+.x:hover { color: var(--color-text-primary); }

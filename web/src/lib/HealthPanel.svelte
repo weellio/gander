@@ -135,15 +135,8 @@
 {/if}
 
 <style>
-  .ov { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, 0.25); }
-  .drawer {
-    position: fixed; top: 0; right: 0; bottom: 0; z-index: 91; width: 360px; max-width: 94vw;
-    background: var(--color-background-primary); border-left: 0.5px solid var(--color-border-secondary);
-    box-shadow: -4px 0 24px rgba(0, 0, 0, 0.18); display: flex; flex-direction: column;
-  }
-  .hd { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .drawer { --drawer-w: 360px; }   /* shell (.ov/.drawer/.hd/.x) is shared in app.css */
   .hdr { display: flex; align-items: center; gap: 8px; }
-  .x { background: none; border: none; cursor: pointer; font-size: 14px; color: var(--color-text-tertiary); }
   .body { flex: 1 1 auto; overflow: auto; padding: 0; display: flex; flex-direction: column; }
   .muted { font-size: 11px; color: var(--color-text-tertiary); padding: 16px 14px; }
   .mono { font-family: var(--font-mono); }
