@@ -19,7 +19,7 @@ function runGh(args, cwd) {
 
     let child;
     try {
-      child = execFile('gh', args, { cwd, timeout: TIMEOUT_MS, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+      child = execFile('gh', args, { cwd, timeout: TIMEOUT_MS, maxBuffer: 1024 * 1024, windowsHide: true }, (err, stdout) => {
         if (err) {
           const msg = (err.message || '').toLowerCase();
           if (/not a git repo/i.test(msg)) return finish({ error: 'not a git repo' });
@@ -155,7 +155,7 @@ async function issues(dir) {
 /** Run `gh` returning raw stdout text (for commands that don't emit JSON). */
 function runGhText(args, cwd) {
   return new Promise((resolve) => {
-    execFile('gh', args, { cwd, timeout: 15000, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile('gh', args, { cwd, timeout: 15000, maxBuffer: 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
       if (err) return resolve({ error: String(stderr || err.message || 'gh failed').trim().slice(0, 240) });
       resolve({ text: String(stdout).trim() });
     });

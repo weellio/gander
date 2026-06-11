@@ -460,7 +460,7 @@ function copySkill(fromCwd, toCwd, skill) {
 // binary can't crash the bridge.
 function spawnSafe(cmd, args, opts, onError) {
   try {
-    const c = spawn(cmd, args, Object.assign({ detached: true, stdio: 'ignore' }, opts || {}));
+    const c = spawn(cmd, args, Object.assign({ detached: true, stdio: 'ignore', windowsHide: true }, opts || {}));
     c.on('error', (e) => { if (onError) onError(e); });
     c.unref();
     return c;
