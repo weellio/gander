@@ -137,12 +137,9 @@
   // Settings/Config is one drawer with two scopes: 'app' (global: Telegram, budget,
   // sessions, nudge, editor) opened from Settings ▾, and 'project' (this project's
   // hooks/MCP/settings.json) opened from Manage → Project config.
-  let settingsScope = $state('project');
-  let settingsCwd = $state('');
-  function openConfig(scope) { settingsScope = scope; panels.config = true; menuOpen = false; optsOpen = false; }
-  // Open project config pre-targeted to a project — invoked from the Projects panel's
-  // per-project ⚙ Config button, so project config lives where the project does.
-  function openProjectConfig(cwd) { settingsCwd = cwd; settingsScope = 'project'; panels.config = true; panels.projects = false; menuOpen = false; optsOpen = false; }
+  // Settings drawer is app-wide only now (Telegram, budget, sessions, nudge, editor).
+  // Per-project config (hooks/MCP/settings.json) lives inline in the Projects panel.
+  function openAppSettings() { panels.config = true; menuOpen = false; optsOpen = false; }
   let transcriptId = $state(null);
   let tileModalId = $state(null);   // mosaic tile → full agent modal
   let newTaskOpen = $state(false);  // ＋ New task launcher
@@ -408,7 +405,7 @@
             <input bind:this={bgFileInput} type="file" accept="image/*" style="display:none" onchange={onBgImage} />
 
             <div class="opt-sec">App configuration</div>
-            <button class="select" onclick={() => openConfig('app')}>Telegram · cost budget · sessions · nudge →</button>
+            <button class="select" onclick={openAppSettings}>Telegram · cost budget · sessions · nudge →</button>
 
             <div class="opt-sec">Conserve Claude tokens</div>
             <p class="opt-note">Hivemind sends almost nothing to the model on its own. The real per-turn cost is the <b>MCP servers, skills &amp; agents</b> each project loads — trim ones you don't need.</p>
@@ -462,10 +459,10 @@
   {#if exportMsg}<div class="toast">{exportMsg}</div>{/if}
 
   <!-- always-mounted panels, opened from the Manage menu (drawers are position:fixed) -->
-  <ProjectsSidebar bind:open={panels.projects} onConfig={openProjectConfig} />
+  <ProjectsSidebar bind:open={panels.projects} />
   <CostPanel bind:open={panels.usage} />
   <GithubPanel bind:open={panels.github} />
-  <SettingsPanel bind:open={panels.config} scope={settingsScope} projectCwd={settingsCwd} />
+  <SettingsPanel bind:open={panels.config} scope="app" />
   <HistoryPanel bind:open={panels.history} onView={(sid) => (transcriptId = sid)} />
   <RoutinesPanel bind:open={panels.routines} />
   <HealthPanel bind:open={panels.health} />

@@ -1,6 +1,6 @@
 <script>
   import ComponentBuilder from './ComponentBuilder.svelte';
-  let { open = $bindable(false), onConfig } = $props();
+  let { open = $bindable(false) } = $props();
   let _wasOpen = false;
   $effect(() => { if (open && !_wasOpen) openPanel(); _wasOpen = open; });
   let data = $state({ roots: [], projects: [] });
@@ -44,7 +44,7 @@
     }
     return Array.from(groups.values()).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 80);
   });
-  function openProj(p) { expanded = { ...expanded, [p.path]: true }; find = ''; }
+  function openProj(p) { expanded = { ...expanded, [p.path]: true }; find = ''; if (cfgMap[p.path] === undefined) loadCfg(p.path); }
   async function loadGit() {
     try {
       const paths = data.projects.map((p) => p.path);
@@ -145,8 +145,71 @@
     result = j && j.ok ? `Copied ${selected.type} “${selected.name}” → ${String(target).split(/[\\/]/).pop()}` : 'Error: ' + ((j && j.error) || 'failed');
     load();
   }
-  const GROUPS = [['skill', 'Skills'], ['agent', 'Agents'], ['command', 'Commands'], ['hook', 'Hooks'], ['mcp', 'MCP']];
+  const GROUPS = [['skill', 'Skills'], ['agent', 'Agents'], ['command', 'Commands']];
   const itemsOf = (p, type) => type === 'skill' ? p.skills : type === 'agent' ? p.agents : type === 'command' ? p.commands : type === 'hook' ? p.hooks : p.mcp;
+
+  // ── per-project config: hooks + MCP servers + settings.json, edited inline ──
+  const MCP_PRESETS = [
+    { label: 'Filesystem — expose local files', name: 'filesystem', command: 'npx', args: '-y @modelcontextprotocol/server-filesystem C:/path/to/folder', note: 'Replace the path with a folder to expose.' },
+    { label: 'GitHub', name: 'github', command: 'npx', args: '-y @modelcontextprotocol/server-github', env: 'GITHUB_PERSONAL_ACCESS_TOKEN=ghp_xxx', note: 'Create a token at github.com → Settings → Developer settings.' },
+    { label: 'Supabase', name: 'supabase', command: 'npx', args: '-y @supabase/mcp-server-supabase@latest --read-only --project-ref=<project-ref>', env: 'SUPABASE_ACCESS_TOKEN=sbp_xxx', note: 'Token: Supabase → Account → Access Tokens.' },
+    { label: 'PostgreSQL', name: 'postgres', command: 'npx', args: '-y @modelcontextprotocol/server-postgres postgresql://user:pass@localhost:5432/db', note: 'Replace the connection string.' },
+    { label: 'SQLite', name: 'sqlite', command: 'npx', args: '-y @modelcontextprotocol/server-sqlite --db-path C:/path/to.db', note: 'Replace the database path.' },
+    { label: 'Brave Search', name: 'brave-search', command: 'npx', args: '-y @modelcontextprotocol/server-brave-search', env: 'BRAVE_API_KEY=xxx', note: 'Free key at brave.com/search/api.' },
+    { label: 'Playwright — drive a browser', name: 'playwright', command: 'npx', args: '@playwright/mcp@latest' },
+    { label: 'Puppeteer — drive a browser', name: 'puppeteer', command: 'npx', args: '-y @modelcontextprotocol/server-puppeteer' },
+    { label: 'Memory — knowledge graph', name: 'memory', command: 'npx', args: '-y @modelcontextprotocol/server-memory' },
+    { label: 'Sequential thinking', name: 'sequential-thinking', command: 'npx', args: '-y @modelcontextprotocol/server-sequential-thinking' },
+    { label: 'Slack', name: 'slack', command: 'npx', args: '-y @modelcontextprotocol/server-slack', env: 'SLACK_BOT_TOKEN=xoxb-xxx, SLACK_TEAM_ID=Txxx', note: 'From your Slack app config.' },
+    { label: 'Fetch — web page → markdown', name: 'fetch', command: 'uvx', args: 'mcp-server-fetch', note: 'Requires uv/uvx (Python).' },
+  ];
+  let cfgMap = $state({});      // path -> { hooks, mcp, settingsRaw, hasSettings, hasMcp } | null
+  let cfgBusy = $state({});
+  let mcpForm = $state({});     // path -> { name, command, args, env, note }
+  let rawOpen = $state({});
+  let cfgStatus = $state({});
+  async function loadCfg(path) {
+    cfgBusy = { ...cfgBusy, [path]: true };
+    const r = await post('/api/config-read', { cwd: path });
+    cfgMap = { ...cfgMap, [path]: r && r.ok ? r : null };
+    cfgBusy = { ...cfgBusy, [path]: false };
+  }
+  function toggleExpand(p) {
+    const willOpen = !expanded[p.path];
+    expanded = { ...expanded, [p.path]: willOpen };
+    if (willOpen && cfgMap[p.path] === undefined) loadCfg(p.path);
+  }
+  const mf = (path) => mcpForm[path] || { name: '', command: '', args: '', env: '', note: '' };
+  const setMf = (path, patch) => (mcpForm = { ...mcpForm, [path]: { ...mf(path), ...patch } });
+  function applyPreset(path, e) {
+    const i = e.target.value; e.target.value = '';
+    if (i === '') return;
+    const pr = MCP_PRESETS[+i];
+    mcpForm = { ...mcpForm, [path]: { name: pr.name, command: pr.command, args: pr.args, env: pr.env || '', note: pr.note || '' } };
+  }
+  async function addMcp(p) {
+    const f = mf(p.path);
+    if (!f.name.trim() || !f.command.trim()) return;
+    const env = {};
+    for (const pair of (f.env || '').split(',')) { const k = pair.indexOf('='); if (k > 0) env[pair.slice(0, k).trim()] = pair.slice(k + 1).trim(); }
+    const server = { name: f.name.trim(), command: f.command.trim(), args: f.args.trim() };
+    if (Object.keys(env).length) server.env = env;
+    const r = await post('/api/config', { cwd: p.path, action: 'addMcp', server });
+    cfgStatus = { ...cfgStatus, [p.path]: r && r.ok ? `Added MCP “${server.name}”.` : 'Error: ' + ((r && r.error) || 'failed') };
+    if (r && r.ok) { mcpForm = { ...mcpForm, [p.path]: { name: '', command: '', args: '', env: '', note: '' } }; await loadCfg(p.path); }
+  }
+  async function delMcp(p, name) {
+    if (!confirm(`Remove MCP server "${name}"? This cannot be undone.`)) return;
+    const r = await post('/api/config', { cwd: p.path, action: 'delMcp', name });
+    cfgStatus = { ...cfgStatus, [p.path]: r && r.ok ? `Removed “${name}”.` : 'Error: ' + ((r && r.error) || 'failed') };
+    if (r && r.ok) await loadCfg(p.path);
+  }
+  async function delHook(p, event) {
+    if (!confirm(`Delete hook event "${event}"? This cannot be undone.`)) return;
+    const r = await post('/api/config', { cwd: p.path, action: 'delHook', name: event });
+    cfgStatus = { ...cfgStatus, [p.path]: r && r.ok ? `Deleted hook “${event}”.` : 'Error: ' + ((r && r.error) || 'failed') };
+    if (r && r.ok) await loadCfg(p.path);
+  }
 </script>
 
 <!-- trigger provided by App's Manage menu (bind:open) -->
@@ -190,7 +253,7 @@
       {#each data.projects as p (p.path)}
         <div class="proj" class:muted={mutedSet.has(p.name)}>
           <div class="phead">
-          <button class="prow" onclick={() => (expanded = { ...expanded, [p.path]: !expanded[p.path] })}>
+          <button class="prow" onclick={() => toggleExpand(p)}>
             <span class="caret">{expanded[p.path] ? '▾' : '▸'}</span>
             <span class="pname" title={p.path}>{p.name}</span>
             {#if p.running}<span class="run">● live</span>{/if}
@@ -211,7 +274,6 @@
                 <input class="cm" placeholder="task (optional)…" bind:value={startPrompt[p.path]} onkeydown={(e) => e.key === 'Enter' && launch(p)} />
                 <button class="select" onclick={() => openIn(p, 'folder')} title="Open folder">📂</button>
                 <button class="select" onclick={() => openIn(p, 'editor')} title="Open in VS Code">Code</button>
-                <button class="select" onclick={() => onConfig && onConfig(p.path)} title="This project's hooks · MCP servers · settings.json">⚙ Config</button>
                 {#if gitMap[p.path]?.isRepo}
                   <button class="select" onclick={() => gitDo(p, 'pull')} disabled={!!busy} title="git pull">⬇ Pull</button>
                   <button class="select" onclick={() => gitDiff(p)} disabled={!!busy} title="git diff">Diff</button>
@@ -239,7 +301,62 @@
                   </div>
                 {/if}
               {/each}
-              {#if !p.skills.length && !p.agents.length && !p.commands.length && !p.hooks.length && !p.mcp.length}<div class="none">no local components</div>{/if}
+              {#if !p.skills.length && !p.agents.length && !p.commands.length}<div class="none">no skills / agents / commands</div>{/if}
+
+              <!-- inline project config: hooks · MCP servers · settings.json -->
+              <div class="cfgblk">
+                {#if cfgBusy[p.path] && cfgMap[p.path] === undefined}
+                  <div class="none">loading config…</div>
+                {:else if cfgMap[p.path]}
+                  {@const cfg = cfgMap[p.path]}
+                  <div class="cfg-sec">
+                    <div class="gl">Hooks</div>
+                    {#if cfg.hooks.length === 0}
+                      <div class="none">none in .claude/settings.json{cfg.hasSettings ? '' : ' (no file)'}</div>
+                    {:else}
+                      {#each cfg.hooks as h (h.event)}
+                        <div class="ci">
+                          <div class="ci-main"><span class="ci-name">{h.event}</span><span class="ci-meta">{h.count} group{h.count !== 1 ? 's' : ''}</span><button class="del" onclick={() => delHook(p, h.event)} aria-label="Delete hook {h.event}">✕</button></div>
+                          {#each h.commands as cmd (cmd)}<div class="ci-cmd mono">{cmd}</div>{/each}
+                        </div>
+                      {/each}
+                    {/if}
+                  </div>
+                  <div class="cfg-sec">
+                    <div class="gl">MCP servers</div>
+                    {#if cfg.mcp.length === 0}
+                      <div class="none">none in .mcp.json{cfg.hasMcp ? '' : ' (no file)'}</div>
+                    {:else}
+                      {#each cfg.mcp as srv (srv.name)}
+                        <div class="ci">
+                          <div class="ci-main"><span class="ci-name">{srv.name}</span><button class="del" onclick={() => delMcp(p, srv.name)} aria-label="Remove MCP {srv.name}">✕</button></div>
+                          <div class="ci-cmd mono">{srv.command}{srv.args.length ? ' ' + srv.args.join(' ') : ''}</div>
+                          {#if srv.envKeys.length}<div class="echips">{#each srv.envKeys as k (k)}<span class="echip">{k}</span>{/each}</div>{/if}
+                        </div>
+                      {/each}
+                    {/if}
+                    <div class="mcp-add">
+                      <select class="cm" onchange={(e) => applyPreset(p.path, e)}>
+                        <option value="">＋ add from a preset…</option>
+                        {#each MCP_PRESETS as pr, i (pr.name)}<option value={i}>{pr.label}</option>{/each}
+                      </select>
+                      <input class="cm" placeholder="name (e.g. supabase)" value={mf(p.path).name} oninput={(e) => setMf(p.path, { name: e.target.value })} />
+                      <input class="cm" placeholder="command (e.g. npx)" value={mf(p.path).command} oninput={(e) => setMf(p.path, { command: e.target.value })} />
+                      <input class="cm" placeholder="args" value={mf(p.path).args} oninput={(e) => setMf(p.path, { args: e.target.value })} />
+                      <input class="cm" placeholder="env (optional, KEY=value, KEY2=value)" value={mf(p.path).env} oninput={(e) => setMf(p.path, { env: e.target.value })} />
+                      {#if mf(p.path).note}<div class="cfg-hint">💡 {mf(p.path).note}</div>{/if}
+                      <button class="select" onclick={() => addMcp(p)} disabled={!mf(p.path).name.trim() || !mf(p.path).command.trim()}>+ Add MCP server</button>
+                    </div>
+                  </div>
+                  {#if cfg.hasSettings}
+                    <div class="cfg-sec">
+                      <button class="rawtoggle" onclick={() => (rawOpen = { ...rawOpen, [p.path]: !rawOpen[p.path] })}><span class="caret">{rawOpen[p.path] ? '▾' : '▸'}</span> settings.json</button>
+                      {#if rawOpen[p.path]}<pre class="raw mono">{cfg.settingsRaw}</pre>{/if}
+                    </div>
+                  {/if}
+                  {#if cfgStatus[p.path]}<div class="cfg-status">{cfgStatus[p.path]}</div>{/if}
+                {/if}
+              </div>
             </div>
           {/if}
         </div>
@@ -297,7 +414,7 @@
           {/if}
           <div class="vfoot">
             {#if viewer.readonly}
-              <span class="dim">Read-only — edit hooks/MCP via the Config panel.</span>
+              <span class="dim">Read-only — manage MCP &amp; hooks in the project's config below.</span>
             {:else if viewer.editing}
               <button class="select" onclick={saveViewer}>Save</button>
               <button class="select" onclick={() => (viewer.editing = false)}>Cancel</button>
@@ -369,6 +486,26 @@
   .chip.sel { background: var(--accent, #6366F1); color: #fff; border-color: transparent; }
   .chip.dim { cursor: default; color: var(--color-text-tertiary); }
   .none { font-size: 10px; color: var(--color-text-tertiary); }
+  /* inline per-project config block (hooks · MCP · settings.json) */
+  .cfgblk { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 0.5px dashed var(--color-border-tertiary); }
+  .cfg-sec { display: flex; flex-direction: column; gap: 4px; }
+  .cfg-sec .gl { width: auto; display: block; margin-bottom: 2px; }
+  .ci { display: flex; flex-direction: column; gap: 2px; }
+  .ci-main { display: flex; align-items: center; gap: 6px; }
+  .ci-name { font-size: 11px; font-weight: 500; color: var(--color-text-primary); }
+  .ci-meta { font-size: 9px; color: var(--color-text-tertiary); }
+  .ci .del { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 6px; cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-secondary); flex-shrink: 0; }
+  .ci .del:hover { color: var(--hm-err, #EF4444); border-color: var(--hm-err, #EF4444); }
+  .ci-cmd { font-size: 9px; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .echips { display: flex; flex-wrap: wrap; gap: 3px; }
+  .echip { font-size: 8px; padding: 1px 6px; border-radius: 99px; border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); color: var(--color-text-tertiary); }
+  .mcp-add { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 0.5px dashed var(--color-border-tertiary); }
+  .cfgblk .cm { font-size: 10px; padding: 4px 7px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); color: var(--color-text-primary); width: 100%; }
+  .cfg-hint { font-size: 9px; color: var(--color-text-tertiary); line-height: 1.4; }
+  .rawtoggle { display: flex; align-items: center; gap: 6px; background: none; border: none; cursor: pointer; font-size: 11px; font-weight: 600; color: var(--color-text-primary); padding: 2px 0; }
+  .rawtoggle:hover { color: var(--accent, #6366F1); }
+  .raw { margin-top: 4px; font-size: 9px; color: var(--color-text-secondary); background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 6px 8px; overflow: auto; max-height: 240px; white-space: pre; }
+  .cfg-status { font-size: 10px; color: var(--accent, #6366F1); }
   .copybar { border-top: 0.5px solid var(--color-border-tertiary); padding: 10px 14px; display: flex; flex-direction: column; gap: 7px; background: var(--color-background-secondary); }
   .sl { font-size: 11px; color: var(--color-text-secondary); }
   .copybar .row { display: flex; gap: 6px; }
