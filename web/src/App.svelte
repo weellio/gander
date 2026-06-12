@@ -334,7 +334,7 @@
 
   <header class="top-bar">
     <div class="title">
-      <img src="/favicon.png" class="logo" alt="Gander" />
+      <img src="/goose.png" class="logo" alt="Gander" />
       <span class="dot" class:online></span>
       Gander · Agent NOC {online ? '— LIVE' : '— connecting…'}
     </div>
