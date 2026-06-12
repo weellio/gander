@@ -1,5 +1,5 @@
 {
-  "name": "hivemind",
+  "name": "gander",
   "owner": {
     "name": "Bworld",
     "email": "b@bworldtools.com"
@@ -10,7 +10,7 @@
   },
   "plugins": [
     {
-      "name": "hivemind",
+      "name": "gander",
       "source": "./",
       "description": "Live animated dashboard of your Claude Code agents & sub-agents, driven automatically by hooks.",
       "version": "0.1.0"

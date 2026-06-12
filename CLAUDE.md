@@ -10,7 +10,7 @@ A real-time visual dashboard that displays Claude Code sub-agents as animated av
 
 ## Current State (read first)
 
-Hivemind is **built and shipping** — a Svelte 5 dashboard (`web/`, built into `dashboard/dist/`), a zero‑dependency Node bridge (`bridge/`), Claude Code hooks (`hooks/`), and a `node --test` suite (`test/`). See **[README.md](README.md)** for what it does and how to install. The detailed file tree and code samples further down are from the **original design spec** and may not match the shipped code one‑to‑one — trust the actual files + the README.
+Gander is **built and shipping** — a Svelte 5 dashboard (`web/`, built into `dashboard/dist/`), a zero‑dependency Node bridge (`bridge/`), Claude Code hooks (`hooks/`), and a `node --test` suite (`test/`). See **[README.md](README.md)** for what it does and how to install. The detailed file tree and code samples further down are from the **original design spec** and may not match the shipped code one‑to‑one — trust the actual files + the README.
 
 **Working in this repo** (Windows/PowerShell shown; on macOS/Linux swap `start`→`open`/`xdg-open`):
 

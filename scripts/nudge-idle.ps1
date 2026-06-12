@@ -1,7 +1,7 @@
 <#
-  Hivemind — wake idle Claude Code sessions so queued messages get delivered.
+  Gander — wake idle Claude Code sessions so queued messages get delivered.
 
-  Hivemind can only inject a queued reply when a session's Stop hook fires, which needs the
+  Gander can only inject a queued reply when a session's Stop hook fires, which needs the
   session to actually run a turn. A parked (idle) session never runs on its own, so queued
   messages wait. This asks the bridge which root sessions are idle, finds the matching window
   by project name, and types a nudge ("check running jobs") + Enter to start a turn — which
@@ -15,8 +15,8 @@
 
   Schedule every 10 min with NO window flash — run it through the hidden VBS launcher
   (powershell -WindowStyle Hidden still flashes a console; wscript.exe does not):
-    schtasks /Create /TN "Hivemind Nudge" /TR "wscript.exe \"%CD%\scripts\nudge-idle-hidden.vbs\" -OnlyPending" /SC MINUTE /MO 10 /F
-    schtasks /Delete /TN "Hivemind Nudge" /F      # remove
+    schtasks /Create /TN "Gander Nudge" /TR "wscript.exe \"%CD%\scripts\nudge-idle-hidden.vbs\" -OnlyPending" /SC MINUTE /MO 10 /F
+    schtasks /Delete /TN "Gander Nudge" /F      # remove
 #>
 param(
   [int]$Port = 3131,
@@ -30,7 +30,7 @@ param(
 try {
   $state = Invoke-RestMethod -Uri "http://localhost:$Port/api/state" -TimeoutSec 5
 } catch {
-  Write-Host "[nudge] bridge not reachable on :$Port - is Hivemind running?"
+  Write-Host "[nudge] bridge not reachable on :$Port - is Gander running?"
   exit 0
 }
 

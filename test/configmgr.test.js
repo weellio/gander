@@ -23,7 +23,7 @@ describe('configmgr exports', () => {
 // Fixture helpers
 // ---------------------------------------------------------------------------
 function makeTmpProject(opts = {}) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hivemind-cfg-'));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-cfg-'));
 
   const claudeDir = path.join(tmpDir, '.claude');
   fs.mkdirSync(claudeDir, { recursive: true });
@@ -117,7 +117,7 @@ describe('configmgr.read()', () => {
   });
 
   test('returns ok:true with empty hooks/mcp when .claude/ does not exist', () => {
-    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hivemind-empty-'));
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-empty-'));
     try {
       const r = configmgr.read(emptyDir);
       assert.equal(r.ok, true);

@@ -1,6 +1,6 @@
-<p align="center"><img src="web/public/logo.png" width="220" alt="Hivemind" /></p>
+<p align="center"><img src="web/public/logo.png" width="220" alt="Gander" /></p>
 
-# Hivemind
+# Gander
 
 > *Agent Ops Center* — a NOC for everything your Claude Code agents are doing.
 
@@ -8,7 +8,7 @@ A live, animated dashboard of your **Claude Code agents and sub-agents** — a H
 
 It attaches to any project automatically via Claude Code **hooks** — no manual wiring once installed.
 
-<p align="center"><img src="docs/demo.webp" alt="Hivemind in action" width="820" /></p>
+<p align="center"><img src="docs/demo.webp" alt="Gander in action" width="820" /></p>
 <p align="center"><em>idle · thinking · coding · spawning · reading · testing · error · done — every agent, live.</em></p>
 
 <p align="center"><a href="https://youtu.be/URRkwBjsVmQ"><strong>📺 Watch the demo</strong></a> — running a dozen Claude Code agents at once</p>
@@ -28,14 +28,14 @@ It attaches to any project automatically via Claude Code **hooks** — no manual
 
 ## Control center — manage Claude Code, not just watch it
 
-Beyond visualization, Hivemind is a local control panel for everything Claude Code on your machine (top-bar buttons):
+Beyond visualization, Gander is a local control panel for everything Claude Code on your machine (top-bar buttons):
 
 - **Projects** — the one place for everything per-project. Every Claude project (running, recently active, or discovered from folders you add — typed or via a native picker) shows the components it uses: skills, agents, commands. Copy any component between projects (or to/from your global `~/.claude`, with an overwrite confirm); see per-project **git status** (branch · dirty · ahead/behind); **▶ Start** a session, **Pull**, or **Commit & Push** in place. **Expand a project** to also manage its **hooks** (view + delete), **MCP servers** (add from a preset / remove), and raw **`settings.json`** — right where the project lives.
 - **Usage** — token & cost analytics parsed from your `~/.claude` transcripts (including sub-agent sessions): total spend, 30-day chart, per-project / per-model breakdowns, priciest sessions. Today's + total spend also show live in the status bar.
 - **GitHub** — open PRs and issues per project via the `gh` CLI, click to open in the browser.
 - **Routines & briefings** — save reusable prompts that call your skills/MCP (e.g. a *Morning Brief* that checks mail, calendar & news), **Run now** or **schedule** them daily at a set time. They run **headlessly** (`claude -p`) and their output lands on the dashboard as a **briefing** — a fresh one greets you with a card and can ping Telegram/desktop. "What did I miss overnight?", answered.
 - **History** — recent sessions across all projects with their first prompt; **▶ Resume** any one (`claude --resume <id>` in a terminal) or copy the command.
-- **Processes** — the long-running / port-holding processes your sessions spawned and **left open** — a dev server still on `:3000`, a stray `node`/`python`. Hivemind can't see these from hooks (the tool call returns while the process keeps living), so it scans the OS, attributes each to the session whose window spawned it (orphans grouped apart), and gives you a one-click **Kill** (force-kills the tree). Each agent's modal also lists what *that* session left running. *(Windows-first.)*
+- **Processes** — the long-running / port-holding processes your sessions spawned and **left open** — a dev server still on `:3000`, a stray `node`/`python`. Gander can't see these from hooks (the tool call returns while the process keeps living), so it scans the OS, attributes each to the session whose window spawned it (orphans grouped apart), and gives you a one-click **Kill** (force-kills the tree). Each agent's modal also lists what *that* session left running. *(Windows-first.)*
 - **Telegram** — get pinged when a session is waiting on you, and reply or `/stop` from your phone.
 - **＋ New task** — a top-bar button (and `/`-palette entry): type a goal, pick a project, and it opens a new Claude session working on it.
 - **Bundled skills + agents** — install ships two into your `~/.claude`: **`component-builder`** (scaffold a new agent / skill / slash command from plain English) and **`context-audit`** (find what a project re-sends *every turn* — CLAUDE.md, MCP tool schemas, listed skills, memory — ranked by token cost, with a trim plan and a leaner CLAUDE.md rewrite). Just ask Claude *"why is this session so expensive?"* or *"audit my context / trim my CLAUDE.md"* — it reads the live cache-hit / context-fill gauges above and tells you exactly what to cut.
@@ -63,7 +63,7 @@ Beyond visualization, Hivemind is a local control panel for everything Claude Co
 
 ### One-step setup (recommended)
 
-Clone the repo, then from the Hivemind folder run the setup script for your OS:
+Clone the repo, then from the Gander folder run the setup script for your OS:
 
 ```bash
 # Windows
@@ -74,7 +74,7 @@ setup.bat --project        # only sessions started in this folder
 ./setup.sh                 # global   (use --project to scope to this folder)
 ```
 
-It checks for Node, wires Hivemind's hooks into your Claude Code `settings.json` (without touching your other settings), and prints the next steps. The dashboard is **prebuilt** (`dashboard/dist`) — nothing to compile just to run it.
+It checks for Node, wires Gander's hooks into your Claude Code `settings.json` (without touching your other settings), and prints the next steps. The dashboard is **prebuilt** (`dashboard/dist`) — nothing to compile just to run it.
 
 Prefer to do it by hand? The setup scripts just call the installer:
 
@@ -110,7 +110,7 @@ cd web && npm run dev                    # hot-reload dev server
 
 ```
 /plugin marketplace add <this-repo-or-path>
-/plugin install hivemind@hivemind
+/plugin install gander@gander
 ```
 
 Either way, on your next session the `SessionStart` hook starts the bridge and opens the dashboard at `http://localhost:3131/`. As Claude works, tiles light up automatically — and you can **send messages or stop** any session right from its tile.
@@ -216,7 +216,7 @@ States: `idle · thinking · coding · spawning · reading · testing · error �
 - **Telegram alerts/replies** — `{ "telegramToken": "...", "telegramChatId": "...", "dashboardUrl": "..." }` (or `AOC_TG_TOKEN` / `AOC_TG_CHAT` / `AOC_DASH_URL`). For inbound replies, the bot must have no webhook — use a dedicated bot via `"telegramReplyToken"` if needed.
 - **Avatar images** — imported from the dashboard (**Images…** / **Action images…**), stored in the browser's localStorage.
 - **Runaway burn threshold** — `{ "burnAlert": 5.0 }` ($/min, default `5.0`). An active session gets the red "runaway" highlight only when its smoothed spend stays above this for two samples in a row (so a single big turn doesn't trip it). The visual can be toggled per-browser in Settings → *Cost & burn alerts*. Note: spend is *estimated* from token counts at API list prices.
-- **Model pricing** — `{ "pricing": { "deepseek": { "input": 0.27, "output": 1.10 } } }`. Hivemind prices Claude models (Opus/Sonnet/Haiku/Fable) at Anthropic list rates out of the box. Keys here match as **case-insensitive substrings** of the model id and override those rates, so a non-Anthropic or local backend (see *other models* below) is costed correctly. `input`/`output` are USD per million tokens; `cacheWrite`/`cacheRead` default to 1.25× / 0.1× input if omitted. Any model that matches neither the built-ins nor your overrides is treated as **free** ($0) rather than charged Claude rates.
+- **Model pricing** — `{ "pricing": { "deepseek": { "input": 0.27, "output": 1.10 } } }`. Gander prices Claude models (Opus/Sonnet/Haiku/Fable) at Anthropic list rates out of the box. Keys here match as **case-insensitive substrings** of the model id and override those rates, so a non-Anthropic or local backend (see *other models* below) is costed correctly. `input`/`output` are USD per million tokens; `cacheWrite`/`cacheRead` default to 1.25× / 0.1× input if omitted. Any model that matches neither the built-ins nor your overrides is treated as **free** ($0) rather than charged Claude rates.
 - **New session options** (Settings → *App configuration* → *New session options*, applied to **▶ Start** and **＋ New task**):
   - **Claude command / path** — `{ "claudeCmd": "" }`. Runs `claude` on PATH by default; if you get *"'claude' is not recognized"*, set the full path (`where claude` / `which claude`, e.g. `C:\Users\you\.local\bin\claude.exe`).
   - **Permission mode** — `{ "launchPermMode": "" }`: `""` (ask, default) · `acceptEdits` · `plan` · `bypass`. **`bypass`** launches with `--dangerously-skip-permissions` so Claude won't prompt before edits/commands — handy if you don't want to babysit prompts, but only use it on projects you trust. *(The one-time "trust this folder" prompt has no bypass flag, but Claude remembers it per folder after you accept once.)*
@@ -224,19 +224,19 @@ States: `idle · thinking · coding · spawning · reading · testing · error �
 
 ## Using other models (claude-code-router)
 
-Hivemind watches **Claude Code**, not a specific model — so it works unchanged when you route Claude Code to other backends (DeepSeek, Gemini, OpenRouter, a local Ollama model…) with [claude-code-router](https://github.com/musistudio/claude-code-router). The router only changes *where* Claude Code sends requests (`ANTHROPIC_BASE_URL`); the hooks still fire and the transcript is still written, so every session and sub-agent shows up the same.
+Gander watches **Claude Code**, not a specific model — so it works unchanged when you route Claude Code to other backends (DeepSeek, Gemini, OpenRouter, a local Ollama model…) with [claude-code-router](https://github.com/musistudio/claude-code-router). The router only changes *where* Claude Code sends requests (`ANTHROPIC_BASE_URL`); the hooks still fire and the transcript is still written, so every session and sub-agent shows up the same.
 
 - **Watch routed sessions** — nothing to do. Run `ccr code` (or set `ANTHROPIC_BASE_URL` and use `claude`) and they appear on the dashboard.
-- **Launch routed sessions from Hivemind** — either set `ANTHROPIC_BASE_URL=http://localhost:3456` in your environment (so **▶ Start** / **＋ New task** route automatically), or point the **claude command** (Settings → *App configuration* → *New session options*) at the router.
+- **Launch routed sessions from Gander** — either set `ANTHROPIC_BASE_URL=http://localhost:3456` in your environment (so **▶ Start** / **＋ New task** route automatically), or point the **claude command** (Settings → *App configuration* → *New session options*) at the router.
 - **Keep cost honest** — add the provider's rates under **`pricing`** (above). Without it, a non-Claude model is treated as **free** rather than charged Claude prices, so the cost panel won't lie either way.
 
 ## FAQ
 
 (Also in the dashboard under the **?** button.)
 
-- **I closed the dashboard tab / how do I know it's even running, and how do I get back?** The dashboard opens **once**, automatically, when the bridge first starts (SessionStart). The bridge then keeps running in the background — it survives closing the browser *and* restarting your editor — so a later session sees it's already up and **won't** pop a new tab. To get back, you have three options: (1) type **`/hivemind`** in any session — it checks the bridge and reopens the dashboard; (2) just ask Claude to "open the Hivemind dashboard"; (3) go to the fixed URL — **http://localhost:3131** (only different if you set `AOC_PORT`). Once it's open, **Manage → Health** confirms uptime and that hooks are wired.
-- **A session says "waiting on you" but I can't see the options it's asking.** Claude Code draws numbered prompts (plan approval, menus) in the **terminal TUI** — it doesn't send the option text through hooks or the transcript, so Hivemind **can't display them**. Open the session (**Open in VS Code**) to read the menu, then answer remotely with the **⌨ quick-keys** in the agent modal (`1`/`2`/`3` · `↑`/`↓` · `↵` · `y`/`n` · `Esc`). *Permission* prompts are the exception — their reason ("needs permission to use Bash") **is** shown.
-- **Can I answer prompts from the dashboard?** Yes — the **⌨ quick-keys** type a keystroke into the session's window. Hivemind finds it either by the **PID it captured at launch** (▶ Start / ＋ New task remember the window) or by **project name in the title** (VS Code shows the folder). A session you opened **manually outside Hivemind** in a bare terminal may not be reachable — Claude renames the terminal to "Claude Code", so there's no project name to match and no captured PID. The flash tells you honestly if the window wasn't found. It steals focus and types into whatever's focused there, so keep the **Claude terminal focused** in that window.
+- **I closed the dashboard tab / how do I know it's even running, and how do I get back?** The dashboard opens **once**, automatically, when the bridge first starts (SessionStart). The bridge then keeps running in the background — it survives closing the browser *and* restarting your editor — so a later session sees it's already up and **won't** pop a new tab. To get back, you have three options: (1) type **`/gander`** in any session — it checks the bridge and reopens the dashboard; (2) just ask Claude to "open the Gander dashboard"; (3) go to the fixed URL — **http://localhost:3131** (only different if you set `AOC_PORT`). Once it's open, **Manage → Health** confirms uptime and that hooks are wired.
+- **A session says "waiting on you" but I can't see the options it's asking.** Claude Code draws numbered prompts (plan approval, menus) in the **terminal TUI** — it doesn't send the option text through hooks or the transcript, so Gander **can't display them**. Open the session (**Open in VS Code**) to read the menu, then answer remotely with the **⌨ quick-keys** in the agent modal (`1`/`2`/`3` · `↑`/`↓` · `↵` · `y`/`n` · `Esc`). *Permission* prompts are the exception — their reason ("needs permission to use Bash") **is** shown.
+- **Can I answer prompts from the dashboard?** Yes — the **⌨ quick-keys** type a keystroke into the session's window. Gander finds it either by the **PID it captured at launch** (▶ Start / ＋ New task remember the window) or by **project name in the title** (VS Code shows the folder). A session you opened **manually outside Gander** in a bare terminal may not be reachable — Claude renames the terminal to "Claude Code", so there's no project name to match and no captured PID. The flash tells you honestly if the window wasn't found. It steals focus and types into whatever's focused there, so keep the **Claude terminal focused** in that window.
 - **"'claude' is not recognized" when I ▶ Start.** Your `claude` CLI isn't on PATH — set its full path in **Settings → App configuration → New session options** (`where claude` / `which claude`).
 - **"Trust this folder?" appears on Start / New task.** Launching opens a fresh terminal, so Claude shows its one-time, per-folder **trust prompt** — choose *Yes*. It's remembered after the first accept (you skip it from VS Code because the folder's already trusted there).
 - **A sub-agent shows no cost.** Cost is per **session** (one transcript); a sub-agent's spend rolls up into its parent session, so only the session (root) carries the figure.
@@ -246,7 +246,7 @@ Hivemind watches **Claude Code**, not a specific model — so it works unchanged
 
 ## Platform support & contributing
 
-Hivemind is developed and exercised daily on **Windows**. The dashboard, bridge, and all the data features (projects, usage, GitHub, history, routines/briefings) are plain Node + browser and should work anywhere. The **OS-specific surface is the window automation** — launching sessions and typing into them:
+Gander is developed and exercised daily on **Windows**. The dashboard, bridge, and all the data features (projects, usage, GitHub, history, routines/briefings) are plain Node + browser and should work anywhere. The **OS-specific surface is the window automation** — launching sessions and typing into them:
 
 | What | Windows | macOS | Linux |
 |------|---------|-------|-------|
@@ -259,7 +259,7 @@ Hivemind is developed and exercised daily on **Windows**. The dashboard, bridge,
 
 ## Support
 
-Hivemind is free and always will be. If it saves you time (or money), you can [**buy me a coffee** ☕](https://www.paypal.com/ncp/payment/G8NNLNUHD6SFW) — and a ⭐ on the repo genuinely helps.
+Gander is free and always will be. If it saves you time (or money), you can [**buy me a coffee** ☕](https://www.paypal.com/ncp/payment/G8NNLNUHD6SFW) — and a ⭐ on the repo genuinely helps.
 
 ## License
 

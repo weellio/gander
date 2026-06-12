@@ -76,7 +76,7 @@
   function notifyDesktop(agent) {
     try {
       if (!('Notification' in window) || Notification.permission !== 'granted') return;
-      const n = new Notification('Hivemind — agent needs you', {
+      const n = new Notification('Gander — agent needs you', {
         body: `${agent.name || agent.project || 'An agent'} is waiting for input`,
         tag: agent.id,
       });
@@ -168,7 +168,7 @@
     }
   });
   const tourSteps = [
-    { title: '👋 Welcome to Hivemind', body: "Live mission control for your Claude Code agents. Quick hands-on tour — you'll click a couple of things. (Skip anytime.)" },
+    { title: '👋 Welcome to Gander', body: "Live mission control for your Claude Code agents. Quick hands-on tour — you'll click a couple of things. (Skip anytime.)" },
     { sel: '[data-tour="newtask"]', title: '＋ New task', body: 'Kick off a goal from here: type what you want, pick a project, and it launches a fresh Claude session working on it.' },
     { sel: '[data-tour="layout"]', title: 'Two views', body: 'Office floor (agents walk around, gather at the cooler) or Mosaic (a tile per agent). Switch anytime.' },
     { sel: '[data-tour="manage"]', title: 'Open the control center', body: 'Go ahead — click ⚙ Manage to open it.', click: true },
@@ -269,14 +269,14 @@
     if (!list.length) { exportMsg = 'Nothing to export yet'; setTimeout(() => (exportMsg = ''), 2500); return; }
     const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
     const mer = mermaidFromAgents(list);
-    const md = `# Hivemind swarm — ${new Date().toLocaleString()}\n\n${list.length} agents · ${sessionCount} sessions\n\n\`\`\`mermaid\n${mer}\`\`\`\n`;
-    downloadBlob(`hivemind-swarm-${stamp}.md`, new Blob([md], { type: 'text/markdown' }));
+    const md = `# Gander swarm — ${new Date().toLocaleString()}\n\n${list.length} agents · ${sessionCount} sessions\n\n\`\`\`mermaid\n${mer}\`\`\`\n`;
+    downloadBlob(`gander-swarm-${stamp}.md`, new Blob([md], { type: 'text/markdown' }));
     let copied = false;
     try { await navigator.clipboard.writeText(mer); copied = true; } catch (_) {}
     // PNG of the office floor canvas, if that view is up
     const cv = document.querySelector('canvas');
     let png = false;
-    if (cv && cv.toBlob) { try { cv.toBlob((b) => { if (b) downloadBlob(`hivemind-floor-${stamp}.png`, b); }); png = true; } catch (_) {} }
+    if (cv && cv.toBlob) { try { cv.toBlob((b) => { if (b) downloadBlob(`gander-floor-${stamp}.png`, b); }); png = true; } catch (_) {} }
     exportMsg = `Exported ${png ? 'Mermaid + PNG' : 'Mermaid'}${copied ? ' · copied to clipboard' : ''} ✓`;
     setTimeout(() => (exportMsg = ''), 3000);
   }
@@ -327,7 +327,7 @@
     </div>
   {/if}
   {#if healthInfo && healthInfo.hooks && healthInfo.hooks.installed === false}
-    <div class="lic">⚙ Hivemind hooks aren't installed yet — sessions won't report in. Run <code>node install.js</code>, then <code>/hooks</code> (or restart).
+    <div class="lic">⚙ Gander hooks aren't installed yet — sessions won't report in. Run <code>node install.js</code>, then <code>/hooks</code> (or restart).
       <button onclick={() => (panels.health = true)}>Check status</button>
     </div>
   {/if}
@@ -336,7 +336,7 @@
     <div class="title">
       <img src="/logo.png" class="logo" alt="" />
       <span class="dot" class:online></span>
-      Hivemind · Agent NOC {online ? '— LIVE' : '— connecting…'}
+      Gander · Agent NOC {online ? '— LIVE' : '— connecting…'}
     </div>
 
     <div class="controls">
@@ -415,7 +415,7 @@
             <button class="select" onclick={openAppSettings}>Telegram · cost budget · sessions · nudge →</button>
 
             <div class="opt-sec">Conserve Claude tokens</div>
-            <p class="opt-note">Hivemind sends almost nothing to the model on its own. The real per-turn cost is the <b>MCP servers, skills &amp; agents</b> each project loads — trim ones you don't need.</p>
+            <p class="opt-note">Gander sends almost nothing to the model on its own. The real per-turn cost is the <b>MCP servers, skills &amp; agents</b> each project loads — trim ones you don't need.</p>
             <button class="select" onclick={() => { openP('projects'); optsOpen = false; }}>Trim MCP &amp; skills (in Projects) →</button>
             <div class="opt-sec">Share</div>
             <button class="select" onclick={() => { exportSnapshot(); optsOpen = false; }}>📷 Export swarm snapshot <span class="dim">(Mermaid + PNG of the floor)</span></button>

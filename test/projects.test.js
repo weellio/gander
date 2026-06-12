@@ -61,8 +61,8 @@ describe('copyComponent — validation', () => {
 
   before(() => {
     // Create minimal temp project dirs so the validation guards are reached
-    tmpA = fs.mkdtempSync(path.join(os.tmpdir(), 'hivemind-src-'));
-    tmpB = fs.mkdtempSync(path.join(os.tmpdir(), 'hivemind-dst-'));
+    tmpA = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-src-'));
+    tmpB = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-dst-'));
   });
 
   after(() => {
@@ -120,7 +120,7 @@ describe('componentsOf (via project())', () => {
 
   before(() => {
     // Build a minimal .claude scaffold
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hivemind-proj-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-proj-'));
     const claudeDir = path.join(tmpDir, '.claude');
     fs.mkdirSync(path.join(claudeDir, 'skills', 'my-skill'), { recursive: true });
     fs.mkdirSync(path.join(claudeDir, 'commands'), { recursive: true });
@@ -191,8 +191,8 @@ describe('copyComponent — skill copy', () => {
   let src, dst;
 
   before(() => {
-    src = fs.mkdtempSync(path.join(os.tmpdir(), 'hivemind-copy-src-'));
-    dst = fs.mkdtempSync(path.join(os.tmpdir(), 'hivemind-copy-dst-'));
+    src = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-copy-src-'));
+    dst = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-copy-dst-'));
 
     const skillDir = path.join(src, '.claude', 'skills', 'analyzer');
     fs.mkdirSync(skillDir, { recursive: true });

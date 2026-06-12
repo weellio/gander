@@ -1,5 +1,5 @@
 'use strict';
-// history.js — session-history browser for Hivemind.
+// history.js — session-history browser for Gander.
 // CommonJS, zero external deps (fs, path, os, readline only).
 //
 // Each returned object:

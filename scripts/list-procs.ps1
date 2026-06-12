@@ -1,5 +1,5 @@
 <#
-  Emit JSON of running processes + listening TCP ports, for Hivemind's Processes
+  Emit JSON of running processes + listening TCP ports, for Gander's Processes
   inspector. Returns ALL processes (pid, ppid, name, cmd, started) so the bridge
   can walk the parent tree to attribute a process to the Claude session that
   spawned it, plus the listening port(s) each holds. The bridge filters this down

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Hivemind — hook emitter (+ operator command return channel + last-message capture).
+// Gander — hook emitter (+ operator command return channel + last-message capture).
 //
 // Forwards each Claude Code hook payload to the bridge's /api/hook. On the Stop
 // event it also reads the last assistant message from the transcript and attaches

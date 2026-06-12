@@ -1,6 +1,6 @@
 {
-  "name": "hivemind",
-  "displayName": "Hivemind",
+  "name": "gander",
+  "displayName": "Gander",
   "version": "0.1.0",
   "description": "A live Hollywood-Squares dashboard of your Claude Code agents and sub-agents — each one an animated avatar that acts out what it's doing (thinking, coding, reading, spawning, testing, erroring), with a recursive hierarchy view and animated information flow between parent and child agents. Driven automatically by Claude Code hooks.",
   "author": {

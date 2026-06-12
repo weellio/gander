@@ -1,5 +1,5 @@
 'use strict';
-// bridge/health.js — sync diagnostics for the Hivemind health panel.
+// bridge/health.js — sync diagnostics for the Gander health panel.
 // CommonJS; zero dependencies (node builtins only).
 // Usage: const { report } = require('./health');  const h = report();
 
@@ -20,13 +20,13 @@ const EXPECTED_EVENTS = [
   'Notification',
 ];
 
-// A command string is considered "Hivemind" if it references one of these tokens.
-function isHivemindCmd(cmd) {
+// A command string is considered "Gander" if it references one of these tokens.
+function isGanderCmd(cmd) {
   if (typeof cmd !== 'string') return false;
-  return /emit\.js|api[/\\]hook|hivemind/i.test(cmd);
+  return /emit\.js|api[/\\]hook|gander/i.test(cmd);
 }
 
-// Walk the hooks entry for one event and decide if any command references Hivemind.
+// Walk the hooks entry for one event and decide if any command references Gander.
 function eventIsWired(hooks) {
   // hooks is the array value for one event key in settings.hooks.
   // Shape: [ { hooks: [ { type, command }, ... ] }, ... ]   or flat variants.
@@ -35,7 +35,7 @@ function eventIsWired(hooks) {
     // Each group may be { hooks: [...] } or, in some older formats, { type, command }.
     const items = Array.isArray(group.hooks) ? group.hooks : [group];
     for (const item of items) {
-      if (isHivemindCmd(item.command)) return true;
+      if (isGanderCmd(item.command)) return true;
     }
   }
   return false;
@@ -80,7 +80,7 @@ function report() {
     // Check enabledPlugins keys
     if (settings && settings.enabledPlugins) {
       plugin = Object.keys(settings.enabledPlugins).some((k) =>
-        /hivemind/i.test(k)
+        /gander/i.test(k)
       );
     }
 
@@ -89,16 +89,16 @@ function report() {
       const pluginsDir = path.join(os.homedir(), '.claude', 'plugins');
       try {
         const entries = fs.readdirSync(pluginsDir);
-        plugin = entries.some((e) => /hivemind/i.test(e));
+        plugin = entries.some((e) => /gander/i.test(e));
       } catch (_) {}
     }
 
-    // Check .claude-plugin directory in cwd for a plugin.json mentioning hivemind
+    // Check .claude-plugin directory in cwd for a plugin.json mentioning gander
     if (!plugin) {
       try {
         const localPlugin = path.join(process.cwd(), '.claude-plugin', 'plugin.json');
         const pj = JSON.parse(fs.readFileSync(localPlugin, 'utf8'));
-        plugin = /hivemind/i.test(JSON.stringify(pj));
+        plugin = /gander/i.test(JSON.stringify(pj));
       } catch (_) {}
     }
   } catch (_) {}

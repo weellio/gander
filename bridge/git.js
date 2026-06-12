@@ -1,4 +1,4 @@
-// Hivemind — lightweight git status for project dirs (source-control awareness).
+// Gander — lightweight git status for project dirs (source-control awareness).
 // Zero deps; shells out to `git`. Never throws — returns { isRepo:false } on any trouble.
 
 const { execFile } = require('child_process');

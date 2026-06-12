@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Hivemind installer — wires the dashboard into Claude Code.
+// Gander installer — wires the dashboard into Claude Code.
 //
 //   node install.js              # global: every session on this machine reports
 //   node install.js --project    # only sessions started in the current folder
@@ -14,7 +14,7 @@ const opts = {
   dryRun: process.argv.includes('--dry-run'),
 };
 
-console.log('Hivemind — live NOC for your Claude Code agents');
+console.log('Gander — live NOC for your Claude Code agents');
 console.log(`  install dir: ${ROOT}`);
 console.log(`  settings:    ${settingsPath(opts)}\n`);
 

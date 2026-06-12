@@ -1,5 +1,5 @@
 <#
-  B-roll director for the Hivemind launch video.
+  B-roll director for the Gander launch video.
   Drives the LIVE dashboard through each narration beat so you can screen-record
   footage that matches the script. Each scene pauses first so you can switch the
   dashboard view and start recording, then animates continuously until YOU press
@@ -18,7 +18,7 @@
   Remove every demo agent this script created:
       powershell -ExecutionPolicy Bypass -File scripts\broll-sim.ps1 -Clear
 
-  TIP: in the dashboard top-bar project filter, pick "hivemind-broll" so only
+  TIP: in the dashboard top-bar project filter, pick "gander-broll" so only
        the demo sessions show and your real session tile is hidden.
 #>
 param([int]$Port = 3131, [int]$Scene = 0, [switch]$Clear)
@@ -26,7 +26,7 @@ param([int]$Port = 3131, [int]$Scene = 0, [switch]$Clear)
 $ErrorActionPreference = 'SilentlyContinue'
 $base = "http://localhost:$Port/api/event"
 $repo = Split-Path $PSScriptRoot -Parent
-$proj = 'hivemind-broll'
+$proj = 'gander-broll'
 
 function ev($h) {
   try { Invoke-RestMethod -Uri $base -Method Post -Body ($h | ConvertTo-Json -Compress) -ContentType 'application/json' -TimeoutSec 3 | Out-Null } catch {}
@@ -133,7 +133,7 @@ function AnimateUntilEnter($respawn, $label) {
 function Scene1 {
   Write-Host "`n=== SCENE 1: the live agent grid (hook payoff) ===" -ForegroundColor Cyan
   Write-Host "Narration: 'every session and sub-agent becomes a tile... watch the packets flow.'"
-  Write-Host "DASHBOARD: switch to the Mosaic / grid view. Filter project = hivemind-broll."
+  Write-Host "DASHBOARD: switch to the Mosaic / grid view. Filter project = gander-broll."
   Write-Host "Shows 5 sessions (swarms 9/5/3/2/0) + sub-agent trees = realistic mix."
   Pause "Position the grid view, then start recording"
 
@@ -249,8 +249,8 @@ if ($Clear) { Cleanup; Write-Host "[broll] cleared all demo agents."; exit 0 }
 try { Invoke-RestMethod -Uri "http://localhost:$Port/api/state" -TimeoutSec 3 | Out-Null }
 catch { Write-Host "[broll] bridge not reachable on port $Port. Start it: node bridge/launch.js"; exit 1 }
 
-Write-Host "Hivemind B-roll director -- 5 concurrent sessions (swarms 9/5/3/2/0)" -ForegroundColor Yellow
-Write-Host "Set the dashboard project filter to 'hivemind-broll' to hide your real session.`n"
+Write-Host "Gander B-roll director -- 5 concurrent sessions (swarms 9/5/3/2/0)" -ForegroundColor Yellow
+Write-Host "Set the dashboard project filter to 'gander-broll' to hide your real session.`n"
 
 switch ($Scene) {
   1 { Scene1 }

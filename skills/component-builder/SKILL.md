@@ -1,6 +1,6 @@
 ---
 name: component-builder
-description: Use when the user wants to create a new Claude Code agent, skill, or slash command — "build me an agent that…", "make a skill that…", "create a command for…". Generates correct YAML front matter + body following best practices and writes the file to the right .claude location (one project, several, or global). Pairs with the Hivemind dashboard's New-component builder.
+description: Use when the user wants to create a new Claude Code agent, skill, or slash command — "build me an agent that…", "make a skill that…", "create a command for…". Generates correct YAML front matter + body following best practices and writes the file to the right .claude location (one project, several, or global). Pairs with the Gander dashboard's New-component builder.
 ---
 
 # Component Builder
@@ -22,7 +22,7 @@ Infer from the request; only ask if genuinely ambiguous.
 - **body** — a numbered "When invoked" procedure. For **agents**, end by reminding it to **return a concise report** (the main session never sees its context).
 
 ## Step 2 — Create it
-**Preferred — via the Hivemind bridge** (gives validation + multi-project deploy in one call). The bridge runs on `http://localhost:3131`:
+**Preferred — via the Gander bridge** (gives validation + multi-project deploy in one call). The bridge runs on `http://localhost:3131`:
 
 ```bash
 curl -s -X POST http://localhost:3131/api/component-new \

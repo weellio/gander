@@ -214,7 +214,7 @@
           <label class="cbrow">Also nudge every <input class="in num" type="number" min="0" max="1440" bind:value={nzInterval} /> minutes <span class="dim">(0 = off)</span></label>
           <div class="tg-btns"><button class="select" onclick={saveNudge}>Save</button></div>
           {#if nzStatus}<div class="tg-status">{nzStatus}</div>{/if}
-          <div class="tg-hint">The bridge runs the nudge itself — <b>no Windows scheduled task or cron needed</b>. It finds each idle session's window (VS Code or terminal) by PID and types a wake so queued replies deliver. Keep the Claude terminal focused in each window. If you set up the old "Hivemind Nudge" task, you can delete it now.</div>
+          <div class="tg-hint">The bridge runs the nudge itself — <b>no Windows scheduled task or cron needed</b>. It finds each idle session's window (VS Code or terminal) by PID and types a wake so queued replies deliver. Keep the Claude terminal focused in each window. If you set up the old "Gander Nudge" task, you can delete it now.</div>
         </div>
       {/if}
     </div>

@@ -1,4 +1,4 @@
-// Hivemind — per-project config manager (CommonJS, zero deps).
+// Gander — per-project config manager (CommonJS, zero deps).
 //
 // Reads .claude/settings.json (hooks) and .mcp.json (MCP servers) from a
 // project directory; can safely delete a single hook event or MCP server entry.

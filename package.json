@@ -1,5 +1,5 @@
 {
-  "name": "hivemind",
+  "name": "gander",
   "private": true,
   "scripts": {
     "test": "node --test"

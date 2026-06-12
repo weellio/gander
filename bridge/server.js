@@ -219,7 +219,7 @@ async function checkBudget() {
     budgetState = { dailyCost, daily: budget.daily, session: budget.session, overDaily, generatedAt: Date.now() };
     if (overDaily && budgetAlerted.day !== tk) {
       budgetAlerted.day = tk;
-      sendTelegram(`💸 <b>Hivemind budget</b>\nToday's spend $${dailyCost.toFixed(2)} crossed your $${budget.daily} cap.`);
+      sendTelegram(`💸 <b>Gander budget</b>\nToday's spend $${dailyCost.toFixed(2)} crossed your $${budget.daily} cap.`);
       pushFeed({ ts: Date.now(), agentId: 'budget', agent: 'budget', project: '', state: 'error', log: `Daily spend $${dailyCost.toFixed(2)} over $${budget.daily} cap`, error: true });
     }
     if (budget.session > 0 && u.bySession) {
@@ -227,7 +227,7 @@ async function checkBudget() {
         if (s.costUSD >= budget.session && !budgetAlerted.sessions.has(sid)) {
           budgetAlerted.sessions.add(sid);
           const ag = agents.get('sess:' + sid);
-          sendTelegram(`💸 <b>Hivemind</b>\nSession ${ag ? ag.project : sid.slice(0, 8)} hit $${s.costUSD.toFixed(2)} (cap $${budget.session}).`);
+          sendTelegram(`💸 <b>Gander</b>\nSession ${ag ? ag.project : sid.slice(0, 8)} hit $${s.costUSD.toFixed(2)} (cap $${budget.session}).`);
         }
       }
     }
@@ -310,7 +310,7 @@ function maybeAlert(root) {
   const proj = root.project || 'a session';
   console.log(`[alert] ${proj} awaiting input`);
   sendTelegram(
-    `🔔 <b>Hivemind</b>\n<b>${proj}</b> needs your input.\nReply to this message to answer, or open: ${tg.dash}`,
+    `🔔 <b>Gander</b>\n<b>${proj}</b> needs your input.\nReply to this message to answer, or open: ${tg.dash}`,
     (mid) => { if (mid) alertMsgMap.set(mid, sid); }
   );
 }
@@ -578,7 +578,7 @@ function runRoutineOpts() { return { cli: claudeCliRaw(), onDone: onBriefing }; 
 
 // The (brief) window title we set at launch, before Claude renames the terminal to
 // "Claude Code". capture-window.ps1 finds the window by this so we can target by PID.
-function launchTitle(cwd) { return 'Hivemind: ' + (path.basename(cwd || '') || 'Claude'); }
+function launchTitle(cwd) { return 'Gander: ' + (path.basename(cwd || '') || 'Claude'); }
 
 // cwd-keyed map of captured session window PIDs (so quick-keys / nudge can target the
 // window even after Claude renames its title). Windows only.
@@ -637,7 +637,7 @@ async function gitAction(cwd, action, message, arg) {
   if (action === 'pull') { const r = await execGit(cwd, ['pull']); return { ok: r.code === 0, output: r.out }; }
   if (action === 'fetch') { const r = await execGit(cwd, ['fetch', '--all', '--prune']); return { ok: r.code === 0, output: r.out }; }
   if (action === 'commit-push') {
-    const msg = (message && String(message).trim()) || 'Update from Hivemind';
+    const msg = (message && String(message).trim()) || 'Update from Gander';
     let out = '';
     let r = await execGit(cwd, ['add', '-A']); out += r.out;
     r = await execGit(cwd, ['commit', '-m', msg]); out += (out ? '\n' : '') + r.out;
@@ -1092,7 +1092,7 @@ const server = http.createServer(async (req, res) => {
     saveConfig();
     startTelegramPolling();
     if (body.test && tg.token && tg.chat) {
-      return sendTelegram('✅ Hivemind: Telegram is connected.', (mid) =>
+      return sendTelegram('✅ Gander: Telegram is connected.', (mid) =>
         sendJson(res, 200, { ok: true, configured: true, test: mid ? 'sent' : 'failed (check token/chat id)' }));
     }
     return sendJson(res, 200, { ok: true, configured: !!(tg.token && tg.chat) });
@@ -1241,7 +1241,7 @@ const server = http.createServer(async (req, res) => {
         const now = Date.now();
         const out = [];
         for (const p of all) {
-          if (p.pid === process.pid) continue;                          // never list Hivemind's own bridge
+          if (p.pid === process.pid) continue;                          // never list Gander's own bridge
           const name = String(p.name || '');
           const interesting = INTERESTING.test(name);
           let attribution = 'orphan', sid = null, project = null;
@@ -1273,7 +1273,7 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     const pid = Number(body && body.pid);
     if (!Number.isInteger(pid) || pid <= 4) return sendJson(res, 400, { error: 'invalid pid' });
-    if (pid === process.pid) return sendJson(res, 400, { error: "refusing to kill Hivemind's own bridge process" });
+    if (pid === process.pid) return sendJson(res, 400, { error: "refusing to kill Gander's own bridge process" });
     if (process.platform === 'win32') {
       execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { timeout: 8000, windowsHide: true }, (err, stdout, stderr) => {
         const out = (String(stdout || '') + String(stderr || '')).trim();
@@ -1352,16 +1352,16 @@ const server = http.createServer(async (req, res) => {
     let buf; try { buf = Buffer.from(m[2], 'base64'); } catch (_) { return sendJson(res, 400, { error: 'bad base64' }); }
     if (buf.length > 16e6) return sendJson(res, 400, { error: 'image too large' });
     const cwd = body.cwd && fs.existsSync(body.cwd) ? body.cwd : null;
-    const dir = cwd ? path.join(cwd, '.hivemind', 'drops') : path.join(os.tmpdir(), 'hivemind-drops');
-    if (cwd) { const safeRoot = path.resolve(path.join(cwd, '.hivemind')); if (!path.resolve(dir).startsWith(safeRoot)) return sendJson(res, 400, { error: 'bad path' }); }
+    const dir = cwd ? path.join(cwd, '.gander', 'drops') : path.join(os.tmpdir(), 'gander-drops');
+    if (cwd) { const safeRoot = path.resolve(path.join(cwd, '.gander')); if (!path.resolve(dir).startsWith(safeRoot)) return sendJson(res, 400, { error: 'bad path' }); }
     try {
       fs.mkdirSync(dir, { recursive: true });
-      if (cwd) { const gi = path.join(cwd, '.hivemind', '.gitignore'); if (!fs.existsSync(gi)) { try { fs.writeFileSync(gi, '*\n'); } catch (_) {} } }   // keep drops out of git
+      if (cwd) { const gi = path.join(cwd, '.gander', '.gitignore'); if (!fs.existsSync(gi)) { try { fs.writeFileSync(gi, '*\n'); } catch (_) {} } }   // keep drops out of git
       const safe = String(body.name || 'image').replace(/\.[a-z0-9]{2,4}$/i, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 40) || 'image';
       const file = path.join(dir, `${Date.now()}-${safe}.${ext}`);
       fs.writeFileSync(file, buf);
       const q = String(body.text || '').trim();
-      const instr = `${q ? q + '\n\n' : ''}[Image attached via Hivemind] Open and look at this image with your Read tool:\n${file}`;
+      const instr = `${q ? q + '\n\n' : ''}[Image attached via Gander] Open and look at this image with your Read tool:\n${file}`;
       queueCommand(body.sessionId, 'message', instr);
       maybeNudge();
       return sendJson(res, 200, { ok: true, path: file });
@@ -1380,7 +1380,7 @@ const server = http.createServer(async (req, res) => {
     if (!sess) return sendJson(res, 200, { error: 'No running Claude session to hand off to — open one and try again.' });
     const sid = sess.sessionId || String(sess.id).replace(/^sess:/, '');
     const tg = (Array.isArray(body.targets) && body.targets.length ? body.targets : ['global']).map((t) => (t === 'global' ? 'global (~/.claude)' : t)).join(', ');
-    const text = `Use the component-builder skill to create a ${body.type} from this request: "${String(body.prompt).replace(/"/g, "'").slice(0, 600)}". Deploy it to: ${tg}. Prefer the Hivemind bridge (POST http://localhost:3131/api/component-new) so it is validated, then tell me where it landed.`;
+    const text = `Use the component-builder skill to create a ${body.type} from this request: "${String(body.prompt).replace(/"/g, "'").slice(0, 600)}". Deploy it to: ${tg}. Prefer the Gander bridge (POST http://localhost:3131/api/component-new) so it is validated, then tell me where it landed.`;
     queueCommand(sid, 'message', text);
     maybeNudge();
     return sendJson(res, 200, { ok: true, session: sess.project || sid.slice(0, 8), sid });

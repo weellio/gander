@@ -22,7 +22,7 @@
         ['💰 Session cost', 'Live estimated spend for that session.'],
         ['📊 Analytics', 'Per-session efficiency gauges from the transcript: cache-hit % (context reused vs re-sent), output-cost share (verbose vs context bulk), and a context-window bar. A parked, near-full session shows a “Compact now” nudge that types /compact to free context.'],
         ['📄 Transcript', 'Read the full conversation of the session.'],
-        ['🪟 Focus window', 'Bring the running session’s terminal to the front — Hivemind raises the exact window it captured at launch (▶ Start / ＋ New task). Different from “Open in VS Code”, which opens the project folder.'],
+        ['🪟 Focus window', 'Bring the running session’s terminal to the front — Gander raises the exact window it captured at launch (▶ Start / ＋ New task). Different from “Open in VS Code”, which opens the project folder.'],
         ['Open folder · VS Code', 'Jump to the project on disk or in your editor.'],
       ],
     },
@@ -48,13 +48,13 @@
         ['Search', 'Search across every session transcript + project — find which session touched a file or topic, then open it.'],
         ['Activity feed', 'A live chronological ticker of agent events, with an errors-only filter to spotlight failures.'],
         ['Processes (stuck open?)', 'Long-running / port-holding processes your sessions spawned (dev servers, node, python…). Spot one left running and Kill it (force-kills the tree). Each agent’s modal also lists what that session left open. Windows-only for now.'],
-        ['Health / status', 'Confirm Hivemind is wired up: bridge uptime/events, hook-install checklist, node/platform.'],
+        ['Health / status', 'Confirm Gander is wired up: bridge uptime/events, hook-install checklist, node/platform.'],
       ],
     },
     {
       title: 'Options & alerts',
       items: [
-        ['Conserve tokens', 'Hivemind sends almost nothing to the model itself — the real per-turn cost is the MCP servers / skills a project loads. Trim them per project: Manage → Projects → expand a project → MCP servers.'],
+        ['Conserve tokens', 'Gander sends almost nothing to the model itself — the real per-turn cost is the MCP servers / skills a project loads. Trim them per project: Manage → Projects → expand a project → MCP servers.'],
         ['Audit your context', 'Install ships a context-audit skill — in any session just ask “audit my context” or “trim my CLAUDE.md”. It reads each session’s cache-hit / context-fill, ranks what’s re-sent every turn (CLAUDE.md, MCP tool schemas, skills, memory), and proposes concrete cuts + a leaner CLAUDE.md.'],
         ['Cost budget', 'Set a daily / per-session spend cap (Settings → App configuration) — get a banner + Telegram alert when crossed.'],
         ['Performance toggles', 'Alert sound, desktop notifications, auto-refresh cost, fast agent updates, and office animations.'],
@@ -66,8 +66,8 @@
     {
       title: 'FAQ / good to know',
       items: [
-        ['“Waiting on you” but I can’t see the options?', 'Claude Code draws numbered prompts (plan approval, menus) in the terminal itself — it doesn’t send the option text through hooks, so Hivemind can’t display them. Open the session (Open in VS Code) to read the menu, then answer remotely with the ⌨ quick-keys. Permission prompts DO show their reason (e.g. “needs permission to use Bash”).'],
-        ['Answering prompts (⌨ quick-keys)', 'The ⌨ row in an agent’s modal types a keystroke into that session’s window (1/2/3 · ↑/↓ · ↵ · y/n · Esc). Hivemind finds the window by the PID it captured at launch (▶ Start / ＋ New task) or by project name in the title (VS Code). A session you opened manually in a bare terminal (titled “Claude Code”) may not be reachable — the flash says so. It steals focus and types into whatever’s focused there, so keep the Claude terminal focused.'],
+        ['“Waiting on you” but I can’t see the options?', 'Claude Code draws numbered prompts (plan approval, menus) in the terminal itself — it doesn’t send the option text through hooks, so Gander can’t display them. Open the session (Open in VS Code) to read the menu, then answer remotely with the ⌨ quick-keys. Permission prompts DO show their reason (e.g. “needs permission to use Bash”).'],
+        ['Answering prompts (⌨ quick-keys)', 'The ⌨ row in an agent’s modal types a keystroke into that session’s window (1/2/3 · ↑/↓ · ↵ · y/n · Esc). Gander finds the window by the PID it captured at launch (▶ Start / ＋ New task) or by project name in the title (VS Code). A session you opened manually in a bare terminal (titled “Claude Code”) may not be reachable — the flash says so. It steals focus and types into whatever’s focused there, so keep the Claude terminal focused.'],
         ['“’claude’ is not recognized” on ▶ Start', 'Your claude CLI isn’t on PATH. Set its full path in Settings → New session options (find it with where claude / which claude).'],
         ['“Trust this folder?” on Start / New task', 'Launching opens a fresh terminal, so Claude shows its one-time, per-folder trust prompt — choose “Yes”. It’s remembered after you accept once (you don’t see it from VS Code because the folder’s already trusted there).'],
         ['Skip permission prompts', 'Settings → New session options → “skip ALL prompts” launches with --dangerously-skip-permissions, so Claude won’t ask before edits/commands. Only use it on projects you trust.'],
@@ -86,9 +86,9 @@
 
 {#if open}
   <div class="backdrop" onclick={() => (open = false)} role="presentation">
-    <div class="modal" role="dialog" aria-label="Hivemind help" onclick={(e) => e.stopPropagation()}>
+    <div class="modal" role="dialog" aria-label="Gander help" onclick={(e) => e.stopPropagation()}>
       <div class="hd">
-        <strong>Hivemind — what you can do</strong>
+        <strong>Gander — what you can do</strong>
         <button class="x" onclick={() => (open = false)} aria-label="Close">✕</button>
       </div>
       <div class="intro">A local control center for Claude Code on your machine — watch every agent, manage projects &amp; components, track cost, and drive source control.</div>

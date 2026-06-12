@@ -1,0 +1,46 @@
+[
+  {
+    "id": "rmq8ab377495v",
+    "routineId": "r-sample-brief",
+    "name": "Morning Brief",
+    "project": "",
+    "ts": 1781108993779,
+    "ms": 31703,
+    "ok": true,
+    "output": "---\n\n## Morning Briefing — June 10, 2026\n\n### Markets\n\n- **Stocks down** — S&P 500 -0.6%, Nasdaq -0.8%, Dow -280pts\n- **Why:** US-Iran military escalation (oil spiking), CPI hit 4.2% YoY (highest in a year), tech/semis selling off on AI cost concerns\n- **Movers:** Robinhood +8.1%, SMCI -12%, Nvidia & Apple under pressure\n\n### AI Headlines\n\n- **Meta** laying off ~8,000 (10% of workforce) in AI-focused restructuring; 7,000 more reassigned to AI teams\n- **Snap** cut ~1,000 jobs — AI now generates 65%+ of Snap's new code\n- **Trump EO** asks AI cos to voluntarily share frontier models with feds 30 days pre-release for cybersecurity benchmarking\n- **U-Michigan** built an AI that reads brain MRIs in seconds, identifying neurological conditions\n- **MIT Media Lab** study: AI weakening human ability to detect fake news (GPS-for-navigation analogy)\n- **Agentic AI** trend accelerating — shifting from chat to autonomous task completion across legal, coding, payments, research\n\n### Email & Calendar\n\nNot available — no Gmail or Calendar MCP tools connected. You can add these via MCP server config if you'd like them in future briefings.\n\n---\n\nSources:\n- [TheStreet — Stock Market Today June 10](https://www.thestreet.com/stock-market-today/stock-market-today-dow-jones-sp-500-nasdaq-updates-june-10-2026)\n- [TipRanks — 3 Reasons Market Is Down](https://www.tipranks.com/news/3-reasons-why-the-stock-market-is-down-today-june-10-2026)\n- [Crescendo AI News — June 2026](https://www.crescendo.ai/news/latest-ai-news-and-updates)\n- [Mean CEO Blog — AI News June 2026](https://blog.mean.ceo/ai-news-june-2026/)\n- [MIT News — AI](https://news.mit.edu/topic/artificial-intelligence2)",
+    "error": ""
+  },
+  {
+    "id": "rmq8a9oajdgas",
+    "routineId": "r-sample-brief",
+    "name": "Morning Brief",
+    "project": "",
+    "ts": 1781108927803,
+    "ms": 31340,
+    "ok": true,
+    "output": "# Morning Briefing — June 10, 2026\n\n---\n\n## Markets — Red Day\n\n- **S&P 500** -1.06% | **Nasdaq** -1.6% | **Dow** -0.95%\n- **CPI came in hot**: 4.2% annual rate — highest since Apr 2023\n- **U.S.–Iran tensions**: military strikes exchanged after helicopter incident in Strait of Hormuz; oil jumping\n- **Tech selling off**: Nvidia, Apple, AMD down; Super Micro -12%\n- **Green spots**: Robinhood +8.1%, KLA +6.7%, Applied Materials +5.5%\n\n## AI Headlines\n\n- **Apple announced Gemini-powered Siri** + multi-AI Extensions (Claude now an iPhone option); iOS 27 Beta 1 dropped\n- **EU AI Act** high-risk provisions take full effect Aug 2 — covers employment, education, finance, law enforcement\n- **MIT**: AI shown to weaken fake-news detection skills (GPS-for-navigation analogy)\n- **Ferveret** (MIT spinout): dramatically cuts energy/water for AI chip cooling\n- **UMich**: AI reads brain MRIs in seconds, IDs neurological conditions accurately\n\n## Email & Calendar\n\nNo Gmail or Calendar MCP tools detected — can't pull unread mail or today's meetings. If you have those configured as MCP servers, let me know and I'll wire them in.\n\n---\n\nSources:\n- [TheStreet — Stock Market Today June 10](https://www.thestreet.com/stock-market-today/stock-market-today-dow-jones-sp-500-nasdaq-updates-june-10-2026)\n- [24/7 Wall St — S&P 500 Sinks](https://247wallst.com/investing/2026/06/10/stock-market-live-june-10-2026-sp-500-spy-sinks-on-fear-of-war/)\n- [TipRanks — 3 Reasons Market Is Down](https://www.tipranks.com/news/3-reasons-why-the-stock-market-is-down-today-june-10-2026)\n- [Build Fast with AI — AI News June 8](https://www.buildfastwithai.com/blogs/ai-news-today-june-8-2026)\n- [Mean CEO — AI Developments June 2026](https://blog.mean.ceo/latest-ai-developments-news-june-2026/)\n- [MIT News — AI](https://news.mit.edu/topic/artificial-intelligence2)",
+    "error": ""
+  },
+  {
+    "id": "rmq8a8v14jxxs",
+    "routineId": "r-sample-brief",
+    "name": "Morning Brief",
+    "project": "",
+    "ts": 1781108889880,
+    "ms": 33168,
+    "ok": true,
+    "output": "# Morning Briefing — June 10, 2026\n\n---\n\n## Markets — Red day\n\n| Index | Move |\n|-------|------|\n| S&P 500 | **-1.06%** (-78 pts) |\n| Dow | **-0.95%** (-486 pts) |\n| Nasdaq | **-1.6%** (-475 pts) |\n\n**Why it's down:**\n- **US-Iran escalation** — new military strikes after a US helicopter was shot down over the Strait of Hormuz. Oil jumping.\n- **CPI hot** — May inflation at 4.2% annual rate, highest monthly gain since Apr 2023.\n- **Tech selling off** — NVDA, AAPL, AMD all lower on AI cost jitters. SMCI down 12%.\n\n**Green spots:** HOOD +8.1%, KLAC +6.7%, AMAT +5.5%.\n\n---\n\n## AI Headlines\n\n- **Apple WWDC** — Tim Cook's final keynote as CEO. Gemini-powered Siri, new multi-AI Extensions system (Claude now an iPhone option for the first time), iOS 27 Beta 1 dropped.\n- **EU AI Act** — 55 days until the bulk enforcement deadline (Aug 2). High-risk AI rules for employment, education, finance, law enforcement go live.\n- **UMich brain MRI AI** — new system reads brain MRIs in seconds, identifying neurological conditions at scale.\n- **MIT / AI & misinformation** — Media Lab study finds AI tools may weaken our ability to detect fake news (GPS-for-navigation analogy).\n\n---\n\n## Email & Calendar\n\nNot available — no Gmail or Calendar MCP tools connected. If you want these, you can add the Google MCP server to your Claude config.\n\n---\n\nSources:\n- [TheStreet — Stock Market Today June 10](https://www.thestreet.com/stock-market-today/stock-market-today-dow-jones-sp-500-nasdaq-updates-june-10-2026)\n- [24/7 Wall St — S&P 500 Sinks on Fear of War](https://247wallst.com/investing/2026/06/10/stock-market-live-june-10-2026-sp-500-spy-sinks-on-fear-of-war/)\n- [TipRanks — 3 Reasons Market Is Down](https://www.tipranks.com/news/3-reasons-why-the-stock-market-is-down-today-june-10-2026)\n- [Build Fast with AI — June 8 AI News](https://www.buildfastwithai.com/blogs/ai-news-today-june-8-2026)\n- [MIT News — AI](https://news.mit.edu/topic/artificial-intelligence2)",
+    "error": ""
+  },
+  {
+    "id": "rmq7tua5cfbcd",
+    "routineId": "rmq7tu70ibrne",
+    "name": "Pipeline Test",
+    "project": "Claude_Dashboard",
+    "ts": 1781081335776,
+    "ms": 4056,
+    "ok": true,
+    "output": "BRIEF-OK",
+    "error": ""
+  }
+]

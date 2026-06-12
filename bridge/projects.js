@@ -1,4 +1,4 @@
-// Hivemind — Claude project registry + component manager.
+// Gander — Claude project registry + component manager.
 //
 // Knows every Claude project (from configured root folders + auto-imported from
 // running sessions + the global ~/.claude), lists each one's components

@@ -1,6 +1,6 @@
 ---
 name: component-smith
-description: Use proactively when the user wants to design or build a Claude Code agent, skill, or slash command ("build me an agent that…", "make a skill that…", "create a command for…"). A clean-context specialist that drafts correct YAML front matter + body and creates the file (locally or via the Hivemind bridge).
+description: Use proactively when the user wants to design or build a Claude Code agent, skill, or slash command ("build me an agent that…", "make a skill that…", "create a command for…"). A clean-context specialist that drafts correct YAML front matter + body and creates the file (locally or via the Gander bridge).
 tools: Read, Grep, Glob, Write, Edit, WebFetch
 model: sonnet
 color: purple
@@ -18,7 +18,7 @@ When invoked:
    - **tools**: least privilege. Review/audit/research ⇒ read-only `Read, Grep, Glob` (+ web tools if needed). Add `Edit/Write/Bash` only if it must change things. Assume if it *can* touch data, it will.
    - **body**: a numbered "When invoked" procedure; for agents, end by telling it to return a concise report.
 
-2. **Create it.** Prefer the Hivemind bridge for validation + multi-deploy:
+2. **Create it.** Prefer the Gander bridge for validation + multi-deploy:
    `POST http://localhost:3131/api/component-new` with `{ type, name, description, model, color, tools, body, targets:[<cwd…>,"global"] }`.
    Otherwise Write the file directly to `<dir>/.claude/agents/<slug>.md`, `<dir>/.claude/commands/<slug>.md`, or `<dir>/.claude/skills/<slug>/SKILL.md`.
 

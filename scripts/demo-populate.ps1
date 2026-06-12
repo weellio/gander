@@ -7,7 +7,7 @@
     powershell -ExecutionPolicy Bypass -File scripts\demo-populate.ps1 -Workers 24 -Seconds 240
     powershell -ExecutionPolicy Bypass -File scripts\demo-populate.ps1 -Clear     # remove the demo agents
 
-  Tip: in the top-bar project filter, pick "hivemind-demo" to show only the swarm.
+  Tip: in the top-bar project filter, pick "gander-demo" to show only the swarm.
 #>
 param([int]$Port = 3131, [int]$Workers = 16, [int]$Seconds = 180, [switch]$Clear)
 
@@ -25,8 +25,8 @@ if ($Clear) {
 
 $states = @('coding', 'reading', 'testing', 'thinking', 'spawning', 'running')
 
-ev @{ agentId = $root; name = 'Demo Orchestrator'; root = $true; project = 'hivemind-demo'; state = 'spawning'; log = 'spinning up the team' }
-foreach ($id in $ids) { ev @{ agentId = $id; name = 'general-purpose'; parentId = $root; project = 'hivemind-demo'; state = 'spawning' } }
+ev @{ agentId = $root; name = 'Demo Orchestrator'; root = $true; project = 'gander-demo'; state = 'spawning'; log = 'spinning up the team' }
+foreach ($id in $ids) { ev @{ agentId = $id; name = 'general-purpose'; parentId = $root; project = 'gander-demo'; state = 'spawning' } }
 Start-Sleep -Milliseconds 500
 
 Write-Host "[demo] $Workers workers live for $Seconds sec. Record now. Ctrl+C to stop, then run with -Clear to remove."
@@ -37,7 +37,7 @@ while ((Get-Date) -lt $end) {
     ev @{ agentId = $id; state = 'done'; log = 'task complete' }
     Start-Sleep -Milliseconds 700
     ev @{ agentId = $id; remove = $true }; Start-Sleep -Milliseconds 200
-    ev @{ agentId = $id; name = 'general-purpose'; parentId = $root; project = 'hivemind-demo'; state = 'spawning' }
+    ev @{ agentId = $id; name = 'general-purpose'; parentId = $root; project = 'gander-demo'; state = 'spawning' }
   } else {
     $s = $states | Get-Random
     ev @{ agentId = $id; state = $s; log = "$s ..." }

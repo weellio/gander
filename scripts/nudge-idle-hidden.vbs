@@ -3,7 +3,7 @@
 ' Any arguments passed to this script are forwarded to the .ps1.
 '
 '   Schedule it (every 10 min, current user, no flash):
-'     schtasks /Create /TN "Hivemind Nudge" /TR "wscript.exe \"%CD%\scripts\nudge-idle-hidden.vbs\" -OnlyPending" /SC MINUTE /MO 10 /F
+'     schtasks /Create /TN "Gander Nudge" /TR "wscript.exe \"%CD%\scripts\nudge-idle-hidden.vbs\" -OnlyPending" /SC MINUTE /MO 10 /F
 Dim sh, here, args, i
 Set sh = CreateObject("WScript.Shell")
 here = Left(WScript.ScriptFullName, InStrRev(WScript.ScriptFullName, "\"))

@@ -1,4 +1,4 @@
-// Hivemind — optional Gumroad license verification.
+// Gander — optional Gumroad license verification.
 //
 // Licensing is OFF unless a Gumroad product is configured (so dev/free use is
 // frictionless). To gate a paid build, set the product permalink — via

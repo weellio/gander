@@ -6,7 +6,7 @@ Supporting detail for the `autopilot` skill: guardrails expanded, a worked examp
 
 **Iteration cap (~10).** The cap exists so a wrong assumption can't compound across an entire run unsupervised. Count both your own task iterations and spawned sub-agents toward it. When you reach it, don't silently stop and don't silently barrel on — post a short summary and ask whether to continue. If the user already said "keep going until done" for a large job, you can raise the cap once they confirm, but reset the counter after each check-in.
 
-**Stoppable by the user, always.** Autopilot is not "fire and forget you can't interrupt." The user can hit **Stop** in the Hivemind dashboard or send Telegram **`/stop`** at any moment. This is *why* you're allowed to proceed without per-step confirmation — the human keeps the kill switch. If you're stopped mid-task, leave things in a consistent state and summarize where you got to.
+**Stoppable by the user, always.** Autopilot is not "fire and forget you can't interrupt." The user can hit **Stop** in the Gander dashboard or send Telegram **`/stop`** at any moment. This is *why* you're allowed to proceed without per-step confirmation — the human keeps the kill switch. If you're stopped mid-task, leave things in a consistent state and summarize where you got to.
 
 **Dangerous actions never auto-run.** Even in auto/acceptEdits mode, the following always pause for explicit user approval:
 - Deploys / releases / publishing packages.
@@ -30,7 +30,7 @@ User: "Add CSV export to the reports page. Build it autonomously, don't ask me b
    4. Add a unit test for `toCsv` (commas, quotes, newlines, empty set).
    5. Build + run tests; manual smoke check of the download.
 
-2. **Execute with sub-agents where it parallelizes.** Tasks 2 and 4 are independent of the UI work, so spawn them as Task sub-agents (they appear as tiles in Hivemind): one writes `toCsv` + its test, one can scaffold the button. Task 3 depends on 2's function signature, so sequence it after 2 lands. Task 1 (recon) runs first because everything depends on it.
+2. **Execute with sub-agents where it parallelizes.** Tasks 2 and 4 are independent of the UI work, so spawn them as Task sub-agents (they appear as tiles in Gander): one writes `toCsv` + its test, one can scaffold the button. Task 3 depends on 2's function signature, so sequence it after 2 lands. Task 1 (recon) runs first because everything depends on it.
 
 3. **Integrate.** Pull the serializer and the button together; resolve the function signature so the UI calls `toCsv` correctly.
 

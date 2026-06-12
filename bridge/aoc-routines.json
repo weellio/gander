@@ -1,0 +1,14 @@
+[
+  {
+    "id": "r-sample-brief",
+    "name": "Morning Brief",
+    "cwd": "",
+    "prompt": "Compile a concise morning briefing. If I have a news / research skill, use it for AI + markets headlines. If Gmail/Calendar MCP tools are available, summarize important unread mail since yesterday evening and list today's meetings. Keep it tight and skimmable. If a tool isn't available, just say so and skip it.",
+    "permMode": "bypassPermissions",
+    "schedule": "",
+    "enabled": false,
+    "notify": false,
+    "timeoutSec": 600,
+    "lastRunAt": 1781108962076
+  }
+]

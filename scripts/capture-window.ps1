@@ -4,7 +4,7 @@
   after ▶ Start / ＋ New task so it can later target the window by PID (which the
   title-rename can't break). Prints the PID and exits as soon as it's found.
 
-    powershell -ExecutionPolicy Bypass -File scripts\capture-window.ps1 -Title "Hivemind: WaivePulse" -TimeoutMs 5000
+    powershell -ExecutionPolicy Bypass -File scripts\capture-window.ps1 -Title "Gander: WaivePulse" -TimeoutMs 5000
 #>
 param([string]$Title = '', [int]$TimeoutMs = 5000)
 if (-not $Title) { exit 0 }

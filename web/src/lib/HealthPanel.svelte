@@ -50,9 +50,9 @@
 
 {#if open}
   <div class="ov" onclick={closePanel} role="presentation"></div>
-  <aside class="drawer" role="dialog" aria-label="Hivemind health status">
+  <aside class="drawer" role="dialog" aria-label="Gander health status">
     <div class="hd">
-      <strong>Hivemind Health</strong>
+      <strong>Gander Health</strong>
       <div class="hdr">
         <button class="select" onclick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
         <button class="x" onclick={closePanel} aria-label="Close">✕</button>
@@ -110,7 +110,7 @@
 
           {#if !data.hooks?.installed}
             <div class="hint">
-              Run <code>node install.js</code> then <code>/hooks</code> (or restart) to wire Hivemind.
+              Run <code>node install.js</code> then <code>/hooks</code> (or restart) to wire Gander.
             </div>
           {/if}
         </div>

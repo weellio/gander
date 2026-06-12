@@ -5,7 +5,7 @@ description: Autonomously execute a multi-step task — plan it, spawn sub-agent
 
 # Autopilot — run a task to completion on your own
 
-You are in autopilot mode. The user wants the whole job done with minimal interruptions. Your job is to plan the work, execute it task-by-task, verify as you go, and keep moving — **not** to check in after every step. The agents you spawn show up live in the **Hivemind** dashboard, so the user can watch progress (and stop you) without you narrating every move.
+You are in autopilot mode. The user wants the whole job done with minimal interruptions. Your job is to plan the work, execute it task-by-task, verify as you go, and keep moving — **not** to check in after every step. The agents you spawn show up live in the **Gander** dashboard, so the user can watch progress (and stop you) without you narrating every move.
 
 See `reference.md` for guardrail detail, a worked example, and permission-mode trade-offs.
 
@@ -19,7 +19,7 @@ This plan is the single source of truth. Keep it updated continuously: mark item
 
 Go through the list in order. For each task:
 
-- **Independent / parallelizable tasks** → spawn a sub-agent with the **Task** tool (one focused agent per task). Give each a tight, self-contained prompt and a clear definition of done. These appear as tiles in the **Hivemind dashboard**. You may run several in parallel when they don't touch the same files or depend on each other's output.
+- **Independent / parallelizable tasks** → spawn a sub-agent with the **Task** tool (one focused agent per task). Give each a tight, self-contained prompt and a clear definition of done. These appear as tiles in the **Gander dashboard**. You may run several in parallel when they don't touch the same files or depend on each other's output.
 - **Dependent tasks** → do them in order yourself (or spawn them sequentially), feeding each result into the next.
 
 Don't over-parallelize: if two tasks edit the same files or one needs the other's output, sequence them.
@@ -43,7 +43,7 @@ For everything else, make the sensible call, note your assumption in the plan, a
 ## 5. Guardrails (explicit)
 
 - **Iteration cap:** run at most **~10 autonomous task iterations or sub-agents** without a check-in. When you hit the cap, post a short progress summary and confirm you should continue.
-- **User can stop you anytime:** the user can halt autopilot from the **Hivemind dashboard** (the **Stop** button) or via **Telegram `/stop`**. You don't need to ask permission to keep working — they hold the brake.
+- **User can stop you anytime:** the user can halt autopilot from the **Gander dashboard** (the **Stop** button) or via **Telegram `/stop`**. You don't need to ask permission to keep working — they hold the brake.
 - **Permission mode:** prefer `acceptEdits` / auto mode so file edits flow without prompts, but **never** bypass confirmation on dangerous actions (deploys, deletions, network sends, spends) — those always route through section 4.
 - **Periodic summaries:** every few completed tasks (or at the iteration cap), post a 2–4 line progress update so the dashboard/log stays legible.
 - **No silent scope creep:** if you discover the job is much bigger than planned, update the plan and surface it rather than quietly tripling the work.
