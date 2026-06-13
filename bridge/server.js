@@ -205,8 +205,8 @@ function retireSweep() {
 }
 
 // ── cost budget alerts — warn (Telegram + dashboard) when spend crosses a cap. ──
-const budget = { daily: Number(cfg.dailyBudget) || 0, session: Number(cfg.sessionBudget) || 0 };
-let budgetState = { dailyCost: 0, daily: budget.daily, session: budget.session, overDaily: false, generatedAt: 0 };
+const budget = { daily: Number(cfg.dailyBudget) || 0, session: Number(cfg.sessionBudget) || 0, enforce: !!cfg.budgetEnforce };
+let budgetState = { dailyCost: 0, daily: budget.daily, session: budget.session, enforce: budget.enforce, overDaily: false, generatedAt: 0 };
 const budgetAlerted = { day: '', sessions: new Set() };
 function dayKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 async function checkBudget() {
@@ -216,18 +216,35 @@ async function checkBudget() {
     const day = (u.byDay || []).find((x) => x.date === tk);
     const dailyCost = day ? day.costUSD : 0;
     const overDaily = budget.daily > 0 && dailyCost >= budget.daily;
-    budgetState = { dailyCost, daily: budget.daily, session: budget.session, overDaily, generatedAt: Date.now() };
+    budgetState = { dailyCost, daily: budget.daily, session: budget.session, enforce: budget.enforce, overDaily, generatedAt: Date.now() };
     if (overDaily && budgetAlerted.day !== tk) {
       budgetAlerted.day = tk;
-      sendTelegram(`💸 <b>Gander budget</b>\nToday's spend $${dailyCost.toFixed(2)} crossed your $${budget.daily} cap.`);
-      pushFeed({ ts: Date.now(), agentId: 'budget', agent: 'budget', project: '', state: 'error', log: `Daily spend $${dailyCost.toFixed(2)} over $${budget.daily} cap`, error: true });
+      const act = budget.enforce ? ' — stopping active sessions' : '';
+      sendTelegram(`💸 <b>Gander budget</b>\nToday's spend $${dailyCost.toFixed(2)} crossed your $${budget.daily} cap${act}.`);
+      pushFeed({ ts: Date.now(), agentId: 'budget', agent: 'budget', project: '', state: 'error', log: `Daily spend $${dailyCost.toFixed(2)} over $${budget.daily} cap${act}`, error: true });
+      if (budget.enforce) {
+        for (const a of agents.values()) {
+          if (a.root && !a.closed && a.state !== 'idle' && a.state !== 'done') {
+            const s2 = sidOf(a); if (s2) queueCommand(s2, 'stop', `Daily budget cap ($${budget.daily}) reached — stopping.`);
+          }
+        }
+        maybeNudge();
+      }
     }
     if (budget.session > 0 && u.bySession) {
       for (const [sid, s] of Object.entries(u.bySession)) {
         if (s.costUSD >= budget.session && !budgetAlerted.sessions.has(sid)) {
           budgetAlerted.sessions.add(sid);
           const ag = agents.get('sess:' + sid);
-          sendTelegram(`💸 <b>Gander</b>\nSession ${ag ? ag.project : sid.slice(0, 8)} hit $${s.costUSD.toFixed(2)} (cap $${budget.session}).`);
+          const name = ag ? ag.project : sid.slice(0, 8);
+          if (budget.enforce) {
+            queueCommand(sid, 'stop', `Session budget cap ($${budget.session}) reached — stopping.`);
+            pushFeed({ ts: Date.now(), agentId: 'budget', agent: 'budget', project: ag ? ag.project : '', state: 'error', log: `${name} hit $${s.costUSD.toFixed(2)} (cap $${budget.session}) — stopped`, error: true });
+            sendTelegram(`🛑 <b>Gander</b>\nStopped ${name}: $${s.costUSD.toFixed(2)} hit the $${budget.session} cap.`);
+            maybeNudge();
+          } else {
+            sendTelegram(`💸 <b>Gander</b>\nSession ${name} hit $${s.costUSD.toFixed(2)} (cap $${budget.session}).`);
+          }
         }
       }
     }
@@ -845,6 +862,7 @@ const server = http.createServer(async (req, res) => {
     if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
     if (body.daily !== undefined) { budget.daily = Number(body.daily) || 0; cfg.dailyBudget = budget.daily; }
     if (body.session !== undefined) { budget.session = Number(body.session) || 0; cfg.sessionBudget = budget.session; }
+    if (body.enforce !== undefined) { budget.enforce = !!body.enforce; cfg.budgetEnforce = budget.enforce; }
     saveConfig();
     await checkBudget();
     return sendJson(res, 200, budgetState);

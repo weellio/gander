@@ -30,9 +30,9 @@
   function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); if (cwd) loadConfig(); }
 
   // ── cost budget (global) ──
-  let bud = $state(null); let budDaily = $state(''); let budSession = $state(''); let budStatus = $state(''); let budOpen = $state(false);
-  async function loadBudget() { try { const r = await fetch('/api/budget'); bud = await r.json(); budDaily = bud.daily ? String(bud.daily) : ''; budSession = bud.session ? String(bud.session) : ''; } catch (_) {} }
-  async function saveBudget() { budStatus = 'Saving…'; const r = await post('/api/budget', { daily: Number(budDaily) || 0, session: Number(budSession) || 0 }); if (r) { bud = r; budStatus = '✓ Saved'; } else budStatus = 'Error'; }
+  let bud = $state(null); let budDaily = $state(''); let budSession = $state(''); let budStatus = $state(''); let budOpen = $state(false); let budEnforce = $state(false);
+  async function loadBudget() { try { const r = await fetch('/api/budget'); bud = await r.json(); budDaily = bud.daily ? String(bud.daily) : ''; budSession = bud.session ? String(bud.session) : ''; budEnforce = !!bud.enforce; } catch (_) {} }
+  async function saveBudget() { budStatus = 'Saving…'; const r = await post('/api/budget', { daily: Number(budDaily) || 0, session: Number(budSession) || 0, enforce: budEnforce }); if (r) { bud = r; budStatus = '✓ Saved'; } else budStatus = 'Error'; }
 
   // ── editor command (for "Open in VS Code") ──
   let edOpen = $state(false); let edCmd = $state(''); let edStatus = $state('');
@@ -159,9 +159,10 @@
         <div class="tg-form">
           <input class="in" placeholder="daily cap (USD, 0 = off)" bind:value={budDaily} />
           <input class="in" placeholder="per-session cap (USD, 0 = off)" bind:value={budSession} />
+          <label class="cbrow"><input type="checkbox" bind:checked={budEnforce} /> Enforce — <b>stop</b> a session that crosses the cap <span class="dim">(not just alert)</span></label>
           <div class="tg-btns"><button class="select" onclick={saveBudget}>Save</button></div>
           {#if budStatus}<div class="tg-status">{budStatus}</div>{/if}
-          <div class="tg-hint">Alerts go to Telegram + a dashboard banner when crossed. Spend is estimated from transcripts.</div>
+          <div class="tg-hint">Alerts go to Telegram + a dashboard banner when crossed. With <b>Enforce</b> on, a session over its cap is <b>Stopped</b> at its next tool, and crossing the daily cap stops every active session. Spend is estimated from transcripts.</div>
         </div>
       {/if}
     </div>
