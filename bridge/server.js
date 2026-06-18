@@ -658,6 +658,22 @@ function auditClaudeMd(text, corpus, measured) {
   });
   return { lines: out, cutTokens };
 }
+// Claude Code loads CLAUDE.md by walking UP the tree, so a session in a subdir
+// (e.g. <repo>/bridge) still uses <repo>/CLAUDE.md. Resolve the nearest one.
+function nearestClaudeMd(cwd, home) {
+  let dir = path.resolve(cwd);
+  const homeR = path.resolve(home);
+  for (let i = 0; i < 15; i++) {
+    if (path.resolve(dir) === homeR) break;   // ~/.claude global is audited separately, not as a project file
+    const a = path.join(dir, 'CLAUDE.md'), b = path.join(dir, '.claude', 'CLAUDE.md');
+    if (fs.existsSync(a)) return a;
+    if (fs.existsSync(b)) return b;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
 
 // Launch a Claude Code session in a new terminal at cwd (optionally resuming one).
 // Flags appended to `claude` for ▶ Start / ＋ New task, from the Config panel.
@@ -926,6 +942,17 @@ function readBodyLarge(req, maxBytes = 14e6) {
 // ── Server ──────────────────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
+
+  // Localhost-only guard (unless remote access is explicitly enabled): reject a
+  // non-loopback Host header (defeats DNS-rebinding) and any cross-origin request
+  // (defeats a malicious web page CSRFing the bridge). No Origin = server-side hook
+  // POSTs, which are allowed.
+  if (!ALLOW_REMOTE) {
+    const host = String(req.headers.host || '');
+    if (!/^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(host)) { res.writeHead(403); res.end('forbidden'); return; }
+    const origin = req.headers.origin;
+    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(origin)) { res.writeHead(403); res.end('forbidden'); return; }
+  }
 
   if (req.method === 'OPTIONS') { sendJson(res, 204, {}); return; }
 
@@ -1442,8 +1469,8 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
     const cwd = path.resolve(String(body.cwd));
-    const cmPath = claudeMdFor('project', cwd, os.homedir());
-    if (!fs.existsSync(cmPath)) return sendJson(res, 200, { ok: true, exists: false, path: cmPath });
+    const cmPath = nearestClaudeMd(cwd, os.homedir());
+    if (!cmPath) return sendJson(res, 200, { ok: true, exists: false, path: claudeMdFor('project', cwd, os.homedir()) });
     const text = readTextSafe(cmPath) || '';
     const dir = projTranscriptDir(cwd);
     const { corpus, files } = dir ? activityCorpus(dir) : { corpus: '', files: 0 };
@@ -1554,8 +1581,15 @@ const server = http.createServer(async (req, res) => {
   return serveStatic(req, res);
 });
 
-server.listen(argPort, () => {
-  console.log(`Agent Ops Center bridge listening on http://localhost:${argPort}`);
+// Security: bind to loopback only by default so the bridge (which can spawn
+// processes, write hooks/MCP config, and kill PIDs) isn't exposed to the LAN.
+// Opt into LAN access with AOC_ALLOW_REMOTE=1 / { "allowRemote": true } — trusted
+// networks only. The in-handler guard below additionally blocks DNS-rebinding/CSRF.
+const ALLOW_REMOTE = !!(process.env.AOC_ALLOW_REMOTE || cfg.allowRemote);
+const BIND_HOST = ALLOW_REMOTE ? '0.0.0.0' : '127.0.0.1';
+
+server.listen(argPort, BIND_HOST, () => {
+  console.log(`Gander bridge listening on http://localhost:${argPort}${ALLOW_REMOTE ? '  (⚠ remote access enabled — trusted networks only)' : ''}`);
   console.log(`Dashboard:  http://localhost:${argPort}/`);
   console.log(`Push event: POST http://localhost:${argPort}/api/event`);
   startIngest();
