@@ -5,6 +5,7 @@
   import { speak as ttsSpeak, ttsAvailable, getVoices } from './lib/tts.js';
   import AgentTile from './lib/AgentTile.svelte';
   import AgentModal from './lib/AgentModal.svelte';
+  import NeedsYou from './lib/NeedsYou.svelte';
   import NewTask from './lib/NewTask.svelte';
   import Tour from './lib/Tour.svelte';
   import RoutinesPanel from './lib/RoutinesPanel.svelte';
@@ -212,15 +213,7 @@
     return cmds;
   });
 
-  let bellOpen = $state(false);
-  function flyTo(a) { $layout = 'office'; focusReq = { id: a.id, t: Date.now() }; bellOpen = false; }
-  let attention = $derived.by(() => {
-    const items = [];
-    for (const a of shown) if (a.state === 'awaiting') items.push({ kind: 'awaiting', icon: '🔔', label: a.name, sub: 'needs input · ' + (a.project || ''), action: () => flyTo(a) });
-    for (const a of shown) if (a.state === 'error') items.push({ kind: 'error', icon: '⚠', label: a.name, sub: 'error · ' + (a.project || ''), action: () => flyTo(a) });
-    if (budget?.overDaily) items.push({ kind: 'budget', icon: '💸', label: 'Daily budget exceeded', sub: `$${budget.dailyCost.toFixed(2)} / $${budget.daily}`, action: () => { openP('config'); bellOpen = false; } });
-    return items;
-  });
+  function flyTo(a) { $layout = 'office'; focusReq = { id: a.id, t: Date.now() }; }
 
   onMount(() => {
     poll();
@@ -394,7 +387,7 @@
       </div>
 
       <div class="menu-wrap">
-        <button class="select" data-tour="settings" onclick={() => { optsOpen = !optsOpen; menuOpen = false; bellOpen = false; }} title="Settings, appearance & token conservation">⚙ Settings ▾</button>
+        <button class="select" data-tour="settings" onclick={() => { optsOpen = !optsOpen; menuOpen = false; }} title="Settings, appearance & token conservation">⚙ Settings ▾</button>
         {#if optsOpen}
           <div class="dropdown opts" role="menu">
             <div class="opt-sec">Appearance</div>
@@ -446,26 +439,13 @@
         {/if}
       </div>
 
-      <div class="menu-wrap">
-        <button class="select bell" onclick={() => { bellOpen = !bellOpen; menuOpen = false; optsOpen = false; }} title="What needs you">🔔{#if attention.length}<span class="bellbadge">{attention.length}</span>{/if}</button>
-        {#if bellOpen}
-          <div class="dropdown" role="menu">
-            {#if attention.length === 0}
-              <div class="opt-note">All clear — nothing needs you. ✨</div>
-            {:else}
-              {#each attention as it (it.kind + it.label)}
-                <button class="select" onclick={it.action}>{it.icon} {it.label} <span class="dim">{it.sub}</span></button>
-              {/each}
-            {/if}
-          </div>
-        {/if}
-      </div>
+      <NeedsYou {agents} {budget} onOpen={(id) => (tileModalId = id)} onFly={flyTo} onConfig={() => openP('config')} />
 
       <HelpPanel />
     </div>
   </header>
 
-  {#if menuOpen || optsOpen || bellOpen}<div class="menu-backdrop" onclick={() => { menuOpen = false; optsOpen = false; bellOpen = false; }} role="presentation"></div>{/if}
+  {#if menuOpen || optsOpen}<div class="menu-backdrop" onclick={() => { menuOpen = false; optsOpen = false; }} role="presentation"></div>{/if}
 
   {#if exportMsg}<div class="toast">{exportMsg}</div>{/if}
 
