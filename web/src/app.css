@@ -70,10 +70,18 @@ select.select {
    ───────────────────────────────────────────────────────────────────────── */
 .ov { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, 0.25); }
 .drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 91; width: var(--drawer-w, 380px); max-width: 96vw;
+  /* width: a user-dragged shared override (--aoc-drawer-w) wins; else the panel's own
+     --drawer-w; else a default. Drag the left-edge grip (::before) to resize — see App.svelte. */
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 91; width: var(--aoc-drawer-w, var(--drawer-w, 380px)); max-width: 96vw;
   background: var(--color-background-primary); border-left: 0.5px solid var(--color-border-secondary);
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.18); display: flex; flex-direction: column;
 }
+.drawer::before {   /* left-edge resize grip */
+  content: ''; position: absolute; left: 0; top: 0; width: 6px; height: 100%; cursor: ew-resize; z-index: 5;
+  transition: box-shadow .12s ease;
+}
+.drawer:hover::before { box-shadow: inset 2px 0 0 var(--accent, #6366F1); }
+body.aoc-resizing { cursor: ew-resize; user-select: none; }
 .hd { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 0.5px solid var(--color-border-tertiary); flex-shrink: 0; }
 .hd strong { font-size: 14px; }
 .x { background: none; border: none; cursor: pointer; font-size: 14px; color: var(--color-text-tertiary); transition: color .12s ease; }

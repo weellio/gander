@@ -216,7 +216,34 @@
 
   function flyTo(a) { $layout = 'office'; focusReq = { id: a.id, t: Date.now() }; }
 
+  // Resizable side panels — drag the left-edge grip of any open drawer. The width is a
+  // shared override remembered in localStorage, so all panels track the size you pick.
+  let drawerDrag = null;
+  const DRAWER_MIN = 320;
+  const drawerMax = () => Math.max(DRAWER_MIN, window.innerWidth - 60);
+  function applyDrawerWidth() {
+    try { const w = parseInt(localStorage.getItem('aoc-drawer-w'), 10); if (w) document.documentElement.style.setProperty('--aoc-drawer-w', Math.max(DRAWER_MIN, Math.min(drawerMax(), w)) + 'px'); } catch (_) {}
+  }
+  function drawerDown(e) {
+    const d = e.target?.closest?.('.drawer');
+    if (!d || e.clientX - d.getBoundingClientRect().left > 8) return;   // only the left-edge grip
+    drawerDrag = { startX: e.clientX, startW: d.getBoundingClientRect().width };
+    document.body.classList.add('aoc-resizing');
+    e.preventDefault();
+  }
+  function drawerMove(e) {
+    if (!drawerDrag) return;
+    const w = Math.max(DRAWER_MIN, Math.min(drawerMax(), drawerDrag.startW + (drawerDrag.startX - e.clientX)));
+    document.documentElement.style.setProperty('--aoc-drawer-w', w + 'px');
+  }
+  function drawerUp() {
+    if (!drawerDrag) return;
+    drawerDrag = null; document.body.classList.remove('aoc-resizing');
+    try { const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--aoc-drawer-w'), 10); if (cur) localStorage.setItem('aoc-drawer-w', String(cur)); } catch (_) {}
+  }
+
   onMount(() => {
+    applyDrawerWidth();
     poll();
     pollUsage();
     fetch('/api/health').then((r) => r.json()).then((s) => (healthInfo = s)).catch(() => {});
@@ -315,7 +342,7 @@
   function clearImages() { if (confirm('Clear all imported images?')) images.set([]); }
 </script>
 
-<svelte:window onkeydown={onGlobalKey} />
+<svelte:window onkeydown={onGlobalKey} onpointerdown={drawerDown} onpointermove={drawerMove} onpointerup={drawerUp} />
 <CommandPalette bind:open={paletteOpen} items={paletteItems} />
 
 <div class="dashboard">
