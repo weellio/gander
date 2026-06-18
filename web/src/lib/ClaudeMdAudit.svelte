@@ -115,14 +115,16 @@
           </div>
         </div>
 
-        {#if additions.length}
-          <div class="adds">
-            <div class="adds-h">＋ Suggested additions <span class="dim">· used by the project, not in CLAUDE.md — add the useful ones yourself</span></div>
+        <div class="adds">
+          <div class="adds-h">＋ Suggested additions <span class="dim">· used by the project, not in CLAUDE.md — add the useful ones yourself</span></div>
+          {#if additions.length}
             {#each additions as a (a.text)}
               <div class="add"><span class="add-tx mono">{a.text}</span><span class="add-why">{a.reason}</span></div>
             {/each}
-          </div>
-        {/if}
+          {:else}
+            <div class="add-empty">✓ Nothing obvious to add — your CLAUDE.md already covers the commands, stack &amp; key files.</div>
+          {/if}
+        </div>
 
         {#if cutLines.length}
           <div class="actions">
@@ -193,6 +195,7 @@
   .add-tx { color: var(--color-text-primary); flex-shrink: 0; }
   .add-tx::before { content: '+ '; color: var(--hm-ok, #10B981); font-weight: 700; }
   .add-why { color: var(--color-text-tertiary); font-size: 10.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .add-empty { font-size: 11px; color: var(--hm-ok, #10B981); opacity: 0.85; }
 
   .actions { display: flex; align-items: center; gap: 10px; padding: 11px 14px 2px; }
   .apply { font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 6px; cursor: pointer; border: none; background: var(--hm-err, #EF4444); color: #fff; }

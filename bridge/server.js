@@ -728,25 +728,53 @@ function nearestClaudeMd(cwd, home) {
   return null;
 }
 // Green side of the audit: things the project clearly uses but CLAUDE.md doesn't mention.
-// Deterministic — driven by package.json (how to build/test/run), not by transcript
-// activity. Advisory only — not auto-applied.
+// Deterministic — driven by what's on disk (package.json scripts/deps, key config files,
+// a tests dir), NOT by transcript activity. Advisory only — not auto-applied.
 function suggestAdditions(projectRoot, text) {
   const out = [];
   const lc = String(text).toLowerCase();
   const mentioned = (s) => lc.includes(String(s).toLowerCase());
+  const add = (t, reason) => { if (out.length < 12 && !out.some((o) => o.text === t)) out.push({ text: t, reason }); };
+  const exists = (rel) => { try { return fs.existsSync(path.join(projectRoot, rel)); } catch (_) { return false; } };
+
+  // 1) package.json — undocumented scripts + notable frameworks/runtimes
+  const KNOWN = { svelte: 'Svelte', '@sveltejs/kit': 'SvelteKit', react: 'React', vue: 'Vue', next: 'Next.js',
+    nuxt: 'Nuxt', '@angular/core': 'Angular', express: 'Express', fastify: 'Fastify', koa: 'Koa', vite: 'Vite',
+    typescript: 'TypeScript', tailwindcss: 'Tailwind CSS', vitest: 'Vitest', jest: 'Jest', mocha: 'Mocha',
+    electron: 'Electron', prisma: 'Prisma', drizzle: 'Drizzle', webpack: 'webpack', rollup: 'Rollup' };
+  const frameworks = new Set();
   for (const d of ['', 'web', 'bridge', 'app', 'client', 'server', 'frontend', 'backend']) {
-    if (out.length >= 10) break;
     let pkg; try { pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, d, 'package.json'), 'utf8')); } catch (_) { continue; }
-    if (!pkg || !pkg.scripts) continue;
-    for (const name of Object.keys(pkg.scripts)) {
-      if (out.length >= 10) break;
-      if (/^(pre|post)/.test(name)) continue;                       // lifecycle hooks — noise
+    if (pkg.scripts) for (const name of Object.keys(pkg.scripts)) {
+      if (/^(pre|post)/.test(name)) continue;
       const cmd = `npm run ${name}`;
-      if (mentioned(cmd) || mentioned(`run ${name}`)) continue;
-      out.push({ text: d ? `${cmd}   (in ${d}/)` : cmd, reason: `package.json defines "${name}" — document how to run it` });
+      if (!mentioned(cmd) && !mentioned(`run ${name}`)) add(d ? `${cmd}   (in ${d}/)` : cmd, `package.json defines the "${name}" script — document how to run it`);
     }
+    for (const k of Object.keys({ ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) })) if (KNOWN[k]) frameworks.add(KNOWN[k]);
   }
-  return out;
+  for (const fw of frameworks) if (!mentioned(fw)) add(`note the stack: ${fw}`, 'a key dependency — name it so Claude knows the conventions');
+
+  // 2) key config / infra files that exist but aren't documented
+  for (const [f, why] of [
+    ['Dockerfile', 'containerized — document how to build/run the image'],
+    ['docker-compose.yml', 'document the compose services'],
+    ['Makefile', 'document the make targets'],
+    ['.env.example', 'document the required environment variables'],
+    ['.github/workflows', 'CI is configured here — note what it runs'],
+    ['prisma/schema.prisma', 'the database schema lives here'],
+    ['pyproject.toml', 'Python project config — note setup/run'],
+    ['requirements.txt', 'document the Python dependencies / setup'],
+    ['go.mod', 'Go module — note build/run'],
+    ['Cargo.toml', 'Rust crate — note build/run'],
+  ]) {
+    const base = f.split('/').pop().toLowerCase();
+    if (exists(f) && !mentioned(base) && !mentioned(f)) add(f, why);
+  }
+
+  // 3) tests exist but testing isn't mentioned anywhere
+  if ((exists('test') || exists('tests') || exists('__tests__')) && !/\btest(s|ing)?\b/.test(lc)) add('how to run the tests', "a tests directory exists but CLAUDE.md doesn't mention testing");
+
+  return out.slice(0, 12);
 }
 // Shared audit pass — used by both the report (/api/claudemd-audit) and apply
 // (/api/claudemd-apply), so the server writes exactly what it measured (never client text).
