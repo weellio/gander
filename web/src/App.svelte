@@ -17,6 +17,7 @@
   import HistoryPanel from './lib/HistoryPanel.svelte';
   import HealthPanel from './lib/HealthPanel.svelte';
   import ProcessesPanel from './lib/ProcessesPanel.svelte';
+  import SuggestionsPanel from './lib/SuggestionsPanel.svelte';
   import MemoryPanel from './lib/MemoryPanel.svelte';
   import TranscriptPanel from './lib/TranscriptPanel.svelte';
   import HelpPanel from './lib/HelpPanel.svelte';
@@ -134,7 +135,7 @@
   // Manage / Options menus + the panels they control
   let menuOpen = $state(false);
   let optsOpen = $state(false);
-  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false });
+  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false });
   function openP(k) { panels[k] = true; menuOpen = false; }
   // Settings/Config is one drawer with two scopes: 'app' (global: Telegram, budget,
   // sessions, nudge, editor) opened from Settings ▾, and 'project' (this project's
@@ -381,6 +382,7 @@
             <button class="select" onclick={() => openP('search')}>Search</button>
             <button class="select" onclick={() => openP('feed')}>Activity feed</button>
             <button class="select" onclick={() => openP('procs')}>Processes (stuck open?)</button>
+            <button class="select" onclick={() => openP('tune')}>💡 Tune (suggestions)</button>
             <button class="select" onclick={() => openP('health')}>Health / status</button>
           </div>
         {/if}
@@ -458,6 +460,7 @@
   <RoutinesPanel bind:open={panels.routines} />
   <HealthPanel bind:open={panels.health} />
   <ProcessesPanel bind:open={panels.procs} />
+  <SuggestionsPanel bind:open={panels.tune} />
   <MemoryPanel bind:open={panels.memory} initialScope={memScope} initialCwd={memCwd} />
   <FeedPanel bind:open={panels.feed} onView={(sid) => (transcriptId = sid)} />
   <SearchPanel bind:open={panels.search} onView={(sid) => (transcriptId = sid)} />

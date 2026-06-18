@@ -845,6 +845,80 @@ function runClaudeMdAudit(rawCwd) {
   };
 }
 
+// ── Config suggestions from telemetry ────────────────────────────────────────
+// Mine recent session transcripts for repeated work and propose config that would
+// remove the repetition: a PostToolUse hook for a command run after every edit, a
+// /command (skill) or routine for a prompt you keep re-typing. Deterministic counts.
+function recentTranscripts(limit) {
+  const root = path.join(os.homedir(), '.claude', 'projects');
+  const files = [];
+  let dirs; try { dirs = fs.readdirSync(root); } catch (_) { return []; }
+  for (const d of dirs) {
+    let names; try { names = fs.readdirSync(path.join(root, d)).filter((f) => f.endsWith('.jsonl')); } catch (_) { continue; }
+    for (const f of names) { const p = path.join(root, d, f); try { files.push({ p, mtime: fs.statSync(p).mtimeMs }); } catch (_) {} }
+  }
+  files.sort((a, b) => b.mtime - a.mtime);
+  return files.slice(0, limit);
+}
+function buildSuggestions() {
+  const files = recentTranscripts(14);
+  const cmdMap = new Map();     // command -> { count, sessions:Set, projects:Set }
+  const promptMap = new Map();  // normalized prompt -> { count, sessions:Set, sample }
+  const FILLER = /^(yes|no|ok(ay)?|sure|go( ahead)?|continue|proceed|thanks?|do it|done|yep|yup|nice|cool|good|great|perfect|got it|makes sense|sounds good|please|next|stop|wait|hmm|k)\b[\s.!?]*$/i;
+  for (const f of files) {
+    let lines; try { lines = fs.readFileSync(f.p, 'utf8').split('\n'); } catch (_) { continue; }
+    let proj = '';
+    for (const ln of lines) {
+      if (!ln) continue;
+      let o; try { o = JSON.parse(ln); } catch (_) { continue; }
+      if (!proj && o.cwd) proj = path.basename(String(o.cwd));
+      const msg = o.message;
+      if (!msg) continue;
+      if (o.type === 'user' && typeof msg.content === 'string') {
+        const t = msg.content.trim();
+        if (t.length >= 15 && t.length <= 400 && t[0] !== '<' && t[0] !== '[' && !t.startsWith('/') && !FILLER.test(t)) {
+          const key = t.toLowerCase().replace(/\s+/g, ' ').slice(0, 200);
+          const e = promptMap.get(key) || { count: 0, sessions: new Set(), sample: t.replace(/\s+/g, ' ').slice(0, 150) };
+          e.count++; e.sessions.add(f.p); promptMap.set(key, e);
+        }
+      }
+      const blocks = Array.isArray(msg.content) ? msg.content : [];
+      for (const b of blocks) {
+        if (b && b.type === 'tool_use' && b.name === 'Bash' && b.input && b.input.command) {
+          const cmd = String(b.input.command).replace(/\s+/g, ' ').trim();
+          if (cmd.length < 3 || cmd.length > 120) continue;
+          const e = cmdMap.get(cmd) || { count: 0, sessions: new Set(), projects: new Set() };
+          e.count++; e.sessions.add(f.p); if (proj) e.projects.add(proj); cmdMap.set(cmd, e);
+        }
+      }
+    }
+  }
+  const out = [];
+  const BUILDY = /\b(npm|pnpm|yarn|bun)\b.*\b(build|test|lint|format|typecheck|check)\b|node --(test|check)|py_compile|--check\b|jest|vitest|pytest|eslint|prettier|\btsc\b|go (build|test|vet)|cargo (build|test|check)|\bmake\b/i;
+  for (const [cmd, e] of [...cmdMap.entries()].filter(([, e]) => e.count >= 4).sort((a, b) => b[1].count - a[1].count).slice(0, 8)) {
+    const buildy = BUILDY.test(cmd);
+    out.push({
+      kind: buildy ? 'hook' : 'command',
+      title: buildy ? `Automate \`${cmd}\`` : `Frequent command: \`${cmd}\``,
+      detail: buildy
+        ? `Ran ${e.count}× across ${e.sessions.size} session(s). A PostToolUse hook can run it automatically after every edit.`
+        : `Ran ${e.count}× across ${e.sessions.size} session(s). Consider a hook, a shell alias, or documenting it in CLAUDE.md.`,
+      evidence: `${e.count}×${e.projects.size ? ' · ' + [...e.projects].slice(0, 3).join(', ') : ''}`,
+      snippet: buildy ? JSON.stringify({ hooks: { PostToolUse: [{ matcher: 'Write|Edit', hooks: [{ type: 'command', command: cmd }] }] } }, null, 2) : null,
+    });
+  }
+  for (const [, e] of [...promptMap.entries()].filter(([, e]) => e.count >= 2).sort((a, b) => b[1].count - a[1].count).slice(0, 6)) {
+    out.push({
+      kind: 'skill',
+      title: 'Repeated prompt → make it a /command or routine',
+      detail: `You've sent this ${e.count}×: “${e.sample}”. Turn it into a reusable skill (/command) or a scheduled routine.`,
+      evidence: `${e.count}×`,
+      snippet: null,
+    });
+  }
+  return { suggestions: out, scanned: files.length };
+}
+
 // Launch a Claude Code session in a new terminal at cwd (optionally resuming one).
 // Flags appended to `claude` for ▶ Start / ＋ New task, from the Config panel.
 // permMode: '' (ask, default) | 'acceptEdits' | 'plan' | 'bypass' (skip all prompts).
@@ -1365,6 +1439,10 @@ const server = http.createServer(async (req, res) => {
 
   if (url === '/api/usage' && req.method === 'GET') {
     return sendJson(res, 200, await usage.summaryAsync());
+  }
+
+  if (url === '/api/suggestions' && req.method === 'GET') {
+    return sendJson(res, 200, buildSuggestions());
   }
 
   if (url === '/api/history' && req.method === 'GET') {
