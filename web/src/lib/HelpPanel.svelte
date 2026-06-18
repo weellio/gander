@@ -21,7 +21,7 @@
         ['Reply · Stop', 'Send a message or task to a running session, or stop it at its next tool.'],
         ['💰 Session cost', 'Live estimated spend for that session.'],
         ['📊 Analytics', 'Per-session efficiency gauges from the transcript: cache-hit % (context reused vs re-sent), output-cost share (verbose vs context bulk), and a context-window bar. A parked, near-full session shows a “Compact now” nudge that types /compact to free context.'],
-        ['🔍 Audit CLAUDE.md', 'A before/after diff that flags CLAUDE.md lines referencing files/commands never seen in this project’s real transcripts — your config’s dead weight, re-sent every turn — each with its reason + the tokens reclaimed. Guardrails and prose are kept on purpose; copy the trimmed result when you’re happy.'],
+        ['🔍 Audit CLAUDE.md', 'A before/after diff that flags CLAUDE.md lines pointing at files that don’t exist in the project (compact-proof — it checks files on disk, not the transcript), shows the tokens each costs every turn, and suggests additions (e.g. undocumented npm scripts). Tick/untick each flagged line to approve it, then Apply to write the trimmed file (backed up to CLAUDE.md.bak). Guardrails, commands, and prose are kept on purpose.'],
         ['📄 Transcript', 'Read the full conversation of the session.'],
         ['🪟 Focus window', 'Bring the running session’s terminal to the front — Gander raises the exact window it captured at launch (▶ Start / ＋ New task). Different from “Open in VS Code”, which opens the project folder.'],
         ['Open folder · VS Code', 'Jump to the project on disk or in your editor.'],

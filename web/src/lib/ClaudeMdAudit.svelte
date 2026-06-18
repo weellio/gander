@@ -10,18 +10,47 @@
 
   $effect(() => { if (open && !_w && cwd) load(); _w = open; });
 
+  // Per-line approval: { lineNumber: true } means "yes, cut this one". Defaults to all
+  // flagged lines approved; uncheck any you want to keep. Apply removes only the checked ones.
+  let approved = $state({});
   async function load() {
-    loading = true; data = null; copied = false;
+    loading = true; data = null; copied = false; applyMsg = '';
     try {
       const r = await fetch('/api/claudemd-audit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd }) });
       data = await r.json();
+      const next = {};
+      if (data && data.lines) for (const l of data.lines) if (l.status === 'cut') next[l.n] = true;
+      approved = next;
     } catch (_) {}
     loading = false;
   }
+  function toggle(n) { approved = { ...approved, [n]: !approved[n] }; }
+  const effCut = (l) => l.status === 'cut' && approved[l.n];
+
   let cutLines = $derived(data && data.lines ? data.lines.filter((l) => l.status === 'cut') : []);
-  let kept = $derived(data && data.lines ? data.lines.filter((l) => l.status !== 'cut') : []);
-  let trimmed = $derived(kept.map((l) => l.text).join('\n'));
-  let filePct = $derived(data && data.totalTokens ? Math.round((data.cutTokens / data.totalTokens) * 100) : 0);
+  let approvedLines = $derived(cutLines.filter((l) => approved[l.n]));
+  let approvedTokens = $derived(approvedLines.reduce((s, l) => s + (l.tokens || 0), 0));
+  // the "after" file: every line except the ones approved for cutting
+  let previewKept = $derived(data && data.lines ? data.lines.filter((l) => !effCut(l)) : []);
+  let trimmed = $derived(previewKept.map((l) => l.text).join('\n'));
+  let filePct = $derived(data && data.totalTokens ? Math.round((approvedTokens / data.totalTokens) * 100) : 0);
+  let additions = $derived(data && Array.isArray(data.additions) ? data.additions : []);
+
+  let applying = $state(false);
+  let applyMsg = $state('');
+  async function apply() {
+    if (!approvedLines.length || applying) return;
+    if (!confirm(`Remove ${approvedLines.length} approved line(s) from CLAUDE.md?\n\nThe original is backed up to CLAUDE.md.bak first. Unchecked lines are kept. Suggested additions are NOT applied — add those yourself.`)) return;
+    applying = true; applyMsg = '';
+    try {
+      const cuts = approvedLines.map((l) => ({ n: l.n, text: l.text }));
+      const r = await fetch('/api/claudemd-apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd, cuts }) });
+      const j = await r.json();
+      if (j.ok) { applyMsg = `✓ Removed ${j.applied} line(s) · ~${j.cutTokens} tok freed · backup: ${j.backup ? j.backup.split(/[\\/]/).pop() : 'CLAUDE.md.bak'}`; await load(); }
+      else applyMsg = '✗ ' + (j.error || 'failed');
+    } catch (_) { applyMsg = '✗ failed — is the bridge running?'; }
+    applying = false;
+  }
 
   function copyTrimmed() { try { navigator.clipboard.writeText(trimmed); copied = true; setTimeout(() => (copied = false), 1800); } catch (_) {} }
   function close() { open = false; }
@@ -44,18 +73,16 @@
       {:else if !data || !data.exists}
         <div class="muted">No CLAUDE.md found for this project.</div>
       {:else}
-        <div class="save" class:lean={data.measured && !data.cutTokens} class:warn={data.cutTokens}>
-          {#if !data.measured}
-            <b>No activity history yet.</b> Run this project a few times and I can measure which lines are dead weight. (Showing the file only.)
-          {:else if data.cutTokens}
-            <span class="big">~{data.cutTokens} tokens</span> of likely dead weight — {cutLines.length} line{cutLines.length === 1 ? '' : 's'}, {filePct}% of this CLAUDE.md, <b>re-sent every turn</b> before the agent reads a thing.
+        <div class="save" class:lean={!cutLines.length} class:warn={cutLines.length}>
+          {#if cutLines.length}
+            <span class="big">~{approvedTokens} tokens</span> selected to cut — {approvedLines.length} of {cutLines.length} flagged line{cutLines.length === 1 ? '' : 's'} ({filePct}% of this CLAUDE.md), <b>re-sent every turn</b>. Uncheck any you want to keep.
           {:else}
             <b>Looks lean.</b> No line points at a file that's missing from the project.
           {/if}
         </div>
 
         <div class="legend">
-          <span class="lg cut">flagged · file not in project</span>
+          <span class="lg cut">✓ approved to cut</span>
           <span class="lg used">file exists / used</span>
           <span class="lg kept">kept · guardrail, command or prose</span>
         </div>
@@ -65,25 +92,46 @@
             <div class="ph">Current <span class="dim">· {data.totalTokens} tok</span></div>
             <div class="code">
               {#each data.lines as l (l.n)}
-                <div class="row {l.status}" title={l.reason}>
+                <div class="row {effCut(l) ? 'cut' : (l.status === 'used' ? 'used' : '')}" title={l.reason}>
+                  {#if l.status === 'cut'}
+                    <input class="ck" type="checkbox" checked={approved[l.n]} onchange={() => toggle(l.n)} title="Approve cutting this line" aria-label="Approve cutting line {l.n}" />
+                  {:else}<span class="ck-sp"></span>{/if}
                   <span class="ln">{l.n}</span>
-                  <span class="gut">{l.status === 'cut' ? '−' : ''}</span>
+                  <span class="gut">{effCut(l) ? '−' : ''}</span>
                   <span class="tx">{l.text || ' '}</span>
                 </div>
-                {#if l.status === 'cut'}<div class="why">↳ {l.reason}</div>{/if}
+                {#if l.status === 'cut'}<div class="why" class:off={!approved[l.n]}>↳ {approved[l.n] ? l.reason : 'kept — you unchecked this'}</div>{/if}
               {/each}
             </div>
           </div>
 
           <div class="pane">
-            <div class="ph">Trimmed <span class="dim">· −{data.cutTokens} tok</span><button class="mini" onclick={copyTrimmed} disabled={!data.cutTokens}>{copied ? '✓ copied' : 'Copy'}</button></div>
+            <div class="ph">After <span class="dim">· −{approvedTokens} tok</span><button class="mini" onclick={copyTrimmed} disabled={!approvedLines.length}>{copied ? '✓ copied' : 'Copy'}</button></div>
             <div class="code">
-              {#each kept as l (l.n)}
-                <div class="row"><span class="ln">{l.n}</span><span class="gut"></span><span class="tx">{l.text || ' '}</span></div>
+              {#each previewKept as l (l.n)}
+                <div class="row"><span class="ck-sp"></span><span class="ln">{l.n}</span><span class="gut"></span><span class="tx">{l.text || ' '}</span></div>
               {/each}
             </div>
           </div>
         </div>
+
+        {#if additions.length}
+          <div class="adds">
+            <div class="adds-h">＋ Suggested additions <span class="dim">· used by the project, not in CLAUDE.md — add the useful ones yourself</span></div>
+            {#each additions as a (a.text)}
+              <div class="add"><span class="add-tx mono">{a.text}</span><span class="add-why">{a.reason}</span></div>
+            {/each}
+          </div>
+        {/if}
+
+        {#if cutLines.length}
+          <div class="actions">
+            <button class="apply" onclick={apply} disabled={applying || !approvedLines.length}>
+              {applying ? 'Applying…' : `Apply — remove ${approvedLines.length} line${approvedLines.length === 1 ? '' : 's'}`}
+            </button>
+            <span class="amsg" class:err={applyMsg.startsWith('✗')}>{applyMsg}</span>
+          </div>
+        {/if}
 
         <div class="foot">A line is flagged <b>only</b> if it names a <b>file that doesn't exist</b> in the project (and wasn't used in recent activity). Guardrails, commands, and plain prose are kept on purpose — "unused" ≠ "safe to cut". This survives <code>/compact</code>: it checks the files on disk, not just the (compactable) transcript. Review before applying. Editing CLAUDE.md busts the prompt cache, so the savings land on the next session.</div>
       {/if}
@@ -133,7 +181,24 @@
   .row.cut { background: #EF44441a; }
   .row.cut .tx { text-decoration: line-through; color: var(--hm-err, #EF4444); opacity: 0.85; }
   .row.used { background: #10B9810f; }
-  .why { padding: 0 8px 2px 50px; font-size: 9.5px; color: var(--hm-err, #EF4444); opacity: 0.85; white-space: normal; }
+  .why { padding: 0 8px 2px 63px; font-size: 9.5px; color: var(--hm-err, #EF4444); opacity: 0.85; white-space: normal; }
+  .why.off { color: var(--color-text-tertiary); opacity: 0.6; }
+  .row .ck { width: 13px; height: 13px; flex-shrink: 0; margin: 0 4px 0 0; cursor: pointer; accent-color: var(--hm-err, #EF4444); align-self: center; }
+  .row .ck-sp { width: 13px; flex-shrink: 0; margin-right: 4px; }
+
+  .adds { margin: 10px 14px 0; padding: 9px 11px; border-radius: var(--border-radius-md); background: #10B9810f; border: 0.5px solid #10B98140; }
+  .adds-h { font-size: 11px; font-weight: 600; color: var(--hm-ok, #10B981); margin-bottom: 6px; }
+  .adds-h .dim { font-weight: 400; color: var(--color-text-tertiary); }
+  .add { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; font-size: 11px; }
+  .add-tx { color: var(--color-text-primary); flex-shrink: 0; }
+  .add-tx::before { content: '+ '; color: var(--hm-ok, #10B981); font-weight: 700; }
+  .add-why { color: var(--color-text-tertiary); font-size: 10.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+  .actions { display: flex; align-items: center; gap: 10px; padding: 11px 14px 2px; }
+  .apply { font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 6px; cursor: pointer; border: none; background: var(--hm-err, #EF4444); color: #fff; }
+  .apply:disabled { opacity: 0.45; cursor: default; }
+  .amsg { font-size: 11px; color: var(--hm-ok, #10B981); }
+  .amsg.err { color: var(--hm-err, #EF4444); }
 
   .foot { font-size: 10px; color: var(--color-text-tertiary); line-height: 1.5; padding: 10px 14px; border-top: 0.5px solid var(--color-border-tertiary); }
 

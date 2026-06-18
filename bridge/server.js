@@ -731,6 +731,62 @@ function nearestClaudeMd(cwd, home) {
   }
   return null;
 }
+// Green side of the audit: things the project clearly uses but CLAUDE.md doesn't mention.
+// (1) package.json scripts (deterministic, compact-proof — how to build/test/run).
+// (2) files referenced a lot in recent activity but undocumented (best-effort; thinner
+// after a /compact). Advisory only — not auto-applied.
+function suggestAdditions(projectRoot, text, corpus, fileset) {
+  const out = [];
+  const lc = String(text).toLowerCase();
+  const mentioned = (s) => lc.includes(String(s).toLowerCase());
+  // 1) npm scripts defined but not documented
+  for (const d of ['', 'web', 'bridge', 'app', 'client', 'server', 'frontend', 'backend']) {
+    if (out.length >= 8) break;
+    let pkg; try { pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, d, 'package.json'), 'utf8')); } catch (_) { continue; }
+    if (!pkg || !pkg.scripts) continue;
+    for (const name of Object.keys(pkg.scripts)) {
+      if (out.length >= 8) break;
+      if (/^(pre|post)/.test(name)) continue;                       // lifecycle hooks — noise
+      const cmd = `npm run ${name}`;
+      if (mentioned(cmd) || mentioned(`run ${name}`)) continue;
+      out.push({ text: d ? `${cmd}   (in ${d}/)` : cmd, reason: `package.json defines "${name}" — document how to run it` });
+    }
+  }
+  // 2) frequently-referenced files not in CLAUDE.md
+  if (corpus && corpus.length > 500 && fileset && fileset.size) {
+    const counts = [];
+    for (const f of fileset) {
+      if (f.includes('/') || !f.includes('.') || f.length < 5) continue;             // basenames with an extension
+      if (/^(package(-lock)?\.json|readme\.md|claude\.md|tsconfig\.json|\.gitignore)$/.test(f)) continue;
+      let i = 0, n = 0; while ((i = corpus.indexOf(f, i)) !== -1) { n++; i += f.length; if (n > 60) break; }
+      if (n >= 4 && !mentioned(f)) counts.push({ f, n });
+    }
+    counts.sort((a, b) => b.n - a.n);
+    for (const c of counts.slice(0, 4)) out.push({ text: c.f, reason: `referenced ~${c.n}× in recent activity, not in CLAUDE.md` });
+  }
+  return out.slice(0, 10);
+}
+// Shared audit pass — used by both the report (/api/claudemd-audit) and apply
+// (/api/claudemd-apply), so the server writes exactly what it measured (never client text).
+function runClaudeMdAudit(rawCwd) {
+  const cwd = path.resolve(String(rawCwd));
+  const cmPath = nearestClaudeMd(cwd, os.homedir());
+  if (!cmPath) return { exists: false, path: claudeMdFor('project', cwd, os.homedir()) };
+  const text = readTextSafe(cmPath) || '';
+  const cmDir = path.dirname(cmPath);
+  const projectRoot = path.basename(cmDir).toLowerCase() === '.claude' ? path.dirname(cmDir) : cmDir;
+  const fileset = projectFileIndex(projectRoot);
+  const dir = projTranscriptDir(cwd);
+  const { corpus, files } = dir ? activityCorpus(dir) : { corpus: '', files: 0 };
+  const activityMeasured = files > 0 && corpus.length > 500;
+  const { lines, cutTokens } = auditClaudeMd(text, corpus, activityMeasured, fileset, projectRoot);
+  const additions = suggestAdditions(projectRoot, text, corpus, fileset);
+  return {
+    exists: true, path: cmPath, text, lines, cutTokens, additions,
+    totalTokens: Math.round((text.length + 1) / 4), windowMax: 200000,
+    measured: fileset.size > 0 || activityMeasured, sessions: files, indexed: fileset.size,
+  };
+}
 
 // Launch a Claude Code session in a new terminal at cwd (optionally resuming one).
 // Flags appended to `claude` for ▶ Start / ＋ New task, from the Config panel.
@@ -1531,23 +1587,41 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/claudemd-audit' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
-    const cwd = path.resolve(String(body.cwd));
-    const cmPath = nearestClaudeMd(cwd, os.homedir());
-    if (!cmPath) return sendJson(res, 200, { ok: true, exists: false, path: claudeMdFor('project', cwd, os.homedir()) });
-    const text = readTextSafe(cmPath) || '';
-    // The project root is the dir holding CLAUDE.md (or its parent if it's in .claude).
-    const cmDir = path.dirname(cmPath);
-    const projectRoot = path.basename(cmDir).toLowerCase() === '.claude' ? path.dirname(cmDir) : cmDir;
-    const fileset = projectFileIndex(projectRoot);
-    const dir = projTranscriptDir(cwd);
-    const { corpus, files } = dir ? activityCorpus(dir) : { corpus: '', files: 0 };
-    const activityMeasured = files > 0 && corpus.length > 500;
-    const { lines, cutTokens } = auditClaudeMd(text, corpus, activityMeasured, fileset, projectRoot);
-    return sendJson(res, 200, {
-      ok: true, exists: true, path: cmPath, totalTokens: Math.round((text.length + 1) / 4),
-      cutTokens, windowMax: 200000, measured: fileset.size > 0 || activityMeasured,
-      sessions: files, indexed: fileset.size, lines,
-    });
+    const r = runClaudeMdAudit(body.cwd);
+    const { text, ...rest } = r;        // don't echo the full file back; the lines carry it
+    return sendJson(res, 200, { ok: true, ...rest });
+  }
+
+  // Apply the audit: write the trimmed CLAUDE.md (flagged lines removed) back to disk,
+  // backing up the original to CLAUDE.md.bak first. The server recomputes the trim itself
+  // (never trusts client-supplied content), so it only ever writes the audited result.
+  if (url === '/api/claudemd-apply' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
+    const r = runClaudeMdAudit(body.cwd);
+    if (!r.exists) return sendJson(res, 400, { error: 'no CLAUDE.md to apply' });
+    // Only lines the server itself currently flags as 'cut' are removable — so the client
+    // can never delete a non-flagged line. If the client sent a selection, honour it
+    // (matching line number AND text); otherwise remove all flagged lines.
+    const flagged = new Map(r.lines.filter((l) => l.status === 'cut').map((l) => [l.n, l.text]));
+    let removeNs;
+    if (Array.isArray(body.cuts)) {
+      removeNs = new Set(body.cuts
+        .filter((c) => c && flagged.has(c.n) && flagged.get(c.n) === c.text)
+        .map((c) => c.n));
+    } else {
+      removeNs = new Set(flagged.keys());
+    }
+    if (!removeNs.size) return sendJson(res, 200, { ok: true, applied: 0, path: r.path, note: 'nothing to remove — file unchanged' });
+    const removedTokens = r.lines.filter((l) => removeNs.has(l.n)).reduce((s, l) => s + (l.tokens || 0), 0);
+    const trimmed = r.lines.filter((l) => !removeNs.has(l.n)).map((l) => l.text).join('\n');
+    try {
+      const bak = r.path + '.bak';
+      fs.copyFileSync(r.path, bak);
+      fs.writeFileSync(r.path, trimmed);
+      console.log(`[claudemd] applied audit: -${removeNs.size} line(s), ~${removedTokens} tok · ${r.path} (backup ${bak})`);
+      return sendJson(res, 200, { ok: true, applied: removeNs.size, cutTokens: removedTokens, path: r.path, backup: bak });
+    } catch (e) { return sendJson(res, 500, { error: e.message }); }
   }
 
   if (url === '/api/memory-delete' && req.method === 'POST') {
