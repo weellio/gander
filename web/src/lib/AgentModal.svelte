@@ -151,7 +151,7 @@
     try {
       const r = await fetch('/api/sendkeys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: s, keys: '/compact{ENTER}' }) });
       const j = await r.json();
-      if (j && j.ok && j.found) showFlash('🗜 /compact sent — summarizing context to free tokens');
+      if (j && j.ok && j.found) showFlash("🗜 /compact sent. If nothing happened, the keys hit the wrong window — click into the Claude terminal and type /compact (a session in VS Code's integrated terminal can't be targeted).");
       else if (j && j.ok) showFlash("✗ couldn't reach this session's window — launch it from Gander (▶ Start / ＋ New task) so it can be targeted.");
       else showFlash('✗ ' + ((j && j.error) || 'failed'));
     } catch (_) { showFlash('✗ Failed — is the bridge running?'); }

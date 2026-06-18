@@ -184,7 +184,11 @@
     const tag = (e.target && e.target.tagName) || '';
     const inField = /^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (e.target && e.target.isContentEditable);
     if (e.metaKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); paletteOpen = true; return; } // ⌘K (Mac)
-    if (e.key === '/' && !inField && !paletteOpen) { e.preventDefault(); paletteOpen = true; }              // "/" (avoids Ctrl-K → browser)
+    // "/" opens the palette — but not while typing in a field or while a modal is
+    // open. The modal guard matters because "Compact now" types "/compact" via
+    // SendKeys; if those keys land back in the dashboard (e.g. it's hosted in a
+    // VS Code webview), an unguarded "/" would pop the palette ("No matches").
+    if (e.key === '/' && !inField && !paletteOpen && !document.querySelector('.backdrop')) { e.preventDefault(); paletteOpen = true; }
   }
   let paletteItems = $derived.by(() => {
     const cmds = [
