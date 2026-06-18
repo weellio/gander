@@ -659,21 +659,52 @@ function auditClaudeMd(text, fileset, projectRoot) {
   // Tokens that look like a `.js` file but are really a runtime/library name in prose.
   const DENY = new Set(['node.js', 'next.js', 'nuxt.js', 'vue.js', 'three.js', 'd3.js', 'express.js', 'react.js', 'ember.js', 'backbone.js', 'jquery.js', 'angular.js', 'p5.js']);
   const hasIndex = !!(fileset && fileset.size);
-  // The ONLY cut signal: does the referenced file exist on disk? Deterministic (same
-  // result every run) and compact-proof. We deliberately do NOT consult transcript
-  // activity — that grows every turn and would make the same line flip cut/kept.
-  const onDisk = (r) => {
-    const lr = r.toLowerCase().replace(/^[.~]?[\\/]/, '').replace(/\\/g, '/').replace(/\/+$/, '');
-    // exact path check hits real files AND directories — even ones the index skips (dist, etc.)
+  const norm = (r) => r.toLowerCase().replace(/^[.~]?[\\/]/, '').replace(/\\/g, '/').replace(/\/+$/, '');
+  // H4: distinguish "this exact path exists" from "only the basename exists elsewhere"
+  // (the file moved / the doc's path is stale). exact = keep; moved = amber review.
+  const existsExact = (r) => {
+    const lr = norm(r);
     if (projectRoot && lr) { try { if (fs.existsSync(path.join(projectRoot, lr))) return true; } catch (_) {} }
-    if (!hasIndex) return false;
-    if (fileset.has(lr)) return true;
-    const base = lr.split('/').pop();
-    return !!(base && base.length > 2 && fileset.has(base));
+    return hasIndex && fileset.has(lr);
   };
-  // Amber "review" lens: soft, judgment-flavoured flags (NOT confident deletions) for
-  // unfinished/stale planning prose — unchecked to-do boxes and anything under a
-  // "planning / open questions" heading. Opt-in to remove (unchecked by default).
+  const basenameElsewhere = (r) => {
+    if (!hasIndex) return null;
+    const base = norm(r).split('/').pop();
+    if (!base || base.length < 4 || !fileset.has(base)) return null;
+    for (const f of fileset) if (f.includes('/') && f.split('/').pop() === base) return f;   // suggest a real path
+    return base;
+  };
+
+  // H1: pasted live secrets — a security flag, not just dead weight.
+  const SECRET_RES = [
+    [/eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{6,}/, 'a JWT / API token'],
+    [/\b\d{8,10}:[A-Za-z0-9_-]{35}\b/, 'a Telegram bot token'],
+    [/\bAKIA[0-9A-Z]{16}\b/, 'an AWS access key'],
+    [/\bgh[pousr]_[A-Za-z0-9]{30,}\b/, 'a GitHub token'],
+    [/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/, 'a Slack token'],
+    [/\bsk-[A-Za-z0-9]{20,}\b/, 'an API secret key'],
+    [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'a private key'],
+    [/\bftp[.:@][^\s]*\s*[\/|]\s*\S+\s*[\/|]\s*\S{6,}/i, 'FTP credentials'],
+  ];
+  const SECRET_KV = /(?:api[_-]?key|secret|password|passwd|pwd|anon[_-]?key|service[_-]?role|access[_-]?key|client[_-]?secret|auth[_-]?token|bearer)["'`]?\s*[:=]\s*["'`]?([^\s"'`]{12,})/i;
+  const PLACEHOLDER = /^(your|my|the|<|\{|\$|x{3,}|example|changeme|placeholder|todo|none|null|test|abc|123|\.\.\.|\*{3,})/i;
+  const secretIn = (line) => {
+    for (const [re, label] of SECRET_RES) if (re.test(line)) return label;
+    const m = SECRET_KV.exec(line);
+    if (m) { const v = m[1]; if (!PLACEHOLDER.test(v) && v.length >= 16 && /[A-Za-z]/.test(v) && /\d/.test(v)) return 'a credential'; }
+    return null;
+  };
+
+  // H2: generic boilerplate present verbatim in most projects — no project-specific value.
+  const BOILERPLATE = new Set([
+    'this file provides guidance to claude code (claude.ai/code) when working with code in this repository.',
+    'this file provides guidance to claude code when working with code in this repository.',
+  ]);
+  // H3: date-stamped change/status markers — strong staleness signal, worth re-confirming.
+  const DATED = /\b(added|updated|fixed|resolved|spec'?(?:ed|c?d)|decided|implemented|scaffolded|as of|last updated)\b[^.]{0,40}?\b20\d\d(?:[-/]\d{1,2}){0,2}\b/i;
+  const DATE_PAREN = /\(\s*20\d\d-\d{1,2}-\d{1,2}\s*\)/;
+
+  // Amber "review" lens: unchecked to-dos + anything under a "planning / open questions" heading.
   const STALE_HEAD = /^#{1,6}\s*(open questions?|decisions? needed|to ?-?do|wip|work in progress|draft|roadmap|future(\s+work)?|someday|ideas|brainstorm|backlog|scratch|notes? to self)\b/i;
   const UNCHECKED = /^[-*]\s*\[ \]\s/;
   const lines = String(text).split('\n');
@@ -686,6 +717,7 @@ function auditClaudeMd(text, fileset, projectRoot) {
     if (isHeader) staleSection = STALE_HEAD.test(t);    // entering / leaving a planning section
     let status = 'keep', reason = '';
     if (!t) status = 'blank';
+    else if (BOILERPLATE.has(t.toLowerCase().replace(/\s+/g, ' '))) { status = 'cut'; reason = 'generic boilerplate — identical across projects, no project value'; cutTokens += tokens; }
     else if (isHeader || /^[-=*_]{3,}$/.test(t)) status = 'structural';
     else {
       const refs = [];
@@ -693,33 +725,38 @@ function auditClaudeMd(text, fileset, projectRoot) {
       const bt = /`([^`]+)`/g; while ((m = bt.exec(t))) refs.push(m[1]);
       const pathRe = /(?:\.{0,2}[\\/]|~[\\/])?[\w.-]+[\\/][\w./\\-]+|\b[\w-]+\.(?:js|ts|tsx|jsx|md|json|py|sh|ps1|svelte|css|html|yml|yaml|toml|go|rs|java|rb|php|sql)\b/g;
       while ((m = pathRe.exec(t))) refs.push(m[0]);
-      // Only tokens with a real FILE extension are eligible to be cut (minus runtime/lib
-      // names). Directories, bare commands, flags, prose, and slash-y prose ("macOS/Linux",
-      // a "Task/i" regex) are never flagged — only a named file that should exist but doesn't.
-      const fileRefs = refs.filter((r) => FILEISH.test(r) && !DENY.has(r.toLowerCase()));
+      // strip trailing sentence punctuation the path regex may have grabbed ("src/app.js." → "src/app.js")
+      const fileRefs = refs.map((r) => r.replace(/[.,;:!?)\]}>'"`]+$/, '')).filter((r) => FILEISH.test(r) && !DENY.has(r.toLowerCase()));
       if (!refs.length) { status = 'prose'; reason = 'no concrete reference to measure'; }
       else if (!fileRefs.length) {
         if (GUARD.test(t)) { status = 'guard'; reason = 'guardrail / constraint — kept'; }
         else { status = 'prose'; reason = 'no file reference to measure'; }
       } else {
-        const present = fileRefs.filter((r) => onDisk(r));
-        if (present.length) {
-          status = 'used'; reason = `\`${present[0]}\` exists in the project`;
-        } else if (GUARD.test(t)) {
-          status = 'guard'; reason = 'guardrail / constraint — kept even if unused';
-        } else if (hasIndex) {
-          status = 'cut'; reason = `\`${fileRefs[0]}\` — no such file in the project`; cutTokens += tokens;
-        } else {
-          status = 'prose'; reason = 'could not index the project to verify';
+        const hasSep = (r) => /[\\/]/.test(r);
+        // bare-name refs match by basename (lenient); path refs must hit the exact path.
+        let used = null, moved = null;
+        for (const r of fileRefs) {
+          if (existsExact(r) || (!hasSep(r) && hasIndex && fileset.has(norm(r).split('/').pop()))) { used = r; break; }
+          if (!moved && hasSep(r) && basenameElsewhere(r)) moved = r;
         }
+        if (used) { status = 'used'; reason = `\`${used}\` exists in the project`; }
+        else if (moved) { status = 'review'; reason = `\`${moved}\` not found — but \`${basenameElsewhere(moved)}\` exists; path may have moved`; }
+        else if (GUARD.test(t)) { status = 'guard'; reason = 'guardrail / constraint — kept even if unused'; }
+        else if (hasIndex) { status = 'cut'; reason = `\`${fileRefs[0]}\` — no such file in the project`; cutTokens += tokens; }
+        else { status = 'prose'; reason = 'could not index the project to verify'; }
       }
     }
-    // Amber overlay — never overrides a confirmed file 'cut' (red) or a real 'used' file (green).
+    // Amber overlay (H3 + planning) — never overrides a confirmed 'cut' or a real 'used' file.
     if (UNCHECKED.test(t)) { status = 'review'; reason = 'unchecked to-do — likely unfinished or stale'; }
     else if (staleSection && (status === 'prose' || status === 'structural')) {
       status = 'review';
       reason = isHeader ? 'a “planning / open questions” heading — review whether the section is still needed' : 'under a planning / open-questions heading — review';
+    } else if ((status === 'prose' || status === 'structural' || status === 'guard') && (DATED.test(t) || DATE_PAREN.test(t))) {
+      status = 'review'; reason = 'dated note — re-confirm it still matches the current code';
     }
+    // H1 secrets override everything (security takes precedence over any other verdict).
+    const secret = secretIn(raw);
+    if (secret) { status = 'secret'; reason = `looks like ${secret} — remove it from CLAUDE.md AND rotate the key`; }
     out.push({ n: i + 1, text: raw, tokens, status, reason });
   });
   return { lines: out, cutTokens };
@@ -1681,15 +1718,16 @@ const server = http.createServer(async (req, res) => {
     // Only lines the server itself currently flags as 'cut' are removable — so the client
     // can never delete a non-flagged line. If the client sent a selection, honour it
     // (matching line number AND text); otherwise remove all flagged lines.
-    const flagged = new Map(r.lines.filter((l) => l.status === 'cut' || l.status === 'review').map((l) => [l.n, l.text]));
+    const removable = (s) => s === 'cut' || s === 'review' || s === 'secret';
+    const flagged = new Map(r.lines.filter((l) => removable(l.status)).map((l) => [l.n, l.text]));
     let removeNs;
     if (Array.isArray(body.cuts)) {
       removeNs = new Set(body.cuts
         .filter((c) => c && flagged.has(c.n) && flagged.get(c.n) === c.text)
         .map((c) => c.n));
     } else {
-      // default (no explicit selection): remove confident file-cuts only, not amber review lines
-      removeNs = new Set(r.lines.filter((l) => l.status === 'cut').map((l) => l.n));
+      // default (no explicit selection): remove confident cuts + secrets, not amber review lines
+      removeNs = new Set(r.lines.filter((l) => l.status === 'cut' || l.status === 'secret').map((l) => l.n));
     }
     if (!removeNs.size) return sendJson(res, 200, { ok: true, applied: 0, path: r.path, note: 'nothing to remove — file unchanged' });
     const removedTokens = r.lines.filter((l) => removeNs.has(l.n)).reduce((s, l) => s + (l.tokens || 0), 0);

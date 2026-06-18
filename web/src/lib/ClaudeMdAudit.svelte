@@ -19,9 +19,9 @@
       const r = await fetch('/api/claudemd-audit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd }) });
       data = await r.json();
       const next = {};
-      // red file-cuts default approved; amber "review" lines are opt-in (default off).
+      // red cuts + secrets default approved; amber "review" lines are opt-in (default off).
       if (data && data.lines) for (const l of data.lines) {
-        if (l.status === 'cut') next[l.n] = true;
+        if (l.status === 'cut' || l.status === 'secret') next[l.n] = true;
         else if (l.status === 'review') next[l.n] = false;
       }
       approved = next;
@@ -29,12 +29,13 @@
     loading = false;
   }
   function toggle(n) { approved = { ...approved, [n]: !approved[n] }; }
-  const flaggable = (l) => l.status === 'cut' || l.status === 'review';
+  const flaggable = (l) => l.status === 'cut' || l.status === 'review' || l.status === 'secret';
   const effRemove = (l) => flaggable(l) && approved[l.n];
 
   let cutLines = $derived(data && data.lines ? data.lines.filter((l) => l.status === 'cut') : []);
+  let secretLines = $derived(data && data.lines ? data.lines.filter((l) => l.status === 'secret') : []);
   let reviewLines = $derived(data && data.lines ? data.lines.filter((l) => l.status === 'review') : []);
-  let flaggedLines = $derived([...cutLines, ...reviewLines]);
+  let flaggedLines = $derived([...secretLines, ...cutLines, ...reviewLines]);
   let approvedLines = $derived(flaggedLines.filter((l) => approved[l.n]));
   let approvedTokens = $derived(approvedLines.reduce((s, l) => s + (l.tokens || 0), 0));
   // the "after" file: every line except the ones approved for removal
@@ -80,15 +81,20 @@
       {:else if !data || !data.exists}
         <div class="muted">No CLAUDE.md found for this project.</div>
       {:else}
+        {#if secretLines.length}
+          <div class="secret-banner">🔒 <b>{secretLines.length} possible secret{secretLines.length === 1 ? '' : 's'} found</b> in this CLAUDE.md — remove {secretLines.length === 1 ? 'it' : 'them'} here, and <b>rotate the key{secretLines.length === 1 ? '' : 's'}</b> (treat as exposed; it's re-sent to the model every turn and may be in git).</div>
+        {/if}
+
         <div class="save" class:lean={!flaggedLines.length} class:warn={flaggedLines.length}>
           {#if flaggedLines.length}
-            <span class="big">~{approvedTokens} tokens</span> selected to remove — {approvedLines.length} of {flaggedLines.length} flagged ({filePct}% of this CLAUDE.md){#if reviewLines.length}: <b>{cutLines.length}</b> dead file ref{cutLines.length === 1 ? '' : 's'} <span class="amber-t">+ {reviewLines.length} to review</span>{/if}. <b>Re-sent every turn.</b> Red is checked by default; amber is opt-in.
+            <span class="big">~{approvedTokens} tokens</span> selected to remove — {approvedLines.length} of {flaggedLines.length} flagged ({filePct}% of this CLAUDE.md). <b>Re-sent every turn.</b> Red + 🔒 checked by default; amber is opt-in.
           {:else}
-            <b>Looks lean.</b> No dead file references or stale planning sections.
+            <b>Looks lean.</b> No secrets, dead file references, or stale planning sections.
           {/if}
         </div>
 
         <div class="legend">
+          {#if secretLines.length}<span class="lg secret">🔒 secret — remove + rotate</span>{/if}
           <span class="lg cut">✓ dead file — cut</span>
           <span class="lg review">⚑ possibly stale — review</span>
           <span class="lg used">file exists / used</span>
@@ -100,7 +106,7 @@
             <div class="ph">Current <span class="dim">· {data.totalTokens} tok</span></div>
             <div class="code">
               {#each data.lines as l (l.n)}
-                <div class="row {effRemove(l) ? 'cut' : (l.status === 'review' ? 'review' : (l.status === 'used' ? 'used' : ''))}" title={l.reason}>
+                <div class="row {l.status === 'secret' ? 'secret' : (effRemove(l) ? 'cut' : (l.status === 'review' ? 'review' : (l.status === 'used' ? 'used' : '')))}" title={l.reason}>
                   {#if flaggable(l)}
                     <input class="ck {l.status}" type="checkbox" checked={approved[l.n]} onchange={() => toggle(l.n)} title="Approve removing this line" aria-label="Approve removing line {l.n}" />
                   {:else}<span class="ck-sp"></span>{/if}
@@ -143,7 +149,7 @@
           </div>
         {/if}
 
-        <div class="foot"><b>Red</b> = a <b>file that doesn't exist</b> in the project — a confident cut, checked by default. <b class="amber-t">Amber</b> = possibly-stale planning prose (unchecked to-dos, "open questions / TODO / roadmap" sections) — a soft <i>review</i>, opt-in. Guardrails, commands, real files, and plain prose are kept. Deterministic &amp; compact-proof — it checks files on disk, not the transcript. Review before applying; the original is backed up to <code>CLAUDE.md.bak</code> and the cache savings land next session.</div>
+        <div class="foot"><b>🔒 Secret</b> = a pasted credential — remove it AND rotate the key. <b>Red</b> = a <b>file that doesn't exist</b> or generic boilerplate (confident cut, checked by default). <b class="amber-t">Amber</b> = possibly stale (unchecked to-dos, planning sections, dated notes, or a path that may have moved) — a soft <i>review</i>, opt-in. Guardrails, commands, real files, and prose are kept. Deterministic &amp; compact-proof — it checks files on disk, not the transcript. The original backs up to <code>CLAUDE.md.bak</code>; cache savings land next session.</div>
       {/if}
     </div>
   </div>
@@ -175,7 +181,14 @@
   .lg.review::before { background: var(--hm-warn, #F59E0B); }
   .lg.used::before { background: var(--hm-ok, #10B981); }
   .lg.kept::before { background: var(--color-border-secondary); }
+  .lg.secret::before { background: var(--hm-err, #EF4444); box-shadow: 0 0 0 1.5px #EF444466; }
   .amber-t { color: var(--hm-warn, #F59E0B); }
+  .secret-banner { margin: 12px 14px 0; padding: 9px 12px; border-radius: var(--border-radius-md); font-size: 12px; line-height: 1.5;
+    background: #EF44441e; border: 1px solid #EF4444aa; color: var(--color-text-primary); }
+  .row.secret { background: #EF444428; }
+  .row.secret .tx { color: var(--hm-err, #EF4444); font-weight: 600; }
+  .why.secret { color: var(--hm-err, #EF4444); font-weight: 600; opacity: 1; }
+  .row .ck.secret { accent-color: var(--hm-err, #EF4444); }
 
   .panes { flex: 1 1 auto; display: flex; gap: 10px; padding: 8px 14px 0; overflow: hidden; }
   .pane { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); overflow: hidden; }
