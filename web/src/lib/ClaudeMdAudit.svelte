@@ -19,19 +19,26 @@
       const r = await fetch('/api/claudemd-audit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd }) });
       data = await r.json();
       const next = {};
-      if (data && data.lines) for (const l of data.lines) if (l.status === 'cut') next[l.n] = true;
+      // red file-cuts default approved; amber "review" lines are opt-in (default off).
+      if (data && data.lines) for (const l of data.lines) {
+        if (l.status === 'cut') next[l.n] = true;
+        else if (l.status === 'review') next[l.n] = false;
+      }
       approved = next;
     } catch (_) {}
     loading = false;
   }
   function toggle(n) { approved = { ...approved, [n]: !approved[n] }; }
-  const effCut = (l) => l.status === 'cut' && approved[l.n];
+  const flaggable = (l) => l.status === 'cut' || l.status === 'review';
+  const effRemove = (l) => flaggable(l) && approved[l.n];
 
   let cutLines = $derived(data && data.lines ? data.lines.filter((l) => l.status === 'cut') : []);
-  let approvedLines = $derived(cutLines.filter((l) => approved[l.n]));
+  let reviewLines = $derived(data && data.lines ? data.lines.filter((l) => l.status === 'review') : []);
+  let flaggedLines = $derived([...cutLines, ...reviewLines]);
+  let approvedLines = $derived(flaggedLines.filter((l) => approved[l.n]));
   let approvedTokens = $derived(approvedLines.reduce((s, l) => s + (l.tokens || 0), 0));
-  // the "after" file: every line except the ones approved for cutting
-  let previewKept = $derived(data && data.lines ? data.lines.filter((l) => !effCut(l)) : []);
+  // the "after" file: every line except the ones approved for removal
+  let previewKept = $derived(data && data.lines ? data.lines.filter((l) => !effRemove(l)) : []);
   let trimmed = $derived(previewKept.map((l) => l.text).join('\n'));
   let filePct = $derived(data && data.totalTokens ? Math.round((approvedTokens / data.totalTokens) * 100) : 0);
   let additions = $derived(data && Array.isArray(data.additions) ? data.additions : []);
@@ -73,18 +80,19 @@
       {:else if !data || !data.exists}
         <div class="muted">No CLAUDE.md found for this project.</div>
       {:else}
-        <div class="save" class:lean={!cutLines.length} class:warn={cutLines.length}>
-          {#if cutLines.length}
-            <span class="big">~{approvedTokens} tokens</span> selected to cut — {approvedLines.length} of {cutLines.length} flagged line{cutLines.length === 1 ? '' : 's'} ({filePct}% of this CLAUDE.md), <b>re-sent every turn</b>. Uncheck any you want to keep.
+        <div class="save" class:lean={!flaggedLines.length} class:warn={flaggedLines.length}>
+          {#if flaggedLines.length}
+            <span class="big">~{approvedTokens} tokens</span> selected to remove — {approvedLines.length} of {flaggedLines.length} flagged ({filePct}% of this CLAUDE.md){#if reviewLines.length}: <b>{cutLines.length}</b> dead file ref{cutLines.length === 1 ? '' : 's'} <span class="amber-t">+ {reviewLines.length} to review</span>{/if}. <b>Re-sent every turn.</b> Red is checked by default; amber is opt-in.
           {:else}
-            <b>Looks lean.</b> No line points at a file that's missing from the project.
+            <b>Looks lean.</b> No dead file references or stale planning sections.
           {/if}
         </div>
 
         <div class="legend">
-          <span class="lg cut">✓ approved to cut</span>
+          <span class="lg cut">✓ dead file — cut</span>
+          <span class="lg review">⚑ possibly stale — review</span>
           <span class="lg used">file exists / used</span>
-          <span class="lg kept">kept · guardrail, command or prose</span>
+          <span class="lg kept">kept · guardrail or prose</span>
         </div>
 
         <div class="panes">
@@ -92,15 +100,15 @@
             <div class="ph">Current <span class="dim">· {data.totalTokens} tok</span></div>
             <div class="code">
               {#each data.lines as l (l.n)}
-                <div class="row {effCut(l) ? 'cut' : (l.status === 'used' ? 'used' : '')}" title={l.reason}>
-                  {#if l.status === 'cut'}
-                    <input class="ck" type="checkbox" checked={approved[l.n]} onchange={() => toggle(l.n)} title="Approve cutting this line" aria-label="Approve cutting line {l.n}" />
+                <div class="row {effRemove(l) ? 'cut' : (l.status === 'review' ? 'review' : (l.status === 'used' ? 'used' : ''))}" title={l.reason}>
+                  {#if flaggable(l)}
+                    <input class="ck {l.status}" type="checkbox" checked={approved[l.n]} onchange={() => toggle(l.n)} title="Approve removing this line" aria-label="Approve removing line {l.n}" />
                   {:else}<span class="ck-sp"></span>{/if}
                   <span class="ln">{l.n}</span>
-                  <span class="gut">{effCut(l) ? '−' : ''}</span>
+                  <span class="gut">{effRemove(l) ? '−' : ''}</span>
                   <span class="tx">{l.text || ' '}</span>
                 </div>
-                {#if l.status === 'cut'}<div class="why" class:off={!approved[l.n]}>↳ {approved[l.n] ? l.reason : 'kept — you unchecked this'}</div>{/if}
+                {#if flaggable(l)}<div class="why {l.status}" class:off={!approved[l.n]}>↳ {l.reason}</div>{/if}
               {/each}
             </div>
           </div>
@@ -135,7 +143,7 @@
           </div>
         {/if}
 
-        <div class="foot">A line is flagged <b>only</b> if it names a <b>file that doesn't exist</b> in the project (and wasn't used in recent activity). Guardrails, commands, and plain prose are kept on purpose — "unused" ≠ "safe to cut". This survives <code>/compact</code>: it checks the files on disk, not just the (compactable) transcript. Review before applying. Editing CLAUDE.md busts the prompt cache, so the savings land on the next session.</div>
+        <div class="foot"><b>Red</b> = a <b>file that doesn't exist</b> in the project — a confident cut, checked by default. <b class="amber-t">Amber</b> = possibly-stale planning prose (unchecked to-dos, "open questions / TODO / roadmap" sections) — a soft <i>review</i>, opt-in. Guardrails, commands, real files, and plain prose are kept. Deterministic &amp; compact-proof — it checks files on disk, not the transcript. Review before applying; the original is backed up to <code>CLAUDE.md.bak</code> and the cache savings land next session.</div>
       {/if}
     </div>
   </div>
@@ -164,8 +172,10 @@
   .lg { display: inline-flex; align-items: center; gap: 5px; }
   .lg::before { content: ''; width: 9px; height: 9px; border-radius: 2px; }
   .lg.cut::before { background: var(--hm-err, #EF4444); }
+  .lg.review::before { background: var(--hm-warn, #F59E0B); }
   .lg.used::before { background: var(--hm-ok, #10B981); }
   .lg.kept::before { background: var(--color-border-secondary); }
+  .amber-t { color: var(--hm-warn, #F59E0B); }
 
   .panes { flex: 1 1 auto; display: flex; gap: 10px; padding: 8px 14px 0; overflow: hidden; }
   .pane { flex: 1 1 50%; min-width: 0; display: flex; flex-direction: column; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); overflow: hidden; }
@@ -182,10 +192,14 @@
   .row .tx { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-text-primary); }
   .row.cut { background: #EF44441a; }
   .row.cut .tx { text-decoration: line-through; color: var(--hm-err, #EF4444); opacity: 0.85; }
+  .row.review { background: #F59E0B16; }
+  .row.review .tx { color: var(--hm-warn, #F59E0B); }
   .row.used { background: #10B9810f; }
   .why { padding: 0 8px 2px 63px; font-size: 9.5px; color: var(--hm-err, #EF4444); opacity: 0.85; white-space: normal; }
+  .why.review { color: var(--hm-warn, #F59E0B); }
   .why.off { color: var(--color-text-tertiary); opacity: 0.6; }
   .row .ck { width: 13px; height: 13px; flex-shrink: 0; margin: 0 4px 0 0; cursor: pointer; accent-color: var(--hm-err, #EF4444); align-self: center; }
+  .row .ck.review { accent-color: var(--hm-warn, #F59E0B); }
   .row .ck-sp { width: 13px; flex-shrink: 0; margin-right: 4px; }
 
   .adds { margin: 10px 14px 0; padding: 9px 11px; border-radius: var(--border-radius-md); background: #10B9810f; border: 0.5px solid #10B98140; }

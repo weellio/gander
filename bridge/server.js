@@ -671,15 +671,22 @@ function auditClaudeMd(text, fileset, projectRoot) {
     const base = lr.split('/').pop();
     return !!(base && base.length > 2 && fileset.has(base));
   };
+  // Amber "review" lens: soft, judgment-flavoured flags (NOT confident deletions) for
+  // unfinished/stale planning prose — unchecked to-do boxes and anything under a
+  // "planning / open questions" heading. Opt-in to remove (unchecked by default).
+  const STALE_HEAD = /^#{1,6}\s*(open questions?|decisions? needed|to ?-?do|wip|work in progress|draft|roadmap|future(\s+work)?|someday|ideas|brainstorm|backlog|scratch|notes? to self)\b/i;
+  const UNCHECKED = /^[-*]\s*\[ \]\s/;
   const lines = String(text).split('\n');
   const out = [];
-  let cutTokens = 0;
+  let cutTokens = 0, staleSection = false;
   lines.forEach((raw, i) => {
     const t = raw.trim();
     const tokens = Math.round((raw.length + 1) / 4);
+    const isHeader = /^#{1,6}\s/.test(t);
+    if (isHeader) staleSection = STALE_HEAD.test(t);    // entering / leaving a planning section
     let status = 'keep', reason = '';
     if (!t) status = 'blank';
-    else if (/^#{1,6}\s/.test(t) || /^[-=*_]{3,}$/.test(t)) status = 'structural';
+    else if (isHeader || /^[-=*_]{3,}$/.test(t)) status = 'structural';
     else {
       const refs = [];
       let m;
@@ -706,6 +713,12 @@ function auditClaudeMd(text, fileset, projectRoot) {
           status = 'prose'; reason = 'could not index the project to verify';
         }
       }
+    }
+    // Amber overlay — never overrides a confirmed file 'cut' (red) or a real 'used' file (green).
+    if (UNCHECKED.test(t)) { status = 'review'; reason = 'unchecked to-do — likely unfinished or stale'; }
+    else if (staleSection && (status === 'prose' || status === 'structural')) {
+      status = 'review';
+      reason = isHeader ? 'a “planning / open questions” heading — review whether the section is still needed' : 'under a planning / open-questions heading — review';
     }
     out.push({ n: i + 1, text: raw, tokens, status, reason });
   });
@@ -1615,14 +1628,15 @@ const server = http.createServer(async (req, res) => {
     // Only lines the server itself currently flags as 'cut' are removable — so the client
     // can never delete a non-flagged line. If the client sent a selection, honour it
     // (matching line number AND text); otherwise remove all flagged lines.
-    const flagged = new Map(r.lines.filter((l) => l.status === 'cut').map((l) => [l.n, l.text]));
+    const flagged = new Map(r.lines.filter((l) => l.status === 'cut' || l.status === 'review').map((l) => [l.n, l.text]));
     let removeNs;
     if (Array.isArray(body.cuts)) {
       removeNs = new Set(body.cuts
         .filter((c) => c && flagged.has(c.n) && flagged.get(c.n) === c.text)
         .map((c) => c.n));
     } else {
-      removeNs = new Set(flagged.keys());
+      // default (no explicit selection): remove confident file-cuts only, not amber review lines
+      removeNs = new Set(r.lines.filter((l) => l.status === 'cut').map((l) => l.n));
     }
     if (!removeNs.size) return sendJson(res, 200, { ok: true, applied: 0, path: r.path, note: 'nothing to remove — file unchanged' });
     const removedTokens = r.lines.filter((l) => removeNs.has(l.n)).reduce((s, l) => s + (l.tokens || 0), 0);
