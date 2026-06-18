@@ -571,6 +571,94 @@ function memPathAllowed(target, scope, root, home) {
   return path.resolve(target).startsWith(okRoot) && /\.md$/i.test(target);
 }
 
+// ── CLAUDE.md dead-weight audit ──────────────────────────────────────────────
+// Flag lines that reference a file/command/tool which never shows up in the
+// project's actual transcript activity — likely window real-estate spent for
+// nothing. Conservative: never flags guardrails or pure prose (unmeasurable).
+function projTranscriptDir(cwd) {
+  const root = path.join(os.homedir(), '.claude', 'projects');
+  const target = String(cwd).toLowerCase();
+  // Claude Code encodes the cwd as a dir name, replacing path separators AND other
+  // punctuation (incl. underscores) with '-'. Try a few encodings before scanning.
+  for (const g of [String(cwd).replace(/[\\/:]/g, '-'), String(cwd).replace(/[^a-zA-Z0-9]/g, '-')]) {
+    const p = path.join(root, g);
+    if (fs.existsSync(p)) return p;
+  }
+  try {
+    for (const d of fs.readdirSync(root)) {                              // fallback: match by recorded cwd
+      const dir = path.join(root, d);
+      let files; try { files = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')); } catch (_) { continue; }
+      for (const f of files.slice(0, 3)) {
+        let head; try { head = fs.readFileSync(path.join(dir, f), 'utf8').split('\n').slice(0, 40); } catch (_) { continue; }
+        for (const ln of head) {
+          if (ln.indexOf('"cwd"') < 0) continue;
+          let o; try { o = JSON.parse(ln); } catch (_) { continue; }
+          if (o && o.cwd && String(o.cwd).toLowerCase() === target) return dir;
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+function activityCorpus(dir) {
+  let corpus = '', files = 0, list;
+  try { list = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl')); } catch (_) { return { corpus: '', files: 0 }; }
+  for (const f of list) {
+    files++;
+    let lines; try { lines = fs.readFileSync(path.join(dir, f), 'utf8').split('\n'); } catch (_) { continue; }
+    for (const ln of lines) {
+      if (!ln || ln.indexOf('tool_use') < 0) continue;
+      let o; try { o = JSON.parse(ln); } catch (_) { continue; }
+      const blocks = o && o.message && Array.isArray(o.message.content) ? o.message.content : [];
+      for (const b of blocks) {
+        if (!b || b.type !== 'tool_use') continue;
+        corpus += ' ' + (b.name || '');
+        const inp = b.input || {};
+        for (const k of ['command', 'file_path', 'path', 'notebook_path', 'pattern', 'url', 'query', 'old_string', 'new_string', 'prompt']) {
+          if (inp[k]) corpus += ' ' + String(inp[k]).slice(0, 2000);
+        }
+      }
+      if (corpus.length > 4e6) return { corpus: corpus.toLowerCase(), files };
+    }
+  }
+  return { corpus: corpus.toLowerCase(), files };
+}
+function auditClaudeMd(text, corpus, measured) {
+  const GUARD = /\b(never|don'?t|do ?not|must|avoid|always|only|ensure|require|forbid|prefer|should|need to)\b/i;
+  const lines = String(text).split('\n');
+  const out = [];
+  let cutTokens = 0;
+  lines.forEach((raw, i) => {
+    const t = raw.trim();
+    const tokens = Math.round((raw.length + 1) / 4);
+    let status = 'keep', reason = '';
+    if (!t) status = 'blank';
+    else if (/^#{1,6}\s/.test(t) || /^[-=*_]{3,}$/.test(t)) status = 'structural';
+    else {
+      const refs = [];
+      let m;
+      const bt = /`([^`]+)`/g; while ((m = bt.exec(t))) refs.push(m[1]);
+      const pathRe = /(?:\.{0,2}[\\/]|~[\\/])?[\w.-]+[\\/][\w./\\-]+|\b[\w-]+\.(?:js|ts|tsx|jsx|md|json|py|sh|ps1|svelte|css|html|yml|yaml|toml|go|rs|java|rb|php|sql)\b/g;
+      while ((m = pathRe.exec(t))) refs.push(m[0]);
+      if (!refs.length) { status = 'prose'; reason = 'no concrete reference to measure'; }
+      else {
+        const present = refs.filter((r) => {
+          const lr = r.toLowerCase();
+          if (lr.length > 2 && corpus.includes(lr)) return true;
+          const base = lr.split(/[\\/]/).pop();
+          return base && base.length > 3 && corpus.includes(base);
+        });
+        if (present.length) { status = 'used'; reason = `\`${present[0]}\` seen in activity`; }
+        else if (GUARD.test(t)) { status = 'guard'; reason = 'guardrail / constraint — kept even if unused'; }
+        else if (measured) { status = 'cut'; reason = `\`${refs[0]}\` — never seen in this project's activity`; cutTokens += tokens; }
+        else { status = 'prose'; reason = 'no activity history to measure against'; }
+      }
+    }
+    out.push({ n: i + 1, text: raw, tokens, status, reason });
+  });
+  return { lines: out, cutTokens };
+}
+
 // Launch a Claude Code session in a new terminal at cwd (optionally resuming one).
 // Flags appended to `claude` for ▶ Start / ＋ New task, from the Config panel.
 // permMode: '' (ask, default) | 'acceptEdits' | 'plan' | 'bypass' (skip all prompts).
@@ -1348,6 +1436,23 @@ const server = http.createServer(async (req, res) => {
       console.log(`[memory] wrote ${target}`);
       return sendJson(res, 200, { ok: true, path: target });
     } catch (e) { return sendJson(res, 500, { error: e.message }); }
+  }
+
+  if (url === '/api/claudemd-audit' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
+    const cwd = path.resolve(String(body.cwd));
+    const cmPath = claudeMdFor('project', cwd, os.homedir());
+    if (!fs.existsSync(cmPath)) return sendJson(res, 200, { ok: true, exists: false, path: cmPath });
+    const text = readTextSafe(cmPath) || '';
+    const dir = projTranscriptDir(cwd);
+    const { corpus, files } = dir ? activityCorpus(dir) : { corpus: '', files: 0 };
+    const measured = files > 0 && corpus.length > 500;
+    const { lines, cutTokens } = auditClaudeMd(text, corpus, measured);
+    return sendJson(res, 200, {
+      ok: true, exists: true, path: cmPath, totalTokens: Math.round((text.length + 1) / 4),
+      cutTokens, windowMax: 200000, measured, sessions: files, lines,
+    });
   }
 
   if (url === '/api/memory-delete' && req.method === 'POST') {

@@ -5,6 +5,7 @@
   import { readFile, downscale } from './img.js';
   import MicButton from './MicButton.svelte';
   import TranscriptPanel from './TranscriptPanel.svelte';
+  import ClaudeMdAudit from './ClaudeMdAudit.svelte';
 
   let { id, onClose } = $props();
   let agent = $state(null);
@@ -15,6 +16,7 @@
   let cost = $state(null);
   let gh = $state(null);
   let txId = $state(null);
+  let auditOpen = $state(false);
   let flash = $state('');
   let busy = $state('');
   let flashTimer;
@@ -232,6 +234,7 @@
               <div class="bar"><div class="fill" style="width:{Math.round(ctxPct * 100)}%;background:{ctxColor(ctxPct)}"></div></div>
             </div>
           {/if}
+          {#if agent.cwd}<button class="auditbtn" onclick={() => (auditOpen = true)} title="Find CLAUDE.md lines that cost window every turn but are never used">🔍 Audit CLAUDE.md for dead weight</button>{/if}
         </div>
       {/if}
 
@@ -323,6 +326,7 @@
 </div>
 
 <TranscriptPanel bind:sessionId={txId} />
+<ClaudeMdAudit bind:open={auditOpen} cwd={agent?.cwd || ''} />
 
 <style>
   .backdrop {
@@ -360,6 +364,9 @@
   .ctx-top { display: flex; justify-content: space-between; font-size: 11px; color: var(--color-text-secondary); margin-bottom: 3px; }
   .bar { height: 6px; border-radius: 3px; background: var(--color-background-secondary); overflow: hidden; }
   .bar .fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+  .auditbtn { margin-top: 8px; width: 100%; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 11px;
+    border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-secondary); }
+  .auditbtn:hover { color: var(--color-text-primary); border-color: var(--color-text-tertiary); }
   .compact-cta { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 9px 11px;
     background: #F59E0B14; border: 0.5px solid #F59E0B55; border-radius: var(--border-radius-md, 8px); }
   .compact-cta .cc-txt { flex: 1; font-size: 11.5px; line-height: 1.45; color: var(--color-text-secondary); }
