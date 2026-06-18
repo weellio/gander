@@ -1023,6 +1023,38 @@ function mapHookToEvents(p) {
 }
 
 // ── HTTP helpers ────────────────────────────────────────────────────────────
+// C1: operator-set command strings (editor / claude CLI / launch flags) get
+// interpolated into shell:true command lines, so reject shell metacharacters that
+// could break out and execute. Apostrophes and parens are allowed (real Windows
+// paths: "C:\Users\O'Brien", "Program Files (x86)").
+const SHELL_META = /["`$&|;<>^%\r\n]/;
+function badCliString(v) { return SHELL_META.test(String(v == null ? '' : v)); }
+
+// C3: confine cwd-taking endpoints to directories the user actually manages —
+// configured project roots (and anything under them), known session cwds, live
+// agent cwds, or ~/.claude (global). Blocks a crafted cwd from rooting a write or
+// read elsewhere on disk. The literal 'global' maps to the user home.
+function isAllowedCwd(cwd) {
+  if (!cwd) return false;
+  if (cwd === 'global') return true;
+  let k; try { k = projects.keyOf(cwd); } catch (_) { return false; }
+  if (k === projects.keyOf(os.homedir())) return true;
+  const under = (base) => {
+    let b; try { b = projects.keyOf(base); } catch (_) { return false; }
+    return !!b && (k === b || k.startsWith(b + path.sep));
+  };
+  const pc = projects.getConfig();
+  if ((pc.roots || []).some(under)) return true;
+  if ((pc.known || []).some(under)) return true;
+  for (const a of agents.values()) if (a && a.cwd && under(a.cwd)) return true;
+  return false;
+}
+function assertCwd(res, cwd) {
+  if (isAllowedCwd(cwd)) return true;
+  sendJson(res, 403, { error: "that folder isn't a known project — add it under Manage → Projects first" });
+  return false;
+}
+
 function sendJson(res, code, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(code, {
@@ -1217,6 +1249,7 @@ const server = http.createServer(async (req, res) => {
     const rootId = sidParam.startsWith('sess:') ? sidParam : 'sess:' + sidParam;
     const root = agents.get(rootId) || agents.get(sidParam);
     const cwd = (root && root.cwd) || u.searchParams.get('cwd') || '';
+    if (cwd && !isAllowedCwd(cwd)) return sendJson(res, 403, { error: 'cwd not in an allowed project' });
     const subagents = Array.from(agents.values())
       .filter((a) => root && a.parentId === root.id)
       .map((a) => ({ id: a.id, name: a.name, state: a.state }));
@@ -1326,7 +1359,9 @@ const server = http.createServer(async (req, res) => {
   }
   if (url === '/api/editor' && req.method === 'POST') {
     const body = await readBody(req);
-    cfg.editorCmd = body && body.cmd ? String(body.cmd).trim() : '';
+    const val = body && body.cmd ? String(body.cmd).trim() : '';
+    if (badCliString(val)) return sendJson(res, 400, { error: 'editor command can\'t contain shell metacharacters (" ` $ & | ; < > ^ %)' });
+    cfg.editorCmd = val;
     saveConfig();
     return sendJson(res, 200, { ok: true, cmd: cfg.editorCmd });
   }
@@ -1336,9 +1371,17 @@ const server = http.createServer(async (req, res) => {
   }
   if (url === '/api/claude-config' && req.method === 'POST') {
     const body = await readBody(req);
-    if (body && body.cmd !== undefined) cfg.claudeCmd = String(body.cmd).trim();
+    if (body && body.cmd !== undefined) {
+      const v = String(body.cmd).trim();
+      if (badCliString(v)) return sendJson(res, 400, { error: 'claude command can\'t contain shell metacharacters' });
+      cfg.claudeCmd = v;
+    }
     if (body && body.permMode !== undefined) cfg.launchPermMode = ['acceptEdits', 'plan', 'bypass'].includes(body.permMode) ? body.permMode : '';
-    if (body && body.flags !== undefined) cfg.launchFlags = String(body.flags).replace(/[\r\n]+/g, ' ').trim();
+    if (body && body.flags !== undefined) {
+      const v = String(body.flags).replace(/[\r\n]+/g, ' ').trim();
+      if (badCliString(v)) return sendJson(res, 400, { error: 'launch flags can\'t contain shell metacharacters' });
+      cfg.launchFlags = v;
+    }
     saveConfig();
     return sendJson(res, 200, { ok: true, cmd: cfg.claudeCmd || '', permMode: cfg.launchPermMode || '', flags: cfg.launchFlags || '' });
   }
@@ -1386,12 +1429,14 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/config-read' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
+    if (!assertCwd(res, body.cwd)) return;
     return sendJson(res, 200, configmgr.read(body.cwd));
   }
 
   if (url === '/api/config' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
+    if (!assertCwd(res, body.cwd)) return;
     let r;
     if (body.action === 'addMcp') r = configmgr.addMcp(body.cwd, body.server || body);
     else r = configmgr.del(body.cwd, body.action === 'delHook' ? 'hook' : 'mcp', body.name);
@@ -1401,12 +1446,15 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/component-diff' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    if (!assertCwd(res, body.fromCwd)) return;
+    if (!assertCwd(res, body.toCwd)) return;
     return sendJson(res, 200, projects.diffComponent(body.type, body.name, body.fromCwd, body.toCwd));
   }
 
   if (url === '/api/component-read' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
+    if (!assertCwd(res, body.cwd)) return;
     const r = projects.readComponent(body.type, body.name, body.cwd);
     return sendJson(res, r.error ? 400 : 200, r);
   }
@@ -1414,6 +1462,7 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/component-write' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.cwd || !body.path) return sendJson(res, 400, { error: 'cwd and path required' });
+    if (!assertCwd(res, body.cwd)) return;
     const r = projects.writeComponent(body.cwd, body.path, body.content);
     if (!r.error) console.log(`[edit] ${body.path}`);
     return sendJson(res, r.error ? 400 : 200, r);
@@ -1569,6 +1618,7 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/memory-read' && req.method === 'POST') {
     const body = await readBody(req);
     const { scope, root, memoryDir, home } = memCtx(body);
+    if (scope === 'project' && !assertCwd(res, root)) return;
     if (scope === 'project' && !fs.existsSync(root)) return sendJson(res, 400, { error: 'project path not found' });
     const cmPath = claudeMdFor(scope, root, home);
     const claudeMd = { path: cmPath, exists: fs.existsSync(cmPath), content: readTextSafe(cmPath) || '' };
@@ -1592,6 +1642,7 @@ const server = http.createServer(async (req, res) => {
     if (!body || typeof body.content !== 'string') return sendJson(res, 400, { error: 'content required' });
     if (body.content.length > 2e6) return sendJson(res, 400, { error: 'content too large' });
     const { scope, root, memoryDir, home } = memCtx(body);
+    if (scope === 'project' && !assertCwd(res, root)) return;
     let target;
     if (body.target === 'claudemd') target = claudeMdFor(scope, root, home);
     else if (body.target === 'index') target = path.join(memoryDir, 'MEMORY.md');
@@ -1612,6 +1663,7 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/claudemd-audit' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
+    if (!assertCwd(res, body.cwd)) return;
     const r = runClaudeMdAudit(body.cwd);
     const { text, ...rest } = r;        // don't echo the full file back; the lines carry it
     return sendJson(res, 200, { ok: true, ...rest });
@@ -1623,6 +1675,7 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/claudemd-apply' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
+    if (!assertCwd(res, body.cwd)) return;
     const r = runClaudeMdAudit(body.cwd);
     if (!r.exists) return sendJson(res, 400, { error: 'no CLAUDE.md to apply' });
     // Only lines the server itself currently flags as 'cut' are removable — so the client
@@ -1653,6 +1706,7 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/memory-delete' && req.method === 'POST') {
     const body = await readBody(req);
     const { scope, root, memoryDir, home } = memCtx(body);
+    if (scope === 'project' && !assertCwd(res, root)) return;
     const file = String((body && body.file) || '').replace(/[\\/]/g, '').trim();
     if (!/^[\w.-]+\.md$/i.test(file) || file.toLowerCase() === 'memory.md') return sendJson(res, 400, { error: 'bad fact filename' });
     const target = path.join(memoryDir, file);
@@ -1669,6 +1723,7 @@ const server = http.createServer(async (req, res) => {
     const ext = ({ 'jpeg': 'jpg', 'svg+xml': 'svg' }[m[1].toLowerCase()] || m[1].toLowerCase()).replace(/[^a-z0-9]/g, '') || 'png';
     let buf; try { buf = Buffer.from(m[2], 'base64'); } catch (_) { return sendJson(res, 400, { error: 'bad base64' }); }
     if (buf.length > 16e6) return sendJson(res, 400, { error: 'image too large' });
+    if (body.cwd && !assertCwd(res, body.cwd)) return;
     const cwd = body.cwd && fs.existsSync(body.cwd) ? body.cwd : null;
     const dir = cwd ? path.join(cwd, '.gander', 'drops') : path.join(os.tmpdir(), 'gander-drops');
     if (cwd) { const safeRoot = path.resolve(path.join(cwd, '.gander')); if (!path.resolve(dir).startsWith(safeRoot)) return sendJson(res, 400, { error: 'bad path' }); }
@@ -1711,6 +1766,7 @@ const server = http.createServer(async (req, res) => {
     const results = [];
     for (const t of targets) {
       const dir = (t === 'global' || !t) ? os.homedir() : t;
+      if (!isAllowedCwd(dir)) { results.push({ target: t === 'global' ? 'global' : dir, error: "not a known project — add it under Manage → Projects first" }); continue; }
       const r = projects.newComponent({
         type: body.type, dir, overwrite: !!body.overwrite,
         name: body.name, description: body.description, model: body.model,
@@ -1725,6 +1781,8 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/copy-component' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    if (!assertCwd(res, body.fromCwd)) return;
+    if (!assertCwd(res, body.toCwd)) return;
     const r = projects.copyComponent(body.type, body.name, body.fromCwd, body.toCwd, body.overwrite === true);
     if (!r.error) console.log(`[copy] ${body.type} ${body.name}: ${body.fromCwd} -> ${body.toCwd}`);
     return sendJson(res, r.error ? 400 : 200, r);

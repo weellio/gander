@@ -28,6 +28,8 @@ function safeParse(text) {
 function validateName(name) {
   if (!name || typeof name !== 'string') return 'name required';
   if (/[\\/]/.test(name) || name.includes('..')) return 'invalid name';
+  // reject prototype-pollution keys (this name is used as an object key + a file path)
+  if (['__proto__', 'prototype', 'constructor'].includes(name)) return 'invalid name';
   return null;
 }
 
