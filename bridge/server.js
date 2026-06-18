@@ -653,12 +653,15 @@ function projectFileIndex(root) {
 // Flag a CLAUDE.md line ONLY when it points at a file that doesn't exist in the project
 // (and wasn't used in recent activity, and isn't a guardrail). Bare commands / prose are
 // never cut. `fileset` is the on-disk index; `corpus` is recent transcript activity.
-function auditClaudeMd(text, corpus, measured, fileset, projectRoot) {
+function auditClaudeMd(text, fileset, projectRoot) {
   const GUARD = /\b(never|don'?t|do ?not|must|avoid|always|only|ensure|require|forbid|prefer|should|need to)\b/i;
   const FILEISH = /\.(?:js|ts|tsx|jsx|mjs|cjs|md|json|py|sh|ps1|bat|cmd|svelte|vue|css|scss|html|yml|yaml|toml|go|rs|java|rb|php|sql|c|cpp|h|hpp|txt|cfg|ini|xml)\b/i;
   // Tokens that look like a `.js` file but are really a runtime/library name in prose.
   const DENY = new Set(['node.js', 'next.js', 'nuxt.js', 'vue.js', 'three.js', 'd3.js', 'express.js', 'react.js', 'ember.js', 'backbone.js', 'jquery.js', 'angular.js', 'p5.js']);
   const hasIndex = !!(fileset && fileset.size);
+  // The ONLY cut signal: does the referenced file exist on disk? Deterministic (same
+  // result every run) and compact-proof. We deliberately do NOT consult transcript
+  // activity — that grows every turn and would make the same line flip cut/kept.
   const onDisk = (r) => {
     const lr = r.toLowerCase().replace(/^[.~]?[\\/]/, '').replace(/\\/g, '/').replace(/\/+$/, '');
     // exact path check hits real files AND directories — even ones the index skips (dist, etc.)
@@ -667,12 +670,6 @@ function auditClaudeMd(text, corpus, measured, fileset, projectRoot) {
     if (fileset.has(lr)) return true;
     const base = lr.split('/').pop();
     return !!(base && base.length > 2 && fileset.has(base));
-  };
-  const inCorpus = (r) => {
-    const lr = r.toLowerCase();
-    if (lr.length > 2 && corpus.includes(lr)) return true;
-    const base = lr.split(/[\\/]/).pop();
-    return !!(base && base.length > 3 && corpus.includes(base));
   };
   const lines = String(text).split('\n');
   const out = [];
@@ -698,14 +695,13 @@ function auditClaudeMd(text, corpus, measured, fileset, projectRoot) {
         if (GUARD.test(t)) { status = 'guard'; reason = 'guardrail / constraint — kept'; }
         else { status = 'prose'; reason = 'no file reference to measure'; }
       } else {
-        const present = fileRefs.filter((r) => onDisk(r) || inCorpus(r));
+        const present = fileRefs.filter((r) => onDisk(r));
         if (present.length) {
-          status = 'used';
-          reason = onDisk(present[0]) ? `\`${present[0]}\` exists in the project` : `\`${present[0]}\` seen in activity`;
+          status = 'used'; reason = `\`${present[0]}\` exists in the project`;
         } else if (GUARD.test(t)) {
           status = 'guard'; reason = 'guardrail / constraint — kept even if unused';
         } else if (hasIndex) {
-          status = 'cut'; reason = `\`${fileRefs[0]}\` — not found in the project${measured ? ' or its activity' : ''}`; cutTokens += tokens;
+          status = 'cut'; reason = `\`${fileRefs[0]}\` — no such file in the project`; cutTokens += tokens;
         } else {
           status = 'prose'; reason = 'could not index the project to verify';
         }
@@ -732,39 +728,25 @@ function nearestClaudeMd(cwd, home) {
   return null;
 }
 // Green side of the audit: things the project clearly uses but CLAUDE.md doesn't mention.
-// (1) package.json scripts (deterministic, compact-proof — how to build/test/run).
-// (2) files referenced a lot in recent activity but undocumented (best-effort; thinner
-// after a /compact). Advisory only — not auto-applied.
-function suggestAdditions(projectRoot, text, corpus, fileset) {
+// Deterministic — driven by package.json (how to build/test/run), not by transcript
+// activity. Advisory only — not auto-applied.
+function suggestAdditions(projectRoot, text) {
   const out = [];
   const lc = String(text).toLowerCase();
   const mentioned = (s) => lc.includes(String(s).toLowerCase());
-  // 1) npm scripts defined but not documented
   for (const d of ['', 'web', 'bridge', 'app', 'client', 'server', 'frontend', 'backend']) {
-    if (out.length >= 8) break;
+    if (out.length >= 10) break;
     let pkg; try { pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, d, 'package.json'), 'utf8')); } catch (_) { continue; }
     if (!pkg || !pkg.scripts) continue;
     for (const name of Object.keys(pkg.scripts)) {
-      if (out.length >= 8) break;
+      if (out.length >= 10) break;
       if (/^(pre|post)/.test(name)) continue;                       // lifecycle hooks — noise
       const cmd = `npm run ${name}`;
       if (mentioned(cmd) || mentioned(`run ${name}`)) continue;
       out.push({ text: d ? `${cmd}   (in ${d}/)` : cmd, reason: `package.json defines "${name}" — document how to run it` });
     }
   }
-  // 2) frequently-referenced files not in CLAUDE.md
-  if (corpus && corpus.length > 500 && fileset && fileset.size) {
-    const counts = [];
-    for (const f of fileset) {
-      if (f.includes('/') || !f.includes('.') || f.length < 5) continue;             // basenames with an extension
-      if (/^(package(-lock)?\.json|readme\.md|claude\.md|tsconfig\.json|\.gitignore)$/.test(f)) continue;
-      let i = 0, n = 0; while ((i = corpus.indexOf(f, i)) !== -1) { n++; i += f.length; if (n > 60) break; }
-      if (n >= 4 && !mentioned(f)) counts.push({ f, n });
-    }
-    counts.sort((a, b) => b.n - a.n);
-    for (const c of counts.slice(0, 4)) out.push({ text: c.f, reason: `referenced ~${c.n}× in recent activity, not in CLAUDE.md` });
-  }
-  return out.slice(0, 10);
+  return out;
 }
 // Shared audit pass — used by both the report (/api/claudemd-audit) and apply
 // (/api/claudemd-apply), so the server writes exactly what it measured (never client text).
@@ -776,15 +758,12 @@ function runClaudeMdAudit(rawCwd) {
   const cmDir = path.dirname(cmPath);
   const projectRoot = path.basename(cmDir).toLowerCase() === '.claude' ? path.dirname(cmDir) : cmDir;
   const fileset = projectFileIndex(projectRoot);
-  const dir = projTranscriptDir(cwd);
-  const { corpus, files } = dir ? activityCorpus(dir) : { corpus: '', files: 0 };
-  const activityMeasured = files > 0 && corpus.length > 500;
-  const { lines, cutTokens } = auditClaudeMd(text, corpus, activityMeasured, fileset, projectRoot);
-  const additions = suggestAdditions(projectRoot, text, corpus, fileset);
+  const { lines, cutTokens } = auditClaudeMd(text, fileset, projectRoot);
+  const additions = suggestAdditions(projectRoot, text);
   return {
     exists: true, path: cmPath, text, lines, cutTokens, additions,
     totalTokens: Math.round((text.length + 1) / 4), windowMax: 200000,
-    measured: fileset.size > 0 || activityMeasured, sessions: files, indexed: fileset.size,
+    measured: fileset.size > 0, indexed: fileset.size,
   };
 }
 
@@ -1033,7 +1012,12 @@ function serveStatic(req, res) {
   }
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream' });
+    const headers = { 'Content-Type': MIME[path.extname(filePath)] || 'application/octet-stream' };
+    // index.html points at content-hashed bundles, so it must never be cached or a new
+    // build won't load. The hashed assets themselves are safe to cache forever.
+    if (/(^|[\\/])index\.html$/.test(filePath)) headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    else if (/[\\/]assets[\\/]/.test(filePath)) headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+    res.writeHead(200, headers);
     res.end(data);
   });
 }
