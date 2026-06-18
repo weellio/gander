@@ -718,8 +718,14 @@ function captureWin(cwd) {
 
 function launchSession(cwd, resume, prompt) {
   if (resume && !/^[\w-]+$/.test(resume)) return { error: 'bad session id' };
-  // optional initial task: strip quotes/newlines, cap length, wrap for the shell
-  const task = prompt ? String(prompt).replace(/["\r\n]+/g, ' ').trim().slice(0, 1500) : '';
+  // cwd is interpolated into the shell command lines below (inside single quotes on
+  // macOS/Linux, and the window title on Windows). Reject break-out chars — real
+  // directory paths never contain them — so a crafted path can't inject a command.
+  if (cwd && /["'`$\r\n]/.test(String(cwd))) return { error: 'unsupported characters in path' };
+  // optional initial task: it rides inside double quotes in the launched command, so
+  // neutralize quote break-out ("), cmd %var% expansion, and bash $()/backtick command
+  // substitution; then cap length. (A launch "seed task" rarely needs those chars.)
+  const task = prompt ? String(prompt).replace(/["'`$%\r\n]+/g, ' ').trim().slice(0, 1500) : '';
   // the launcher uses `claude` on PATH by default; let users point at a full path
   // (aoc-config.json claudeCmd or the Config panel) if `claude` isn't on PATH.
   const rawCli = (cfg.claudeCmd && String(cfg.claudeCmd).trim()) || 'claude';
