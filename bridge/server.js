@@ -623,8 +623,57 @@ function activityCorpus(dir) {
   }
   return { corpus: corpus.toLowerCase(), files };
 }
-function auditClaudeMd(text, corpus, measured) {
+// Index the project's files (repo-relative paths + basenames, lowercased) so the audit
+// can tell a *dead* reference (a file that doesn't exist) from one that's merely unused
+// this session. This is the compact-proof signal: transcript activity gets wiped by
+// /compact, but the files on disk don't. Bounded walk; skips heavy / ignored dirs.
+function projectFileIndex(root) {
+  const set = new Set();
+  const SKIP = new Set(['node_modules', '.git', '.gander', 'dist', 'build', 'out', '.next', '.svelte-kit', 'coverage', 'vendor', '__pycache__', '.venv', 'target']);
+  let count = 0;
+  const walk = (dir, rel, depth) => {
+    if (depth > 6 || count > 8000) return;
+    let ents; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+    for (const e of ents) {
+      if (count > 8000) return;
+      if (e.isDirectory()) {
+        if (SKIP.has(e.name) || (e.name.startsWith('.') && e.name !== '.claude')) continue;
+        walk(path.join(dir, e.name), rel ? rel + '/' + e.name : e.name, depth + 1);
+      } else if (e.isFile()) {
+        count++;
+        const relPath = (rel ? rel + '/' + e.name : e.name).toLowerCase();
+        set.add(relPath);
+        set.add(e.name.toLowerCase());
+      }
+    }
+  };
+  walk(root, '', 0);
+  return set;
+}
+// Flag a CLAUDE.md line ONLY when it points at a file that doesn't exist in the project
+// (and wasn't used in recent activity, and isn't a guardrail). Bare commands / prose are
+// never cut. `fileset` is the on-disk index; `corpus` is recent transcript activity.
+function auditClaudeMd(text, corpus, measured, fileset, projectRoot) {
   const GUARD = /\b(never|don'?t|do ?not|must|avoid|always|only|ensure|require|forbid|prefer|should|need to)\b/i;
+  const FILEISH = /\.(?:js|ts|tsx|jsx|mjs|cjs|md|json|py|sh|ps1|bat|cmd|svelte|vue|css|scss|html|yml|yaml|toml|go|rs|java|rb|php|sql|c|cpp|h|hpp|txt|cfg|ini|xml)\b/i;
+  // Tokens that look like a `.js` file but are really a runtime/library name in prose.
+  const DENY = new Set(['node.js', 'next.js', 'nuxt.js', 'vue.js', 'three.js', 'd3.js', 'express.js', 'react.js', 'ember.js', 'backbone.js', 'jquery.js', 'angular.js', 'p5.js']);
+  const hasIndex = !!(fileset && fileset.size);
+  const onDisk = (r) => {
+    const lr = r.toLowerCase().replace(/^[.~]?[\\/]/, '').replace(/\\/g, '/').replace(/\/+$/, '');
+    // exact path check hits real files AND directories — even ones the index skips (dist, etc.)
+    if (projectRoot && lr) { try { if (fs.existsSync(path.join(projectRoot, lr))) return true; } catch (_) {} }
+    if (!hasIndex) return false;
+    if (fileset.has(lr)) return true;
+    const base = lr.split('/').pop();
+    return !!(base && base.length > 2 && fileset.has(base));
+  };
+  const inCorpus = (r) => {
+    const lr = r.toLowerCase();
+    if (lr.length > 2 && corpus.includes(lr)) return true;
+    const base = lr.split(/[\\/]/).pop();
+    return !!(base && base.length > 3 && corpus.includes(base));
+  };
   const lines = String(text).split('\n');
   const out = [];
   let cutTokens = 0;
@@ -640,18 +689,26 @@ function auditClaudeMd(text, corpus, measured) {
       const bt = /`([^`]+)`/g; while ((m = bt.exec(t))) refs.push(m[1]);
       const pathRe = /(?:\.{0,2}[\\/]|~[\\/])?[\w.-]+[\\/][\w./\\-]+|\b[\w-]+\.(?:js|ts|tsx|jsx|md|json|py|sh|ps1|svelte|css|html|yml|yaml|toml|go|rs|java|rb|php|sql)\b/g;
       while ((m = pathRe.exec(t))) refs.push(m[0]);
+      // Only tokens with a real FILE extension are eligible to be cut (minus runtime/lib
+      // names). Directories, bare commands, flags, prose, and slash-y prose ("macOS/Linux",
+      // a "Task/i" regex) are never flagged — only a named file that should exist but doesn't.
+      const fileRefs = refs.filter((r) => FILEISH.test(r) && !DENY.has(r.toLowerCase()));
       if (!refs.length) { status = 'prose'; reason = 'no concrete reference to measure'; }
-      else {
-        const present = refs.filter((r) => {
-          const lr = r.toLowerCase();
-          if (lr.length > 2 && corpus.includes(lr)) return true;
-          const base = lr.split(/[\\/]/).pop();
-          return base && base.length > 3 && corpus.includes(base);
-        });
-        if (present.length) { status = 'used'; reason = `\`${present[0]}\` seen in activity`; }
-        else if (GUARD.test(t)) { status = 'guard'; reason = 'guardrail / constraint — kept even if unused'; }
-        else if (measured) { status = 'cut'; reason = `\`${refs[0]}\` — never seen in this project's activity`; cutTokens += tokens; }
-        else { status = 'prose'; reason = 'no activity history to measure against'; }
+      else if (!fileRefs.length) {
+        if (GUARD.test(t)) { status = 'guard'; reason = 'guardrail / constraint — kept'; }
+        else { status = 'prose'; reason = 'no file reference to measure'; }
+      } else {
+        const present = fileRefs.filter((r) => onDisk(r) || inCorpus(r));
+        if (present.length) {
+          status = 'used';
+          reason = onDisk(present[0]) ? `\`${present[0]}\` exists in the project` : `\`${present[0]}\` seen in activity`;
+        } else if (GUARD.test(t)) {
+          status = 'guard'; reason = 'guardrail / constraint — kept even if unused';
+        } else if (hasIndex) {
+          status = 'cut'; reason = `\`${fileRefs[0]}\` — not found in the project${measured ? ' or its activity' : ''}`; cutTokens += tokens;
+        } else {
+          status = 'prose'; reason = 'could not index the project to verify';
+        }
       }
     }
     out.push({ n: i + 1, text: raw, tokens, status, reason });
@@ -1478,13 +1535,18 @@ const server = http.createServer(async (req, res) => {
     const cmPath = nearestClaudeMd(cwd, os.homedir());
     if (!cmPath) return sendJson(res, 200, { ok: true, exists: false, path: claudeMdFor('project', cwd, os.homedir()) });
     const text = readTextSafe(cmPath) || '';
+    // The project root is the dir holding CLAUDE.md (or its parent if it's in .claude).
+    const cmDir = path.dirname(cmPath);
+    const projectRoot = path.basename(cmDir).toLowerCase() === '.claude' ? path.dirname(cmDir) : cmDir;
+    const fileset = projectFileIndex(projectRoot);
     const dir = projTranscriptDir(cwd);
     const { corpus, files } = dir ? activityCorpus(dir) : { corpus: '', files: 0 };
-    const measured = files > 0 && corpus.length > 500;
-    const { lines, cutTokens } = auditClaudeMd(text, corpus, measured);
+    const activityMeasured = files > 0 && corpus.length > 500;
+    const { lines, cutTokens } = auditClaudeMd(text, corpus, activityMeasured, fileset, projectRoot);
     return sendJson(res, 200, {
       ok: true, exists: true, path: cmPath, totalTokens: Math.round((text.length + 1) / 4),
-      cutTokens, windowMax: 200000, measured, sessions: files, lines,
+      cutTokens, windowMax: 200000, measured: fileset.size > 0 || activityMeasured,
+      sessions: files, indexed: fileset.size, lines,
     });
   }
 

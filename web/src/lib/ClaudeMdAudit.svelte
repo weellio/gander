@@ -50,14 +50,14 @@
           {:else if data.cutTokens}
             <span class="big">~{data.cutTokens} tokens</span> of likely dead weight — {cutLines.length} line{cutLines.length === 1 ? '' : 's'}, {filePct}% of this CLAUDE.md, <b>re-sent every turn</b> before the agent reads a thing.
           {:else}
-            <b>Looks lean.</b> No line references a file or command that never shows up in this project's activity.
+            <b>Looks lean.</b> No line points at a file that's missing from the project.
           {/if}
         </div>
 
         <div class="legend">
-          <span class="lg cut">flagged · referenced, never used</span>
-          <span class="lg used">used in activity</span>
-          <span class="lg kept">kept · guardrail or prose</span>
+          <span class="lg cut">flagged · file not in project</span>
+          <span class="lg used">file exists / used</span>
+          <span class="lg kept">kept · guardrail, command or prose</span>
         </div>
 
         <div class="panes">
@@ -85,7 +85,7 @@
           </div>
         </div>
 
-        <div class="foot">A line is flagged <b>only</b> if it names a file/command/tool that <b>never appears</b> in this project's real transcripts — and it isn't a guardrail or plain prose (those are kept on purpose; "unused" ≠ "safe to cut"). Review before applying. Editing CLAUDE.md busts the prompt cache, so the savings land on the next session.</div>
+        <div class="foot">A line is flagged <b>only</b> if it names a <b>file that doesn't exist</b> in the project (and wasn't used in recent activity). Guardrails, commands, and plain prose are kept on purpose — "unused" ≠ "safe to cut". This survives <code>/compact</code>: it checks the files on disk, not just the (compactable) transcript. Review before applying. Editing CLAUDE.md busts the prompt cache, so the savings land on the next session.</div>
       {/if}
     </div>
   </div>
