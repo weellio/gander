@@ -39,7 +39,10 @@ process.stdin.on('end', () => {
   let payload = data || '{}';
   try {
     const obj = JSON.parse(payload);
-    if (obj && obj.hook_event_name === 'Stop' && obj.transcript_path) {
+    // Capture the last assistant message on a turn end. Root sessions end on 'Stop';
+    // sub-agents (Task) end on 'SubagentStop' — both carry the transcript so the
+    // dashboard can show what that agent just said instead of "no captured message".
+    if (obj && (obj.hook_event_name === 'Stop' || obj.hook_event_name === 'SubagentStop') && obj.transcript_path) {
       const lm = lastAssistantMessage(obj.transcript_path);
       if (lm) { obj._lastMessage = lm; payload = JSON.stringify(obj); }
     }

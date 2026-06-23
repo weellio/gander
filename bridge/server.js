@@ -1117,7 +1117,7 @@ function mapHookToEvents(p) {
     case 'SubagentStart':
       return [{ ...base, agentId: subId, parentId: rootId, name: p.agent_type || 'subagent', state: 'spawning', log: 'subagent started', ...projects.agentMeta(p.cwd, p.agent_type) }];
     case 'SubagentStop':
-      return [{ ...base, agentId: subId, state: 'done', log: 'subagent finished' }];
+      return [{ ...base, agentId: subId, state: 'done', log: 'subagent finished', lastMessage: p._lastMessage }];
     case 'Notification': {
       const kind = String(p.message || p.notification_type || p.type || '').toLowerCase();
       if (/auth|success|login/.test(kind)) return [];   // not an input request
