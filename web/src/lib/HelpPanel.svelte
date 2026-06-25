@@ -17,7 +17,7 @@
     {
       title: 'Click an agent',
       items: [
-        ['Current task', 'See the agent’s latest message / what it’s doing right now.'],
+        ['Current task / live message', 'What the agent is doing and its latest message. Sub-agents stream their message live as they work (not just at finish); root sessions update at the end of each turn.'],
         ['Reply · Stop', 'Send a message or task to a running session, or stop it at its next tool.'],
         ['💰 Session cost', 'Live estimated spend for that session.'],
         ['📊 Analytics', 'Per-session efficiency gauges from the transcript: cache-hit % (context reused vs re-sent), output-cost share (verbose vs context bulk), and a context-window bar. A parked, near-full session shows a “Compact now” nudge that types /compact to free context.'],
@@ -106,7 +106,7 @@
           </section>
         {/each}
       </div>
-      <div class="foot">Tip: press <kbd>/</kbd> (or click <b>🔍 Jump</b>) for the command palette — jump to any panel or fly to any agent by name. Panels also open from <b>⚙ Manage ▾</b>; everything runs locally via the bridge on :3131.</div>
+      <div class="foot">Tip: press <kbd>/</kbd> (or click <b>🔍 Jump</b>) for the command palette — jump to any panel or fly to any agent by name. Panels open from <b>⚙ Manage ▾</b> and are <b>drag-resizable</b> from their left edge (the width is remembered). Everything runs locally via the bridge on :3131.</div>
     </div>
   </div>
 {/if}
