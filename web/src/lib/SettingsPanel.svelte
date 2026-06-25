@@ -170,6 +170,7 @@
     <div class="hd"><strong>{scope === 'app' ? 'Settings' : 'Project Config'}</strong><button class="x" onclick={closePanel} aria-label="Close">✕</button></div>
 
     {#if scope === 'app'}
+    <div class="appscroll">
     <div class="tg">
       <button class="collapser" onclick={() => (tgOpen = !tgOpen)}>
         <span class="caret">{tgOpen ? '▾' : '▸'}</span> Telegram alerts
@@ -306,6 +307,7 @@
         </div>
       {/if}
     </div>
+    </div>
     {/if}
 
     {#if scope === 'project'}
@@ -416,6 +418,8 @@
   .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-tertiary); }
   .wide { width: 100%; }
   .body { flex: 1 1 auto; overflow: auto; padding: 4px 0; }
+  /* app-settings sections scroll within the drawer (min-height:0 lets a flex child overflow) */
+  .appscroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 12px; }
   .empty { padding: 20px 16px; font-size: 12px; color: var(--color-text-tertiary); }
   .empty-sm { padding: 6px 0; font-size: 11px; color: var(--color-text-tertiary); }
   .section { padding: 10px 14px; border-bottom: 0.5px solid var(--color-border-tertiary); }
