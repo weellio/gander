@@ -66,19 +66,27 @@
     return m[c] || c || '#888';
   }
   let amb = $state({ enabled: false, awaiting: {}, error: {}, runaway: {}, done: {}, clear: {} });
+  let lifx = $state({ enabled: false, hasToken: false, selector: 'all' }); let lifxToken = $state(''); let lifxStatus = $state('');
   async function loadAmbient() {
     try { const j = await (await fetch('/api/ambient-config')).json();
       amb = { enabled: !!j.enabled, awaiting: j.awaiting || {}, error: j.error || {}, runaway: j.runaway || {}, done: j.done || {}, clear: j.clear || {} };
+      lifx = j.lifx || { enabled: false, hasToken: false, selector: 'all' }; lifxToken = '';
     } catch (_) {}
   }
   async function saveAmbient() {
     ambStatus = 'Saving…';
-    const body = { enabled: amb.enabled };
+    const body = { enabled: amb.enabled, lifx: { enabled: lifx.enabled, selector: lifx.selector, token: lifxToken || undefined } };
     for (const [k] of AMB_EVENTS) body[k] = amb[k];
     const r = await post('/api/ambient-config', body);
-    ambStatus = r && r.ok ? '✓ Saved' : 'Error'; setTimeout(() => (ambStatus = ''), 1800);
+    if (r && r.ok) { ambStatus = '✓ Saved'; if (r.lifx) lifx = r.lifx; lifxToken = ''; } else ambStatus = 'Error';
+    setTimeout(() => (ambStatus = ''), 1800);
   }
   async function testAmbient(ev) { await post('/api/ambient-config', { test: ev, rule: amb[ev] }); ambStatus = '⚡ fired ' + ev; setTimeout(() => (ambStatus = ''), 1500); }
+  async function testLifx() {
+    lifxStatus = 'Testing…';
+    const r = await post('/api/ambient-config', { test: 'lifx', lifx: { token: lifxToken || undefined, selector: lifx.selector } });
+    lifxStatus = r && r.ok ? `✓ ${r.count} bulb${r.count === 1 ? '' : 's'}${r.lights && r.lights.length ? ': ' + r.lights.join(', ') : ''} — pulsed green` : '✗ ' + ((r && r.error) || 'failed');
+  }
 
   function closePanel() { open = false; }
 
@@ -280,9 +288,21 @@
               </div>
             {/each}
           </div>
+
+          <div class="lifx-box">
+            <label class="cbrow"><input type="checkbox" bind:checked={lifx.enabled} /> <span class="swatch eff-pulse" style="--c:#10B981"></span> <b>LIFX bulb</b> — built-in, no hub {#if lifx.hasToken}<span class="dim">· token saved</span>{/if}</label>
+            <div class="amb-fields">
+              <input class="in grow" type="password" placeholder={lifx.hasToken ? 'token saved — leave blank to keep' : 'LIFX personal access token'} bind:value={lifxToken} autocomplete="off" />
+              <input class="in clr" placeholder="all" bind:value={lifx.selector} title="selector: all · label:Office · group:Studio · id:abc" />
+              <button class="mini" onclick={testLifx}>Test bulb</button>
+            </div>
+            {#if lifxStatus}<div class="tg-status">{lifxStatus}</div>{/if}
+            <div class="tg-hint">Token: <code>cloud.lifx.com</code> → Settings → <b>Generate New Token</b>. When enabled, each scenario's colour + pattern above drives the bulb directly (blink/strobe → pulse, pulse/breathe/rainbow → breathe, "off" → power off). No bridge/hub needed; Wi-Fi only.</div>
+          </div>
+
           <div class="tg-btns"><button class="select" onclick={saveAmbient}>Save</button></div>
           {#if ambStatus}<div class="tg-status">{ambStatus}</div>{/if}
-          <div class="tg-hint">No light yet? The webhook fires regardless, so you can wire any of these now and add the bulb later. A built-in <b>LIFX</b> option (one bulb, no glue) is on the roadmap.</div>
+          <div class="tg-hint">No light yet? The webhook + command fire regardless, so you can wire those now and add a bulb later.</div>
         </div>
       {/if}
     </div>
@@ -454,4 +474,5 @@
   @keyframes amb-blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.1; } }
   @keyframes amb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.22; } }
   @keyframes amb-rainbow { to { filter: hue-rotate(360deg); } }
+  .lifx-box { margin: 8px 0 4px; padding: 9px 10px; border: 0.5px solid #10B98155; border-radius: 8px; background: #10B9810f; display: flex; flex-direction: column; gap: 6px; }
 </style>

@@ -1047,8 +1047,9 @@ function fireAmbient(event, ctx) {
   try {
     const a = cfg.ambient;
     if (!a || a.enabled === false) return;
-    const rule = a[event];
-    if (!rule || (!rule.webhook && !rule.command)) return;
+    const rule = a[event] || {};
+    const lifxOn = !!(a.lifx && a.lifx.enabled && a.lifx.token);
+    if (!rule.webhook && !rule.command && !lifxOn) return;   // nothing wired for this scenario
     const payload = {
       event, color: rule.color || AMBIENT_COLORS[event] || 'white', effect: rule.effect || AMBIENT_EFFECTS[event] || 'solid',
       project: (ctx && ctx.project) || '', agent: (ctx && ctx.name) || '',
@@ -1067,8 +1068,42 @@ function fireAmbient(event, ctx) {
       // operator-set command (set only via the dashboard, behind the Origin guard) — run as-is.
       spawnSafe(String(rule.command), [], { shell: true, windowsHide: true, env: { ...process.env, AOC_EVENT: payload.event, AOC_COLOR: payload.color, AOC_EFFECT: payload.effect, AOC_PROJECT: payload.project, AOC_AGENT: payload.agent, AOC_REASON: payload.reason } });
     }
-    console.log(`[ambient] ${event} (${payload.color})${payload.project ? ' · ' + payload.project : ''}`);
+    if (lifxOn) driveLifx(payload.color, payload.effect);
+    console.log(`[ambient] ${event} (${payload.color}/${payload.effect})${payload.project ? ' · ' + payload.project : ''}`);
   } catch (_) {}
+}
+
+// ── LIFX cloud (built-in smart-light action, no hub) ─────────────────────────
+// Token from cloud.lifx.com → Settings → Generate New Token. Each scenario's
+// colour + effect maps onto LIFX state / pulse / breathe calls.
+function lifxColor(c) {
+  c = String(c || '').toLowerCase().trim();
+  if (c === 'off') return 'off';
+  const m = { amber: '#F59E0B', limegreen: '#10B981', off: 'off' };
+  return m[c] || c || 'white';   // hex (#rrggbb) or a LIFX-known name passes straight through
+}
+function lifxRequest(method, suffix, token, body, cb) {
+  try {
+    const data = body ? JSON.stringify(body) : '';
+    const rq = require('https').request('https://api.lifx.com/v1/lights/' + suffix, {
+      method, timeout: 6000,
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) },
+    }, (r) => { let b = ''; r.on('data', (d) => (b += d)); r.on('end', () => { if (cb) { let j; try { j = JSON.parse(b || '{}'); } catch (_) { j = {}; } cb(r.statusCode, j); } }); });
+    rq.on('error', () => cb && cb(0, { error: 'request failed' }));
+    rq.on('timeout', () => { rq.destroy(); cb && cb(0, { error: 'timeout' }); });
+    if (data) rq.write(data); rq.end();
+  } catch (_) { if (cb) cb(0, { error: 'bad request' }); }
+}
+function driveLifx(color, effect) {
+  const L = cfg.ambient && cfg.ambient.lifx;
+  if (!L || !L.enabled || !L.token) return;
+  const sel = encodeURIComponent(L.selector || 'all');
+  const col = lifxColor(color);
+  if (col === 'off') return lifxRequest('PUT', sel + '/state', L.token, { power: 'off', fast: true });
+  const e = String(effect || 'solid');
+  if (e === 'blink' || e === 'strobe') return lifxRequest('POST', sel + '/effects/pulse', L.token, { color: col, period: e === 'strobe' ? 0.3 : 0.9, cycles: e === 'strobe' ? 8 : 4, power_on: true });
+  if (e === 'pulse' || e === 'breathe' || e === 'rainbow') return lifxRequest('POST', sel + '/effects/breathe', L.token, { color: col, from_color: e === 'rainbow' ? 'blue' : undefined, period: e === 'breathe' ? 3 : 1.6, cycles: e === 'breathe' ? 3 : 4, peak: 0.6, power_on: true });
+  return lifxRequest('PUT', sel + '/state', L.token, { power: 'on', color: col, brightness: 1.0, fast: true });   // solid
 }
 
 function snapshot() {
@@ -1569,15 +1604,32 @@ const server = http.createServer(async (req, res) => {
 
   if (url === '/api/ambient-config' && req.method === 'GET') {
     const a = cfg.ambient || {};
-    return sendJson(res, 200, { enabled: !!a.enabled, events: AMBIENT_EVENTS, colors: AMBIENT_COLORS, ...pickAmbient(a) });
+    const lx = a.lifx || {};
+    return sendJson(res, 200, {
+      enabled: !!a.enabled, events: AMBIENT_EVENTS, colors: AMBIENT_COLORS, ...pickAmbient(a),
+      lifx: { enabled: !!lx.enabled, hasToken: !!lx.token, selector: lx.selector || 'all' },
+    });
   }
   if (url === '/api/ambient-config' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    if (body.test === 'lifx') {   // validate token + list bulbs + a quick green pulse so you see it
+      const lx = cfg.ambient && cfg.ambient.lifx;
+      const token = (body.lifx && body.lifx.token) || (lx && lx.token);
+      const sel = encodeURIComponent((body.lifx && body.lifx.selector) || (lx && lx.selector) || 'all');
+      if (!token) return sendJson(res, 200, { ok: false, error: 'no LIFX token set' });
+      return lifxRequest('GET', sel, token, null, (code, data) => {
+        if (code === 200 && Array.isArray(data)) {
+          lifxRequest('POST', sel + '/effects/pulse', token, { color: 'green', period: 0.6, cycles: 3, power_on: true });
+          return sendJson(res, 200, { ok: true, count: data.length, lights: data.map((d) => d.label) });
+        }
+        return sendJson(res, 200, { ok: false, error: (data && data.error) || ('LIFX HTTP ' + code) });
+      });
+    }
     if (body.test) {
       const ctx = { project: 'Test', name: 'ambient test', reason: 'manual test', state: body.test };
       if (body.rule && (body.rule.webhook || body.rule.command)) {   // fire the (possibly-unsaved) form rule
-        const saved = cfg.ambient; cfg.ambient = { enabled: true, [body.test]: body.rule };
+        const saved = cfg.ambient; cfg.ambient = { enabled: true, lifx: saved && saved.lifx, [body.test]: body.rule };
         fireAmbient(body.test, ctx); cfg.ambient = saved;
       } else fireAmbient(body.test, ctx);
       return sendJson(res, 200, { ok: true, tested: body.test });
@@ -1590,8 +1642,16 @@ const server = http.createServer(async (req, res) => {
         cfg.ambient[k] = { webhook: String(r.webhook || '').trim(), command: String(r.command || '').trim(), color: String(r.color || '').trim(), effect: String(r.effect || '').trim() };
       }
     }
+    if (body.lifx !== undefined) {
+      cfg.ambient.lifx = cfg.ambient.lifx || {};
+      const L = body.lifx || {};
+      if (L.enabled !== undefined) cfg.ambient.lifx.enabled = !!L.enabled;
+      if (L.selector !== undefined) cfg.ambient.lifx.selector = String(L.selector || '').trim() || 'all';
+      if (L.token !== undefined && String(L.token).trim()) cfg.ambient.lifx.token = String(L.token).trim();   // only overwrite when a new token is typed
+    }
     saveConfig();
-    return sendJson(res, 200, { ok: true, enabled: !!cfg.ambient.enabled, ...pickAmbient(cfg.ambient) });
+    const lx = cfg.ambient.lifx || {};
+    return sendJson(res, 200, { ok: true, enabled: !!cfg.ambient.enabled, ...pickAmbient(cfg.ambient), lifx: { enabled: !!lx.enabled, hasToken: !!lx.token, selector: lx.selector || 'all' } });
   }
 
   if (url === '/api/telegram-config' && req.method === 'GET') {
