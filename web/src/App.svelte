@@ -438,7 +438,7 @@
             <input bind:this={bgFileInput} type="file" accept="image/*" style="display:none" onchange={onBgImage} />
 
             <div class="opt-sec">App configuration</div>
-            <button class="select" onclick={openAppSettings}>Telegram · cost budget · sessions · nudge →</button>
+            <button class="select" onclick={openAppSettings}>Telegram · cost budget · sessions · nudge · 💡 light/webhook alerts →</button>
 
             <div class="opt-sec">Conserve Claude tokens</div>
             <p class="opt-note">Gander sends almost nothing to the model on its own. The real per-turn cost is the <b>MCP servers, skills &amp; agents</b> each project loads — trim ones you don't need.</p>
