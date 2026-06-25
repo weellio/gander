@@ -39,10 +39,11 @@ process.stdin.on('end', () => {
   let payload = data || '{}';
   try {
     const obj = JSON.parse(payload);
-    // Capture the last assistant message on a turn end. Root sessions end on 'Stop';
-    // sub-agents (Task) end on 'SubagentStop' — both carry the transcript so the
-    // dashboard can show what that agent just said instead of "no captured message".
-    if (obj && (obj.hook_event_name === 'Stop' || obj.hook_event_name === 'SubagentStop') && obj.transcript_path) {
+    // Only the root 'Stop' gets a captured message. NOT 'SubagentStop': a sub-agent's
+    // transcript_path is the MAIN transcript, which doesn't contain the sub-agent's own
+    // output (verified empirically — it returned the PARENT's last message for every
+    // sub-agent). Capturing sub-agent text needs the Agent tool result, not this hook.
+    if (obj && obj.hook_event_name === 'Stop' && obj.transcript_path) {
       const lm = lastAssistantMessage(obj.transcript_path);
       if (lm) { obj._lastMessage = lm; payload = JSON.stringify(obj); }
     }
