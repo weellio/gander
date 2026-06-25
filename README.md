@@ -24,8 +24,9 @@ It attaches to any project automatically via Claude Code **hooks** — no manual
 - **Recursive hierarchy view** — connectors from each agent to its sub-agents at any depth, with subtree hover-highlight and animated parent→child flow.
 - **Office floor + Mosaic views** — a top-down animated office where agents walk, gather at the water cooler, and route packets to their sub-agents; or a compact responsive tile grid.
 - **3 avatar tiers** — pixel art (procedural Canvas), abstract (waveforms/EQ/rings), and top-down desk people / your own images.
-- **Click any agent** — a modal to read its current task, reply, stop it, **focus its window** (raise the live terminal it's running in), or open its folder / VS Code.
-- **Per-session analytics** — each agent's modal shows efficiency gauges parsed from its transcript: **cache-hit %** (context reused vs re-sent), **output-cost share** (verbose answers vs context bulk), and a **context-window bar** that fills amber→red toward the model limit. When a parked session is near full, a **Compact now** nudge types `/compact` for you — freeing context and the cache-read you'd pay on every later turn. From there, **Audit CLAUDE.md** opens a before/after diff that flags the lines referencing files or commands **never seen** in that project's real transcripts — your config's dead weight, re-sent every turn before the agent reads a thing — each with its reason and the tokens you'd reclaim (guardrails and prose are kept on purpose).
+- **Click any agent** — a modal to read its **current task and live message** (sub-agents stream what they're doing *as they work*, not just at finish), reply, stop it, **focus its window** (raise the live terminal it's running in), or open its folder / VS Code.
+- **Per-session analytics** — each agent's modal shows efficiency gauges parsed from its transcript: **cache-hit %** (context reused vs re-sent), **output-cost share** (verbose answers vs context bulk), and a **context-window bar** that fills amber→red toward the model limit. When a parked session is near full, a **Compact now** nudge types `/compact` for you — freeing context and the cache-read you'd pay on every later turn. From there, **Audit CLAUDE.md** opens a before/after diff of your CLAUDE.md: it flags **pasted secrets** (remove + rotate), lines pointing at **files that don't exist** plus generic boilerplate (red, checked by default), and possibly-stale prose — old to-dos, planning sections, dated notes, moved paths (amber, opt-in) — and **suggests additions** (undocumented npm scripts, frameworks, config). It's deterministic and **compact-proof** (checks files on disk, not the transcript). Tick/untick each line and **Apply** writes the trimmed file (backed up to `CLAUDE.md.bak`); guardrails, commands, real files, and prose are kept.
+- **"Needs you" triage rail** — the 🔔 bell lists every session waiting on a human across all projects — needs input, errored, finished — ranked, each with the reason and how long it's waited. Answer an awaiting prompt inline with the quick-keys, or jump straight to the agent. The badge turns red only when a human is actually needed.
 - **Live cost + runaway alerts** — each agent tile shows its session spend, and any agent burning money fast (a stuck/looping session) lights up red with a `💸 $/min` badge so you can catch it and stop it before it runs up a bill. Toggle off in Settings if you don't care about spend.
 
 ## Control center — manage Claude Code, not just watch it
@@ -39,6 +40,7 @@ Beyond visualization, Gander is a local control panel for everything Claude Code
 - **Routines & briefings** — save reusable prompts that call your skills/MCP (e.g. a *Morning Brief* that checks mail, calendar & news), **Run now** or **schedule** them daily at a set time. They run **headlessly** (`claude -p`) and their output lands on the dashboard as a **briefing** — a fresh one greets you with a card and can ping Telegram/desktop. "What did I miss overnight?", answered.
 - **History** — recent sessions across all projects with their first prompt; **▶ Resume** any one (`claude --resume <id>` in a terminal) or copy the command.
 - **Processes** — the long-running / port-holding processes your sessions spawned and **left open** — a dev server still on `:3000`, a stray `node`/`python`. Gander can't see these from hooks (the tool call returns while the process keeps living), so it scans the OS, attributes each to the session whose window spawned it (orphans grouped apart), and gives you a one-click **Kill** (force-kills the tree). Each agent's modal also lists what *that* session left running. *(Windows-first.)*
+- **Tune** — mines your recent session transcripts for repeated work and suggests the config that removes it: a **PostToolUse hook** for a command you keep running after edits (with a copy-paste snippet), or a **`/command` / routine** for a prompt you keep typing. Deterministic counts; nothing is auto-written — you copy what's useful.
 - **Telegram** — get pinged when a session is waiting on you, and reply or `/stop` from your phone.
 - **＋ New task** — a top-bar button (and `/`-palette entry): type a goal, pick a project, and it opens a new Claude session working on it.
 - **Bundled skills + agents** — install ships two into your `~/.claude`: **`component-builder`** (scaffold a new agent / skill / slash command from plain English) and **`context-audit`** (find what a project re-sends *every turn* — CLAUDE.md, MCP tool schemas, listed skills, memory — ranked by token cost, with a trim plan and a leaner CLAUDE.md rewrite). Just ask Claude *"why is this session so expensive?"* or *"audit my context / trim my CLAUDE.md"* — it reads the live cache-hit / context-fill gauges above and tells you exactly what to cut.
@@ -126,7 +128,7 @@ Either way, on your next session the `SessionStart` hook starts the bridge and o
 | `UserPromptSubmit` | Orchestrator → thinking |
 | `PostToolUse` | Maps the tool to a state (Read/Glob→reading, Write/Edit→coding, Bash→coding/testing, Task→spawning, …) |
 | `PostToolUseFailure` | → error |
-| `SubagentStart` / `SubagentStop` | Creates a child tile (spawning) / marks it done |
+| `SubagentStart` / `SubagentStop` | Creates a child tile (spawning) / marks it done + captures its final message (its live message streams from each sub-agent's own transcript) |
 | `Stop` / `SessionEnd` | Orchestrator → idle |
 
 All event hooks are `type: "http"` posting to `http://localhost:3131/api/hook`, which maps the raw payload to agent updates — cross-platform, no scripts.
@@ -157,7 +159,7 @@ node bridge/server.js --run "claude -p 'task' --output-format stream-json --verb
   marketplace.json     # distribution manifest
 hooks/
   hooks.json           # SessionStart launches the bridge; tool/Stop/Notification → emit.js
-  emit.js              # forwards hook payloads to the bridge (+ command return channel, last-message capture)
+  emit.js              # forwards hook payloads to the bridge (+ command return channel, root + per-sub-agent message capture)
 bridge/
   server.js            # zero-dep HTTP server: serves the dashboard + the event/command/inspect API
   parser.js            # stream-json → agent events (for the --stdin / --run pipeline)
@@ -205,8 +207,11 @@ POST /api/open            -> { cwd, target:"folder"|"editor" }
 GET  /api/usage           -> token/cost summary from transcripts
 POST /api/github          -> { cwd, kind:info|prs|issues }
 POST /api/config-read     -> { cwd } -> { hooks, mcp, settingsRaw, ... }
-POST /api/config          -> { cwd, action:delHook|delMcp, name }
+POST /api/config          -> { cwd, action:delHook|delMcp|addMcp, name }
 GET  /api/history         -> recent sessions [{ sessionId, project, firstPrompt, resumeCmd, ... }]
+POST /api/claudemd-audit  -> { cwd } -> { lines:[{n,status,reason,tokens}], additions, cutTokens }
+POST /api/claudemd-apply  -> { cwd, cuts:[{n,text}] } -> writes the trimmed CLAUDE.md (backs up to .bak)
+GET  /api/suggestions     -> config suggestions mined from recent transcripts (hooks / skills / routines)
 ```
 
 States: `idle · thinking · coding · spawning · reading · testing · error · done · awaiting`.
