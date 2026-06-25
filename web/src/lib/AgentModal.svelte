@@ -214,7 +214,7 @@
 
       <div class="sec">
         <div class="lbl">Current task / last message</div>
-        {#if agent.lastMessage}<div class="lm">{agent.lastMessage}</div>{:else}<div class="dim">No captured message yet (appears after the agent finishes a turn).</div>{/if}
+        {#if agent.lastMessage}<div class="lm">{agent.lastMessage}</div>{:else}<div class="dim">No captured message yet (fills in as the agent works).</div>{/if}
       </div>
 
       {#if cost && (cost.tokens || ctxPct !== null)}

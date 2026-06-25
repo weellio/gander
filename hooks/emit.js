@@ -11,25 +11,43 @@
 
 const http = require('http');
 const fs = require('fs');
+const path = require('path');
 
-function lastAssistantMessage(p) {
-  try {
-    const lines = fs.readFileSync(p, 'utf8').split(/\r?\n/);
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      let o; try { o = JSON.parse(line); } catch (_) { continue; }
-      const msg = o.message || o;
-      const isAssistant = o.type === 'assistant' || (msg && msg.role === 'assistant');
-      if (!isAssistant) continue;
-      const content = (msg && msg.content) || o.content;
-      let text = '';
-      if (Array.isArray(content)) text = content.filter((c) => c && c.type === 'text').map((c) => c.text).join('\n');
-      else if (typeof content === 'string') text = content;
-      if (text && text.trim()) return text.trim().slice(0, 2000);
-    }
-  } catch (_) {}
+// Find the last assistant text block in transcript lines (newest first).
+function lastAssistantInLines(lines) {
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    let o; try { o = JSON.parse(line); } catch (_) { continue; }   // a partial tail line just fails → skip
+    const msg = o.message || o;
+    const isAssistant = o.type === 'assistant' || (msg && msg.role === 'assistant');
+    if (!isAssistant) continue;
+    const content = (msg && msg.content) || o.content;
+    let text = '';
+    if (Array.isArray(content)) text = content.filter((c) => c && c.type === 'text').map((c) => c.text).join('\n');
+    else if (typeof content === 'string') text = content;
+    if (text && text.trim()) return text.trim().slice(0, 2000);
+  }
   return '';
+}
+function lastAssistantMessage(p) {
+  try { return lastAssistantInLines(fs.readFileSync(p, 'utf8').split(/\r?\n/)); } catch (_) { return ''; }
+}
+// Tail-read only the last maxBytes — for the live sub-agent path, called per tool call.
+function lastAssistantFromTail(p, maxBytes) {
+  try {
+    const size = fs.statSync(p).size;
+    const start = Math.max(0, size - (maxBytes || 200000));
+    const fd = fs.openSync(p, 'r');
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    return lastAssistantInLines(buf.toString('utf8').split(/\r?\n/));
+  } catch (_) { return ''; }
+}
+// A sub-agent writes to its own transcript: <main>.jsonl → <main>/subagents/agent-<id>.jsonl
+function subAgentTranscript(mainPath, agentId) {
+  return path.join(mainPath.replace(/\.jsonl$/i, ''), 'subagents', 'agent-' + agentId + '.jsonl');
 }
 
 let data = '';
@@ -39,12 +57,18 @@ process.stdin.on('end', () => {
   let payload = data || '{}';
   try {
     const obj = JSON.parse(payload);
-    // Only the root 'Stop' gets a captured message. NOT 'SubagentStop': a sub-agent's
-    // transcript_path is the MAIN transcript, which doesn't contain the sub-agent's own
-    // output (verified empirically — it returned the PARENT's last message for every
-    // sub-agent). Capturing sub-agent text needs the Agent tool result, not this hook.
-    if (obj && obj.hook_event_name === 'Stop' && obj.transcript_path) {
+    const ev = obj && obj.hook_event_name;
+    const isSub = obj && obj.agent_id && obj.agent_id !== obj.session_id;
+    if (ev === 'Stop' && obj.transcript_path) {
+      // root turn end: last message from the main transcript
       const lm = lastAssistantMessage(obj.transcript_path);
+      if (lm) { obj._lastMessage = lm; payload = JSON.stringify(obj); }
+    } else if (isSub && (ev === 'PostToolUse' || ev === 'PostToolUseFailure') && obj.transcript_path) {
+      // LIVE sub-agent capture: each sub-agent writes its own transcript, so tail THAT
+      // file (derived from the main path + agent_id) for its latest narration. Per-agent
+      // file = correct attribution even across a parallel swarm. (SubagentStop already
+      // carries last_assistant_message directly, so it's handled bridge-side.)
+      const lm = lastAssistantFromTail(subAgentTranscript(obj.transcript_path, obj.agent_id));
       if (lm) { obj._lastMessage = lm; payload = JSON.stringify(obj); }
     }
   } catch (_) {}

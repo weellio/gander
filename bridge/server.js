@@ -1101,7 +1101,8 @@ function mapHookToEvents(p) {
     case 'PostToolUse': {
       const id = sub ? subId : rootId;
       const out = [];
-      if (sub) out.push({ ...base, agentId: id, parentId: rootId, name: p.agent_type || ('sub-' + String(p.agent_id).slice(0, 6)), ...projects.agentMeta(p.cwd, p.agent_type) });
+      // sub-agents carry their latest narration live (emit.js tails the sub-agent transcript)
+      if (sub) out.push({ ...base, agentId: id, parentId: rootId, name: p.agent_type || ('sub-' + String(p.agent_id).slice(0, 6)), lastMessage: p._lastMessage, ...projects.agentMeta(p.cwd, p.agent_type) });
       else out.push({ ...base, agentId: id, root: true, name: project });
       out.push({ ...base, agentId: id, state: toolState(p.tool_name, p.tool_input), log: (p.tool_name || 'tool') + toolDetail(p) });
       return out;
