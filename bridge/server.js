@@ -1035,11 +1035,49 @@ async function gitAction(cwd, action, message, arg) {
   return { error: 'unknown action' };
 }
 
+// ── Ambient alerts ───────────────────────────────────────────────────────────
+// Fire a webhook (POST JSON) and/or a shell command on key state changes, so a smart
+// light / script can signal "needs you", "error", etc. from across the room. Per-event,
+// operator-configured in Settings; best-effort and non-blocking (never affects hooks).
+const AMBIENT_EVENTS = ['awaiting', 'error', 'runaway', 'done', 'clear'];
+const AMBIENT_COLORS = { awaiting: 'amber', error: 'red', runaway: 'red', done: 'green', clear: 'off' };
+const AMBIENT_EFFECTS = { awaiting: 'pulse', error: 'blink', runaway: 'strobe', done: 'pulse', clear: 'solid' };
+function pickAmbient(a) { const o = {}; for (const k of AMBIENT_EVENTS) { const r = a[k] || {}; o[k] = { webhook: r.webhook || '', command: r.command || '', color: r.color || '', effect: r.effect || '' }; } return o; }
+function fireAmbient(event, ctx) {
+  try {
+    const a = cfg.ambient;
+    if (!a || a.enabled === false) return;
+    const rule = a[event];
+    if (!rule || (!rule.webhook && !rule.command)) return;
+    const payload = {
+      event, color: rule.color || AMBIENT_COLORS[event] || 'white', effect: rule.effect || AMBIENT_EFFECTS[event] || 'solid',
+      project: (ctx && ctx.project) || '', agent: (ctx && ctx.name) || '',
+      reason: (ctx && (ctx.awaitMsg || ctx.reason)) || '', state: (ctx && ctx.state) || '', at: Date.now(),
+    };
+    if (rule.webhook) {
+      try {
+        const data = JSON.stringify(payload);
+        const lib = String(rule.webhook).startsWith('https:') ? require('https') : require('http');
+        const rq = lib.request(rule.webhook, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }, timeout: 5000 }, (r) => r.resume());
+        rq.on('error', () => {}); rq.on('timeout', () => rq.destroy());
+        rq.end(data);
+      } catch (_) {}
+    }
+    if (rule.command) {
+      // operator-set command (set only via the dashboard, behind the Origin guard) — run as-is.
+      spawnSafe(String(rule.command), [], { shell: true, windowsHide: true, env: { ...process.env, AOC_EVENT: payload.event, AOC_COLOR: payload.color, AOC_EFFECT: payload.effect, AOC_PROJECT: payload.project, AOC_AGENT: payload.agent, AOC_REASON: payload.reason } });
+    }
+    console.log(`[ambient] ${event} (${payload.color})${payload.project ? ' · ' + payload.project : ''}`);
+  } catch (_) {}
+}
+
 function snapshot() {
   const list = Array.from(agents.values());
   for (const a of list) {
     const active = a.state !== 'idle' && a.state !== 'done';
     a.runaway = active && (a.runawayManual || ((Number(a.burnRate) || 0) >= BURN_ALERT && (a.burnStreak || 0) >= 2));
+    if (a.runaway && !a._wasRunaway) fireAmbient('runaway', a);     // burn-rate flipped to runaway
+    a._wasRunaway = a.runaway;
     if (a.root && a.cwd) { const w = sessionWindows.get(projKeyOf(a.cwd)); a.winPid = w ? w.pid : undefined; }
   }
   const byProject = {};
@@ -1299,10 +1337,13 @@ const server = http.createServer(async (req, res) => {
     const rootKey = 'sess:' + (body.session_id || 'unknown');
     const prevState = agents.get(rootKey) && agents.get(rootKey).state;
     const evs = mapHookToEvents(body);
+    const prevById = new Map();   // capture state BEFORE upsert, for transition detection (ambient)
+    for (const ev of evs) if (ev && ev.agentId && !prevById.has(ev.agentId)) prevById.set(ev.agentId, agents.get(ev.agentId)?.state);
     for (const ev of evs) upsert(ev);
     const rootNow = agents.get(rootKey);
     if (rootNow) {
       if (rootNow.state === 'awaiting' && prevState !== 'awaiting') {
+        fireAmbient('awaiting', rootNow);   // signal the light immediately
         // entered "awaiting": nudge Telegram only if still unanswered after 30s
         clearTimeout(awaitTimers.get(rootKey));
         awaitTimers.set(rootKey, setTimeout(() => {
@@ -1312,8 +1353,17 @@ const server = http.createServer(async (req, res) => {
         }, 30000));
       } else if (rootNow.state !== 'awaiting' && awaitTimers.has(rootKey)) {
         clearTimeout(awaitTimers.get(rootKey)); awaitTimers.delete(rootKey);
+        fireAmbient('clear', rootNow);      // handled → light off / all-clear
       }
     }
+    // ambient: any agent newly in error (once per agent); a root turn finishing
+    const erroredNow = new Set();
+    for (const ev of evs) {
+      const now = agents.get(ev.agentId);
+      if (now && now.state === 'error' && prevById.get(ev.agentId) !== 'error') erroredNow.add(ev.agentId);
+    }
+    for (const id of erroredNow) fireAmbient('error', agents.get(id));
+    if (body.hook_event_name === 'Stop') fireAmbient('done', rootNow || { project });
     if (evs.length) console.log(`[hook] ${body.hook_event_name} (${project}) -> ${evs.map(e => e.agentId + ':' + (e.state || '')).join(', ')}`);
 
     // Deliver any queued operator command through the hook return channel.
@@ -1515,6 +1565,33 @@ const server = http.createServer(async (req, res) => {
       saveConfig();
     }
     return sendJson(res, 200, { ok: true, onSend: !!cfg.nudgeOnSend, interval: Number(cfg.nudgeInterval) || 0 });
+  }
+
+  if (url === '/api/ambient-config' && req.method === 'GET') {
+    const a = cfg.ambient || {};
+    return sendJson(res, 200, { enabled: !!a.enabled, events: AMBIENT_EVENTS, colors: AMBIENT_COLORS, ...pickAmbient(a) });
+  }
+  if (url === '/api/ambient-config' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    if (body.test) {
+      const ctx = { project: 'Test', name: 'ambient test', reason: 'manual test', state: body.test };
+      if (body.rule && (body.rule.webhook || body.rule.command)) {   // fire the (possibly-unsaved) form rule
+        const saved = cfg.ambient; cfg.ambient = { enabled: true, [body.test]: body.rule };
+        fireAmbient(body.test, ctx); cfg.ambient = saved;
+      } else fireAmbient(body.test, ctx);
+      return sendJson(res, 200, { ok: true, tested: body.test });
+    }
+    cfg.ambient = cfg.ambient || {};
+    if (body.enabled !== undefined) cfg.ambient.enabled = !!body.enabled;
+    for (const k of AMBIENT_EVENTS) {
+      if (body[k] !== undefined) {
+        const r = body[k] || {};
+        cfg.ambient[k] = { webhook: String(r.webhook || '').trim(), command: String(r.command || '').trim(), color: String(r.color || '').trim(), effect: String(r.effect || '').trim() };
+      }
+    }
+    saveConfig();
+    return sendJson(res, 200, { ok: true, enabled: !!cfg.ambient.enabled, ...pickAmbient(cfg.ambient) });
   }
 
   if (url === '/api/telegram-config' && req.method === 'GET') {

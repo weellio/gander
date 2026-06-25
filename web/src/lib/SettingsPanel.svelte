@@ -27,7 +27,7 @@
     loading = false;
   }
 
-  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); if (cwd) loadConfig(); }
+  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); if (cwd) loadConfig(); }
 
   // ── cost budget (global) ──
   let bud = $state(null); let budDaily = $state(''); let budSession = $state(''); let budStatus = $state(''); let budOpen = $state(false); let budEnforce = $state(false);
@@ -48,6 +48,37 @@
   let nzOpen = $state(false); let nzOn = $state(false); let nzInterval = $state(0); let nzStatus = $state('');
   async function loadNudge() { try { const r = await fetch('/api/nudge-config'); const j = await r.json(); nzOn = !!j.onSend; nzInterval = Number(j.interval) || 0; } catch (_) {} }
   async function saveNudge() { nzStatus = 'Saving…'; const r = await post('/api/nudge-config', { onSend: nzOn, interval: Number(nzInterval) || 0 }); nzStatus = r && r.ok ? '✓ Saved' : 'Error'; }
+
+  // ── Ambient alerts (webhook / command on state changes — drive a smart light, etc.) ──
+  let ambOpen = $state(false); let ambStatus = $state('');
+  // [event, label, default colour, default effect, what it means]
+  const AMB_EVENTS = [
+    ['awaiting', 'Needs your input', 'amber', 'pulse', 'a session is waiting on you (plan/permission/question)'],
+    ['error', 'Errored', 'red', 'blink', 'a tool failed / a session hit an error'],
+    ['runaway', 'Runaway cost', 'red', 'strobe', 'a session is burning money fast (stuck/looping)'],
+    ['done', 'Task done', 'limegreen', 'pulse', 'a session finished a turn'],
+    ['clear', 'All clear', 'off', 'solid', 'you handled the thing — back to calm / light off'],
+  ];
+  const AMB_EFFECTS = ['solid', 'blink', 'pulse', 'breathe', 'strobe', 'rainbow'];
+  function cssColor(c) {
+    const m = { amber: '#F59E0B', off: '#2a2a2a', red: '#EF4444', green: '#10B981', limegreen: '#10B981', blue: '#3B82F6', purple: '#8B5CF6', cyan: '#06B6D4', pink: '#EC4899', white: '#ffffff', orange: '#F97316', yellow: '#EAB308' };
+    c = String(c || '').toLowerCase().trim();
+    return m[c] || c || '#888';
+  }
+  let amb = $state({ enabled: false, awaiting: {}, error: {}, runaway: {}, done: {}, clear: {} });
+  async function loadAmbient() {
+    try { const j = await (await fetch('/api/ambient-config')).json();
+      amb = { enabled: !!j.enabled, awaiting: j.awaiting || {}, error: j.error || {}, runaway: j.runaway || {}, done: j.done || {}, clear: j.clear || {} };
+    } catch (_) {}
+  }
+  async function saveAmbient() {
+    ambStatus = 'Saving…';
+    const body = { enabled: amb.enabled };
+    for (const [k] of AMB_EVENTS) body[k] = amb[k];
+    const r = await post('/api/ambient-config', body);
+    ambStatus = r && r.ok ? '✓ Saved' : 'Error'; setTimeout(() => (ambStatus = ''), 1800);
+  }
+  async function testAmbient(ev) { await post('/api/ambient-config', { test: ev, rule: amb[ev] }); ambStatus = '⚡ fired ' + ev; setTimeout(() => (ambStatus = ''), 1500); }
 
   function closePanel() { open = false; }
 
@@ -219,6 +250,42 @@
         </div>
       {/if}
     </div>
+
+    <div class="tg">
+      <button class="collapser" onclick={() => (ambOpen = !ambOpen)}>
+        <span class="caret">{ambOpen ? '▾' : '▸'}</span> Ambient alerts — smart light / webhook
+        {#if amb.enabled}<span class="tg-state">· on</span>{/if}
+      </button>
+      {#if ambOpen}
+        <div class="tg-form">
+          <label class="cbrow"><input type="checkbox" bind:checked={amb.enabled} /> Enabled</label>
+          <div class="tg-hint">On each scenario Gander POSTs JSON <code>&#123;event, color, effect, project, reason&#125;</code> to your <b>webhook</b> and/or runs your <b>command</b> (same values as <code>$AOC_EVENT</code> / <code>$AOC_COLOR</code> / <code>$AOC_EFFECT</code> / …). Point it at Home Assistant, IFTTT, a LIFX/Govee call, or a script to flash a light across the room. Pick <b>any colour</b> (name or <code>#hex</code>) and a <b>pattern</b> — the swatch previews exactly what each scenario will look like. Leave a row's webhook + command blank to ignore that scenario.</div>
+          <div class="amb-list">
+            {#each AMB_EVENTS as [key, label, dcolor, deffect, meaning] (key)}
+              <div class="amb-row">
+                <div class="amb-top">
+                  <span class="swatch eff-{amb[key].effect || deffect}" style="--c:{cssColor(amb[key].color || dcolor)}"></span>
+                  <span class="amb-label">{label} <span class="amb-mean">— {meaning}</span></span>
+                  <button class="mini" onclick={() => testAmbient(key)}>⚡ Test</button>
+                </div>
+                <div class="amb-fields">
+                  <input class="in clr" placeholder="{dcolor}" bind:value={amb[key].color} title="colour name or #hex (or 'rainbow' effect for disco)" />
+                  <select class="in eff" bind:value={amb[key].effect}>
+                    <option value="">{deffect} ·default</option>
+                    {#each AMB_EFFECTS as e (e)}<option value={e}>{e}</option>{/each}
+                  </select>
+                  <input class="in grow" placeholder="webhook URL (POST)" bind:value={amb[key].webhook} />
+                </div>
+                <input class="in wide" placeholder="…or a shell command (e.g. curl -s -X PUT …)" bind:value={amb[key].command} />
+              </div>
+            {/each}
+          </div>
+          <div class="tg-btns"><button class="select" onclick={saveAmbient}>Save</button></div>
+          {#if ambStatus}<div class="tg-status">{ambStatus}</div>{/if}
+          <div class="tg-hint">No light yet? The webhook fires regardless, so you can wire any of these now and add the bulb later. A built-in <b>LIFX</b> option (one bulb, no glue) is on the roadmap.</div>
+        </div>
+      {/if}
+    </div>
     {/if}
 
     {#if scope === 'project'}
@@ -364,4 +431,27 @@
   .tg-hint { font-size: 10px; color: var(--color-text-tertiary); line-height: 1.4; }
   .cbrow { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--color-text-secondary); cursor: pointer; }
   .in.num { width: 56px; flex: 0 0 auto; text-align: center; }
+
+  /* Ambient alerts — per-scenario rows + live preview swatches (the visual legend) */
+  .amb-list { display: flex; flex-direction: column; gap: 9px; margin: 8px 0 4px; }
+  .amb-row { display: flex; flex-direction: column; gap: 5px; padding: 8px 9px; border: 0.5px solid var(--color-border-tertiary); border-radius: 8px; background: var(--color-background-secondary); }
+  .amb-top { display: flex; align-items: center; gap: 9px; }
+  .amb-label { font-size: 12px; font-weight: 600; flex: 1 1 auto; min-width: 0; }
+  .amb-mean { font-size: 10px; font-weight: 400; color: var(--color-text-tertiary); }
+  .amb-fields { display: flex; gap: 6px; }
+  .in.clr { width: 84px; flex: 0 0 auto; }
+  .in.eff { width: 104px; flex: 0 0 auto; }
+  .in.grow { flex: 1 1 auto; min-width: 0; }
+  .mini { font-size: 10px; padding: 2px 8px; border-radius: 5px; cursor: pointer; flex: 0 0 auto;
+    border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-secondary); }
+  .mini:hover { border-color: var(--accent, #6366F1); color: var(--color-text-primary); }
+  .swatch { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto; background: var(--c, #888); box-shadow: 0 0 7px var(--c, #888); }
+  .eff-blink { animation: amb-blink 1s steps(1, end) infinite; }
+  .eff-strobe { animation: amb-blink 0.24s steps(1, end) infinite; }
+  .eff-pulse { animation: amb-pulse 1.7s ease-in-out infinite; }
+  .eff-breathe { animation: amb-pulse 3.2s ease-in-out infinite; }
+  .eff-rainbow { animation: amb-rainbow 2.2s linear infinite; background: #ff0040; box-shadow: 0 0 7px #ff0040; }
+  @keyframes amb-blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.1; } }
+  @keyframes amb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.22; } }
+  @keyframes amb-rainbow { to { filter: hue-rotate(360deg); } }
 </style>
