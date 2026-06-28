@@ -1043,8 +1043,29 @@ const AMBIENT_EVENTS = ['awaiting', 'error', 'runaway', 'done', 'clear'];
 const AMBIENT_COLORS = { awaiting: 'amber', error: 'red', runaway: 'red', done: 'green', clear: 'off' };
 const AMBIENT_EFFECTS = { awaiting: 'pulse', error: 'blink', runaway: 'strobe', done: 'pulse', clear: 'solid' };
 function pickAmbient(a) { const o = {}; for (const k of AMBIENT_EVENTS) { const r = a[k] || {}; o[k] = { webhook: r.webhook || '', command: r.command || '', color: r.color || '', effect: r.effect || '' }; } return o; }
+// Bridge-native OS toast — zero-dep, cross-platform. Fires even with no browser open,
+// so a terminal user (e.g. living in `claude agents`) still gets pinged when they walk
+// away. Strings are sanitised before they reach the shell.
+function osNotify(title, message) {
+  try {
+    const clean = (s, n) => String(s == null ? '' : s).replace(/["'`$%\r\n]/g, ' ').slice(0, n);
+    const t = clean(title, 70) || 'Gander', m = clean(message, 180);
+    if (process.platform === 'darwin') spawnSafe('osascript', ['-e', `display notification "${m}" with title "${t}"`], { windowsHide: true });
+    else if (process.platform === 'win32') spawnSafe('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command',
+      `Add-Type -AssemblyName System.Windows.Forms;$n=New-Object System.Windows.Forms.NotifyIcon;$n.Icon=[System.Drawing.SystemIcons]::Information;$n.Visible=$true;$n.ShowBalloonTip(6000,'${t}','${m}',[System.Windows.Forms.ToolTipIcon]::Info);Start-Sleep -Seconds 6;$n.Dispose()`], { windowsHide: true });
+    else spawnSafe('notify-send', [t, m], { windowsHide: true });
+  } catch (_) {}
+}
+
 function fireAmbient(event, ctx) {
   try {
+    // OS toast first — independent of the light/webhook config, only the "needs attention" events.
+    if (cfg.osNotify && (event === 'awaiting' || event === 'error' || event === 'runaway')) {
+      const p = (ctx && ctx.project) ? ctx.project + ': ' : '';
+      if (event === 'awaiting') osNotify('Gander — needs you', p + ((ctx && (ctx.awaitMsg || ctx.reason)) || 'a session is waiting for your input'));
+      else if (event === 'error') osNotify('Gander — error', p + ((ctx && ctx.name) || 'an agent') + ' hit an error');
+      else osNotify('Gander — runaway cost', p + ((ctx && ctx.name) || 'a session') + ' is burning money fast');
+    }
     const a = cfg.ambient;
     if (!a || a.enabled === false) return;
     const rule = a[event] || {};
@@ -1587,6 +1608,16 @@ const server = http.createServer(async (req, res) => {
     }
     saveConfig();
     return sendJson(res, 200, { ok: true, cmd: cfg.claudeCmd || '', permMode: cfg.launchPermMode || '', flags: cfg.launchFlags || '' });
+  }
+
+  if (url === '/api/os-notify-config' && req.method === 'GET') {
+    return sendJson(res, 200, { enabled: !!cfg.osNotify });
+  }
+  if (url === '/api/os-notify-config' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (body && body.test) { osNotify('Gander — test', 'Desktop alerts are working. You\'ll get one when an agent needs you.'); return sendJson(res, 200, { ok: true, tested: true }); }
+    if (body && body.enabled !== undefined) { cfg.osNotify = !!body.enabled; saveConfig(); }
+    return sendJson(res, 200, { ok: true, enabled: !!cfg.osNotify });
   }
 
   if (url === '/api/nudge-config' && req.method === 'GET') {

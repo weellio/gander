@@ -27,7 +27,7 @@
     loading = false;
   }
 
-  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); if (cwd) loadConfig(); }
+  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); if (cwd) loadConfig(); }
 
   // ── cost budget (global) ──
   let bud = $state(null); let budDaily = $state(''); let budSession = $state(''); let budStatus = $state(''); let budOpen = $state(false); let budEnforce = $state(false);
@@ -48,6 +48,12 @@
   let nzOpen = $state(false); let nzOn = $state(false); let nzInterval = $state(0); let nzStatus = $state('');
   async function loadNudge() { try { const r = await fetch('/api/nudge-config'); const j = await r.json(); nzOn = !!j.onSend; nzInterval = Number(j.interval) || 0; } catch (_) {} }
   async function saveNudge() { nzStatus = 'Saving…'; const r = await post('/api/nudge-config', { onSend: nzOn, interval: Number(nzInterval) || 0 }); nzStatus = r && r.ok ? '✓ Saved' : 'Error'; }
+
+  // ── Desktop alerts (bridge-native OS toast — no browser needed) ──
+  let osNotify = $state(false); let osStatus = $state('');
+  async function loadOsNotify() { try { osNotify = !!(await (await fetch('/api/os-notify-config')).json()).enabled; } catch (_) {} }
+  async function saveOsNotify() { osStatus = 'Saving…'; const r = await post('/api/os-notify-config', { enabled: osNotify }); osStatus = r && r.ok ? '✓ saved' : 'error'; setTimeout(() => (osStatus = ''), 1500); }
+  async function testOsNotify() { osStatus = 'sending…'; await post('/api/os-notify-config', { test: true }); osStatus = '⚡ sent — check your tray'; setTimeout(() => (osStatus = ''), 2800); }
 
   // ── Ambient alerts (webhook / command on state changes — drive a smart light, etc.) ──
   let ambOpen = $state(false); let ambStatus = $state('');
@@ -258,6 +264,12 @@
           <div class="tg-hint">The bridge runs the nudge itself — <b>no Windows scheduled task or cron needed</b>. It finds each idle session's window (VS Code or terminal) by PID and types a wake so queued replies deliver. Keep the Claude terminal focused in each window. If you set up the old "Gander Nudge" task, you can delete it now.</div>
         </div>
       {/if}
+    </div>
+
+    <div class="tg">
+      <label class="cbrow"><input type="checkbox" bind:checked={osNotify} onchange={saveOsNotify} /> <b>Desktop alerts</b> — toast when an agent needs you <span class="dim">(no browser tab needed)</span></label>
+      <div class="amb-fields"><button class="mini" onclick={testOsNotify}>Test toast</button>{#if osStatus}<span class="tg-status">{osStatus}</span>{/if}</div>
+      <div class="tg-hint">The bridge pops a native OS notification on needs-you / error / runaway, even with the dashboard closed — handy if you live in the terminal (e.g. <code>claude agents</code>). Works alongside the light/Telegram alerts below.</div>
     </div>
 
     <div class="tg">
