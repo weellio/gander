@@ -90,6 +90,16 @@
     result = j && j.ok ? `Started${task ? ' with a task' : ''} in ${p.name}` : 'Could not launch';
     busy = ''; startPrompt = { ...startPrompt, [p.path]: '' };
   }
+  async function sendToOpen(p) {
+    const task = (startPrompt[p.path] || '').trim();
+    if (!task) { result = 'Type a task first, then ↪ Send to the open window.'; return; }
+    busy = p.path + ':send';
+    const j = await post('/api/send-to-window', { cwd: p.path, text: task });
+    if (j && j.ok && j.found) { result = `Sent to the open ${p.name} window`; startPrompt = { ...startPrompt, [p.path]: '' }; }
+    else if (j && j.busy) result = j.error || `${p.name} is busy — reply to its tile instead`;
+    else result = `No single open window found for ${p.name} — use ▶ Start instead.`;
+    busy = '';
+  }
   async function openIn(p, target) { await post('/api/open', { cwd: p.path, target }); }
   async function gitDo(p, action) {
     busy = p.path + ':' + action;
@@ -272,6 +282,7 @@
               <div class="acts">
                 <button class="select" onclick={() => launch(p)} disabled={!!busy} title="Open a new terminal running Claude Code here (with the task if given)">▶ Start</button>
                 <input class="cm" placeholder="task (optional)…" bind:value={startPrompt[p.path]} onkeydown={(e) => e.key === 'Enter' && launch(p)} />
+                <button class="select" onclick={() => sendToOpen(p)} disabled={!!busy} title="Type the task into an ALREADY-OPEN window for this project (instead of starting a new session). Only fires if exactly one window matches.">↪ Send to open</button>
                 <button class="select" onclick={() => openIn(p, 'folder')} title="Open folder">📂</button>
                 <button class="select" onclick={() => openIn(p, 'editor')} title="Open in VS Code">Code</button>
                 <button class="select" onclick={() => onMemory && onMemory(p.path)} title="This project's CLAUDE.md + memory facts">📝 Memory</button>

@@ -1555,6 +1555,32 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, r.error ? 400 : 200, r);
   }
 
+  // Type a task into an ALREADY-OPEN window for this project instead of starting a new
+  // session. Reuses the hardened nudge targeting (-Match): types only into the uniquely
+  // matched window, never a guessed/foreground one.
+  if (url === '/api/send-to-window' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.cwd || !body.text) return sendJson(res, 400, { error: 'cwd and text required' });
+    if (!assertCwd(res, body.cwd)) return;
+    if (process.platform !== 'win32') return sendJson(res, 200, { ok: false, found: false, error: 'send-to-window is Windows-only for now' });
+    // Don't type into a session that's actively WORKING (it would interrupt mid-turn).
+    // idle / done / awaiting / clocked-out (not tracked) are fine — that's the use case.
+    const WORKING = new Set(['thinking', 'coding', 'running', 'reading', 'testing', 'spawning', 'searching']);
+    for (const a of agents.values()) {
+      if (a && a.root && !a.closed && a.cwd && projKeyOf(a.cwd) === projKeyOf(body.cwd) && WORKING.has(a.state)) {
+        return sendJson(res, 200, { ok: true, found: false, busy: true, error: 'a session for this project is busy right now — reply to its tile instead, or wait until it goes idle' });
+      }
+    }
+    const project = projectFromCwd(body.cwd);
+    const text = String(body.text).replace(/["`\r\n]/g, ' ').slice(0, 1500);   // arg-safe; SendKeys metachars escaped in the script
+    const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(SCRIPTS_DIR, 'nudge-idle.ps1'), '-Match', project, '-Text', text];
+    execFile('powershell', args, { timeout: 12000, windowsHide: true }, (err, stdout) => {
+      const found = /delivering to/i.test(String(stdout || ''));
+      sendJson(res, 200, { ok: true, found, project });
+    });
+    return;
+  }
+
   if (url === '/api/usage' && req.method === 'GET') {
     return sendJson(res, 200, await usage.summaryAsync());
   }
