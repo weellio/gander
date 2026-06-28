@@ -2,13 +2,15 @@
 
 # Gander
 
-> *Take a gander at your agents.* A NOC for everything your Claude Code agents are doing.
+> *Take a gander at your agents.* The ambient control room for Claude Code — see every agent, get pinged anywhere the moment one needs you, and keep your whole setup lean.
 
 <p align="center"><img src="web/public/logo.png" width="600" alt="The Gander NOC — a goose manager overseeing a floor of AI agents" /></p>
 
 A live, animated dashboard of your **Claude Code agents and sub-agents** — a Hollywood-Squares / Zoom-style grid where each agent is a pixel-art avatar that physically acts out what it's doing: thinking, reading, coding, spawning sub-agents, running tests, erroring, idling. Parent and child agents are linked with curved connectors carrying **animated packets that flow downward** to show information moving through the hierarchy.
 
 It attaches to any project automatically via Claude Code **hooks** — no manual wiring once installed.
+
+> **Claude Code now ships a built-in agent list (`claude agents`).** Gander is the layer around it. It **reaches you when you've stepped away** — a desktop toast, your phone, even a smart light across the room — so you never have to sit and watch. And it's a **control center for your whole Claude Code setup**, not just what's running this minute: trim dead weight (and pasted secrets) from your CLAUDE.md, catch a session burning money, kill a stuck dev server, manage every project's skills / MCP / hooks, all from one screen or your phone.
 
 <p align="center"><img src="docs/demo.webp" alt="Gander in action" width="820" /></p>
 <p align="center"><em>idle · thinking · coding · spawning · reading · testing · error · done — every agent, live.</em></p>
