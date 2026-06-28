@@ -87,8 +87,11 @@ public class HmWin {
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   public static uint ForegroundPid() { IntPtr h = GetForegroundWindow(); uint pid; GetWindowThreadProcessId(h, out pid); return pid; }
+  // Returns a pid ONLY when exactly one process has a visible window whose title contains
+  // the needle. Multiple matches (e.g. several VS Code windows) -> 0, so we never guess
+  // and type into the wrong window. Same process with several matching windows is fine.
   public static uint FindPid(string needle) {
-    uint found = 0;
+    var pids = new HashSet<uint>();
     EnumWindows((h, p) => {
       if (!IsWindowVisible(h)) return true;
       int len = GetWindowTextLength(h);
@@ -96,38 +99,58 @@ public class HmWin {
       var sb = new StringBuilder(len + 1);
       GetWindowText(h, sb, sb.Capacity);
       if (sb.ToString().IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0) {
-        uint pid; GetWindowThreadProcessId(h, out pid); found = pid; return false;
+        uint pid; GetWindowThreadProcessId(h, out pid); pids.Add(pid);
       }
       return true;
     }, IntPtr.Zero);
-    return found;
+    if (pids.Count != 1) return 0;
+    var e = pids.GetEnumerator(); e.MoveNext(); return e.Current;
   }
 }
 "@
 } catch {}
+
+# SendKeys treats + ^ % ~ ( ) { } [ ] specially; escape them so a real reply types verbatim.
+function EscapeKeys([string]$s) {
+  if (-not $s) { return '' }
+  $s = $s -replace "[\r\n]+", ' '                 # collapse to one line so a single ENTER submits it
+  $out = New-Object System.Text.StringBuilder
+  foreach ($ch in $s.ToCharArray()) {
+    if ('+^%~(){}[]'.IndexOf($ch) -ge 0) { [void]$out.Append('{').Append($ch).Append('}') }
+    else { [void]$out.Append($ch) }
+  }
+  $out.ToString()
+}
 
 $wsh = New-Object -ComObject WScript.Shell
 
 foreach ($a in $targets) {
   $title = $a.project
   # prefer the PID captured at launch (survives Claude renaming the terminal title);
-  # fall back to matching the window by project name (works for VS Code).
+  # else match the window by project name, but ONLY when exactly one window matches.
   $procId = 0
   if ($a.winPid) { $procId = [int]$a.winPid }
   if ((-not $procId) -and $title) { $procId = [HmWin]::FindPid($title) }
   if (-not $procId) {
-    Write-Host "  [nudge] no window for '$title' (no captured pid, and title not found)"
+    Write-Host "  [nudge] no unique window for '$title' - skipping (it'll deliver on the session's next turn, never the wrong window)"
     continue
   }
   if ($procId -eq [HmWin]::ForegroundPid()) {
     Write-Host "  [nudge] skipping '$title' - it's your active (foreground) window"
     continue
   }
-  Write-Host "[nudge] '$Text' -> window containing '$title' (pid $procId, session $($a.sessionId))"
-  if ($DryRun) { continue }
+  if ($DryRun) { Write-Host "[nudge dry] would target pid $procId for '$title' (session $($a.sessionId))"; continue }
+  # Activate the exact window FIRST; only then pull the queued reply, so we never dequeue a
+  # message we can't actually deliver.
   if ($wsh.AppActivate([int]$procId)) {
+    $payload = $Text
+    if ($OnlyPending -and $a.sessionId -and $a.sessionId -ne '(match)') {
+      try { $payload = (Invoke-RestMethod -Uri "http://localhost:$Port/api/wake-deliver" -Method Post -Body (@{ sessionId = $a.sessionId } | ConvertTo-Json) -ContentType 'application/json' -TimeoutSec 5).text } catch { $payload = '' }
+      if (-not $payload) { Write-Host "  [nudge] no queued message for $($a.sessionId) - skipping"; continue }
+    }
+    Write-Host "[nudge] delivering to '$title' (pid $procId, session $($a.sessionId))"
     Start-Sleep -Milliseconds 350
-    $wsh.SendKeys($Text)
+    $wsh.SendKeys((EscapeKeys $payload))
     Start-Sleep -Milliseconds 120
     $wsh.SendKeys('{ENTER}')
     Start-Sleep -Milliseconds 200

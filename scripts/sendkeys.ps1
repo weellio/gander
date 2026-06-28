@@ -20,6 +20,7 @@ try {
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
 public class HmKeys {
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr p);
   public delegate bool EnumWindowsProc(IntPtr h, IntPtr p);
@@ -27,8 +28,10 @@ public class HmKeys {
   [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr h);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  // Match a window by title, but return a pid ONLY when exactly one process matches, so
+  // several VS Code windows never cause a keystroke to land in the wrong one.
   public static uint FindPid(string needle) {
-    uint found = 0;
+    var pids = new HashSet<uint>();
     EnumWindows((h, p) => {
       if (!IsWindowVisible(h)) return true;
       int len = GetWindowTextLength(h);
@@ -36,11 +39,12 @@ public class HmKeys {
       var sb = new StringBuilder(len + 1);
       GetWindowText(h, sb, sb.Capacity);
       if (sb.ToString().IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0) {
-        uint pid; GetWindowThreadProcessId(h, out pid); found = pid; return false;
+        uint pid; GetWindowThreadProcessId(h, out pid); pids.Add(pid);
       }
       return true;
     }, IntPtr.Zero);
-    return found;
+    if (pids.Count != 1) return 0;
+    var e = pids.GetEnumerator(); e.MoveNext(); return e.Current;
   }
 }
 "@

@@ -1450,6 +1450,15 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true, muted: [...muted] });
   }
 
+  // The nudge calls this once it has CONFIRMED the right window: hand it the real queued
+  // message (and remove it from the queue so the Stop-hook channel won't deliver it twice).
+  if (url === '/api/wake-deliver' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.sessionId) return sendJson(res, 400, { error: 'sessionId required' });
+    const c = takeCommand(body.sessionId, (x) => x.type === 'message');
+    return sendJson(res, 200, { text: c ? c.text : '' });
+  }
+
   if (url === '/api/command' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
