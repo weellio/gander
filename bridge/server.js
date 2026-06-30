@@ -2110,6 +2110,25 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, r.error ? 400 : 200, r);
   }
 
+  if (url === '/api/skills' && req.method === 'GET') {
+    return sendJson(res, 200, projects.skillsIndex());
+  }
+
+  // Move a component (copy to target, then remove the original). Used for "→ Global".
+  if (url === '/api/component-move' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.name) return sendJson(res, 400, { error: 'name required' });
+    if (!assertCwd(res, body.fromCwd)) return;
+    if (!assertCwd(res, body.toCwd)) return;
+    const type = body.type || 'skill';
+    const cp = projects.copyComponent(type, body.name, body.fromCwd, body.toCwd, body.overwrite === true);
+    if (cp.error) return sendJson(res, 400, cp);
+    if (cp.exists) return sendJson(res, 200, cp);   // target exists -> needs overwrite confirm; don't remove the source yet
+    const rm = projects.removeComponent(type, body.name, body.fromCwd);
+    console.log(`[move] ${type} ${body.name}: ${body.fromCwd} -> ${body.toCwd}${rm.error ? ' (copied, remove failed: ' + rm.error + ')' : ''}`);
+    return sendJson(res, 200, { ok: true, moved: !rm.error, removed: rm, note: rm.error ? 'copied to target, but could not remove the original: ' + rm.error : undefined });
+  }
+
   if (url === '/api/open' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });

@@ -52,6 +52,7 @@
         ['Activity feed', 'A live chronological ticker of agent events, with an errors-only filter to spotlight failures.'],
         ['Memory', 'View & edit what Claude remembers — the CLAUDE.md it loads every session (global or per project) and the .claude/memory/*.md fact store (read, edit, delete each). Per-project from a project’s 📝 Memory button too.'],
         ['Processes (stuck open?)', 'Long-running / port-holding processes your sessions spawned (dev servers, node, python…). Spot one left running and Kill it (force-kills the tree). Each agent’s modal also lists what that session left open. Windows-only for now.'],
+        ['🧩 Skills (all projects)', 'One table of every skill across your projects + global ~/.claude, each with its one-line summary (read from its SKILL.md). Copy a skill to another project, or move a broadly-useful one → Global so it applies everywhere — and spot redundant per-project copies of a skill that\'s already global. Filter box up top.'],
         ['💡 Tune (suggestions)', 'Mines your recent session transcripts for repeated work and suggests config that removes it — a PostToolUse hook for a command you keep running after edits (with a copy-paste JSON snippet), or a /command / routine for a prompt you keep typing. Deterministic counts; nothing is auto-written.'],
         ['Health / status', 'Confirm Gander is wired up: bridge uptime/events, hook-install checklist, node/platform.'],
       ],

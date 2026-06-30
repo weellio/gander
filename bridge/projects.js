@@ -336,4 +336,55 @@ function agentMeta(cwd, name) {
   return meta;
 }
 
-module.exports = { getConfig, addRoot, removeRoot, noteKnown, discover, project, copyComponent, keyOf, diffComponent, readComponent, writeComponent, newComponent, validateFrontMatter, agentMeta };
+// Pull the `description:` out of a SKILL.md / agent / command front matter as a one-line
+// summary. Handles a plain (possibly quoted) value and a YAML folded/literal block.
+function frontmatterDescription(content) {
+  const m = /^---\s*\r?\n([\s\S]*?)\r?\n---/.exec(String(content || ''));
+  if (!m) return '';
+  const body = m[1];
+  const dm = /^description:[ \t]*(.*)$/im.exec(body);
+  if (!dm) return '';
+  let d = dm[1].trim().replace(/^["']|["']$/g, '');
+  if (d === '' || d === '>' || d === '>-' || d === '|' || d === '|-') {       // folded/literal block
+    const rest = body.slice(dm.index + dm[0].length).split(/\r?\n/).slice(1);
+    const got = [];
+    for (const ln of rest) { if (/^\S/.test(ln)) break; if (ln.trim()) got.push(ln.trim()); }
+    d = got.join(' ');
+  }
+  return d.replace(/\s+/g, ' ').trim();
+}
+
+// Every skill across every discovered project, with its one-line summary — for the Skills page.
+function skillsIndex() {
+  const projs = discover();
+  const skills = [];
+  for (const p of projs) {
+    const isGlobal = (p.sources || []).includes('global');
+    for (const name of (p.skills || [])) {
+      let summary = '';
+      const r = readComponent('skill', name, p.path);
+      if (r && r.content) summary = frontmatterDescription(r.content);
+      skills.push({ name, project: p.name, projectPath: p.path, global: isGlobal, summary });
+    }
+  }
+  skills.sort((a, b) => (a.global === b.global ? 0 : a.global ? -1 : 1) || a.project.localeCompare(b.project) || a.name.localeCompare(b.name));
+  return { skills, projects: projs.map((p) => ({ name: p.name, path: p.path, global: (p.sources || []).includes('global') })) };
+}
+
+// Delete a component (used by "move"). Path-confined to the project's .claude tree.
+function removeComponent(type, name, dir) {
+  if (!type || !name || /[\\/]/.test(name) || name.includes('..') || ['__proto__', 'prototype', 'constructor'].includes(name)) return { error: 'invalid name' };
+  try {
+    let target, root;
+    if (type === 'skill') { root = path.resolve(path.join(dir, '.claude', 'skills')); target = path.join(root, name); }
+    else if (type === 'agent') { root = path.resolve(path.join(dir, '.claude', 'agents')); target = path.join(root, name + '.md'); }
+    else if (type === 'command') { root = path.resolve(path.join(dir, '.claude', 'commands')); target = path.join(root, name + '.md'); }
+    else return { error: 'unsupported type' };
+    if (!path.resolve(target).startsWith(root + path.sep)) return { error: 'bad path' };
+    if (!fs.existsSync(target)) return { error: 'not found' };
+    fs.rmSync(target, { recursive: true, force: true });
+    return { ok: true };
+  } catch (e) { return { error: e.message }; }
+}
+
+module.exports = { getConfig, addRoot, removeRoot, noteKnown, discover, project, copyComponent, keyOf, diffComponent, readComponent, writeComponent, newComponent, validateFrontMatter, agentMeta, skillsIndex, removeComponent };
