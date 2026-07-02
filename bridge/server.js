@@ -1216,9 +1216,15 @@ function mapHookToEvents(p) {
       // so this is correctly attributed even across a parallel swarm (verified empirically).
       return [{ ...base, agentId: subId, state: 'done', log: 'subagent finished', lastMessage: p.last_assistant_message }];
     case 'Notification': {
-      const kind = String(p.message || p.notification_type || p.type || '').toLowerCase();
-      if (/auth|success|login/.test(kind)) return [];   // not an input request
-      const reason = p.message ? String(p.message) : 'Claude is waiting for your input';
+      // Prefer the structured notification_type (permission_prompt · idle_prompt ·
+      // auth_success · elicitation_dialog/complete) over grepping the message text.
+      const ntype = String(p.notification_type || p.type || '').toLowerCase();
+      const msg = String(p.message || '').trim();
+      if (ntype === 'auth_success' || ntype === 'elicitation_complete' || ntype === 'elicitation_response' || (!ntype && /auth|success|login/.test(msg.toLowerCase()))) return [];   // not an input request
+      const reason = msg || (
+        ntype === 'permission_prompt' ? 'Claude needs your permission to use a tool'
+          : ntype === 'elicitation_dialog' ? 'An MCP tool is asking for input'
+            : 'Claude is waiting for your input');
       return [{ ...base, agentId: rootId, root: true, name: project, state: 'awaiting', log: reason.slice(0, 80), awaitMsg: reason.slice(0, 200) }];
     }
     case 'Stop':
