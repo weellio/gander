@@ -121,7 +121,13 @@ cd web && npm run dev                    # hot-reload dev server
 
 ### Optional: inside VS Code
 
-Prefer everything in one window? A thin **VS Code extension** in [`vscode-extension/`](vscode-extension/) loads the *same* dashboard the bridge serves into a VS Code panel — next to your editor and the integrated terminal. It's a wrapper, not a fork: browser users open `localhost:3131`, VS Code users get the identical dashboard in a tab. Open that folder and press **F5** to try it (no build/install), or `vsce package` it to a `.vsix`. See [vscode-extension/README.md](vscode-extension/README.md).
+Prefer everything in one window? A thin **VS Code extension** in [`vscode-extension/`](vscode-extension/) puts Gander in VS Code like any other extension:
+
+- **Goose icon in the Activity Bar** (the left rail) — click it to dock the live dashboard in the sidebar next to your code, with ↻ reload and ↗ open-as-tab buttons in its title bar.
+- **🚀 Gander** status-bar button / **"Gander: Open Dashboard"** command — the full dashboard as an editor tab (via the built-in Simple Browser), roomier for the Office floor and grid views.
+- If the bridge isn't reachable, it can **autostart** it from the repo (`gander.autostart`).
+
+It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — browser users open `localhost:3131`, VS Code users see the identical app. Install the packaged `.vsix` (Extensions → ⋯ → *Install from VSIX…*), or open the folder and press **F5** to develop. See [vscode-extension/README.md](vscode-extension/README.md).
 
 ### Alternative: as a Claude Code plugin
 
@@ -265,6 +271,7 @@ Gander watches **Claude Code**, not a specific model — so it works unchanged w
 - **A sub-agent shows no cost.** Cost is per **session** (one transcript); a sub-agent's spend rolls up into its parent session, so only the session (root) carries the figure.
 - **Why "$X/min" / why so high?** Spend is **estimated** from token counts at API list prices — on a Max/subscription plan you aren't literally paying that; treat it as a relative "spending fast" signal.
 - **Replies aren't instant.** They're queued and delivered when the session next runs a turn; enable **Settings → App configuration → Wake idle sessions** to nudge a parked session so it picks up your reply right away.
+- **Can I use Gander inside VS Code?** Yes — install the [VS Code extension](vscode-extension/): a **goose icon appears in the Activity Bar** (left rail, like any other extension) and docks the live dashboard in the sidebar; the **🚀 status-bar button** / *"Gander: Open Dashboard"* command open it as a full editor tab instead (roomier for the floor view). Same dashboard, same bridge, nothing forked — and it autostarts the bridge if it isn't running.
 - **My scheduled routine's email/calendar didn't work.** Routines run **headlessly** (`claude -p`), and **interactively-authenticated MCP servers** (e.g. the claude.ai Gmail/Calendar connectors) often **aren't available unattended** — they need an interactive login the headless run can't do. Skills and token-based/local MCP servers work fine. Test a routine with **Run now** first to see what's available before relying on a schedule. Also: routines run with the permission mode you pick (default **skip all prompts**, since nothing's there to answer them) — keep briefing routines **read-only**.
 
 ## Platform support & contributing

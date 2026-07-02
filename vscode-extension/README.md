@@ -29,14 +29,14 @@ No build step, no `npm install` — it's plain JS using the `vscode` API + Node 
 
 ```bash
 npm i -g @vscode/vsce
-cd vscode-extension && vsce package        # produces gander-vscode-0.1.0.vsix
+cd vscode-extension && vsce package        # produces gander-vscode-<version>.vsix
 # then: VS Code → Extensions → ⋯ → Install from VSIX…
 ```
 
 ## Settings
 
 | Setting | Default | What |
-|---|---|---|
+| --- | --- | --- |
 | `gander.url` | `http://localhost:3131` | The running bridge's URL (change only if you set `AOC_PORT`). |
 | `gander.autostart` | `true` | Start the bridge from the repo if it isn't reachable. |
 | `gander.bridgePath` | `""` | Absolute path to the repo's `bridge/launch.js` — only if autostart can't find it (extension installed outside the repo). |

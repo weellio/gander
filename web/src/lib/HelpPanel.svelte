@@ -88,6 +88,7 @@
         ['Why does a session show “$X/min”?', 'Spend is estimated from token counts at API list prices — on a Max/subscription plan you aren’t literally paying that. Treat it as a relative “spending fast” signal.'],
         ['Replies aren’t instant', 'Replies are queued and delivered when the session next runs a turn. Turn on Settings → App configuration → Wake idle sessions to nudge a parked session so it picks up your reply right away.'],
         ['Routine email/calendar didn’t work', 'Routines run headlessly (claude -p). Interactively-authenticated MCP (claude.ai Gmail/Calendar connectors) often isn’t available unattended; skills and token-based MCP are fine. Use Run now to see what’s available, and keep briefing routines read-only.'],
+        ['Gander inside VS Code', 'A thin extension (vscode-extension/ in the repo) adds a goose icon to VS Code’s Activity Bar — click it to dock this dashboard in the sidebar next to your code (↻ reload / ↗ open-as-tab in its title bar), or use the 🚀 status-bar button / “Gander: Open Dashboard” command for a full editor tab. Same dashboard, same bridge — nothing forked; it can even autostart the bridge. Install its .vsix (Extensions → ⋯ → Install from VSIX…) or press F5 in that folder to develop.'],
       ],
     },
   ];
