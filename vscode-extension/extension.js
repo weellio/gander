@@ -75,9 +75,63 @@ async function openPanel(context) {
   }
 }
 
+// Sidebar view (Activity Bar icon) — same thin-wrapper idea as the tab: an iframe to the
+// bridge. localhost is exempt from mixed-content blocking, and asExternalUri gives us a
+// URI that also works in Remote/Codespaces (where it maps the port).
+class GanderViewProvider {
+  constructor(context) { this.context = context; this.view = null; this.gen = 0; }
+  async resolveWebviewView(view) {
+    this.view = view;
+    view.webview.options = { enableScripts: true };
+    view.webview.onDidReceiveMessage((m) => {
+      if (m === 'retry') this.render();
+      else if (m === 'openFull') openPanel(this.context);
+    });
+    view.onDidDispose(() => { if (this.view === view) this.view = null; });
+    await this.render();
+  }
+  async render() {
+    if (!this.view) return;
+    const view = this.view;
+    const gen = ++this.gen; // identical html strings don't reload the webview
+    const url = bridgeUrl();
+    view.webview.html = this.shell(gen, `<p class="msg">Connecting to the Gander bridge…</p>`);
+    const up = await ensureBridge(this.context);
+    if (!this.view || gen !== this.gen) return; // superseded by a newer render
+    if (!up) {
+      view.webview.html = this.shell(gen, `
+        <p class="msg">Bridge isn't reachable at <code>${url}</code>.<br>
+        Start a Claude Code session (its hook launches the bridge), or run
+        <code>node bridge/launch.js</code> from the repo.</p>
+        <button onclick="vscode.postMessage('retry')">Retry</button>`);
+      return;
+    }
+    let src = url;
+    try { src = (await vscode.env.asExternalUri(vscode.Uri.parse(url))).toString(); } catch (_) {}
+    if (!this.view || gen !== this.gen) return;
+    view.webview.html = this.shell(gen, `<iframe src="${src}" allow="clipboard-read; clipboard-write"></iframe>`);
+  }
+  shell(gen, body) {
+    return `<!doctype html><html><head><meta charset="utf-8">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; frame-src http: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+      <style>
+        html,body{margin:0;padding:0;height:100%;overflow:hidden;font-family:var(--vscode-font-family);color:var(--vscode-foreground)}
+        iframe{border:0;width:100%;height:100%;display:block}
+        .msg{padding:12px;line-height:1.5}
+        code{color:var(--vscode-textPreformat-foreground)}
+        button{margin:0 12px;padding:4px 12px;border:0;cursor:pointer;background:var(--vscode-button-background);color:var(--vscode-button-foreground)}
+      </style></head><body data-gen="${gen}"><script>const vscode = acquireVsCodeApi();</script>${body}</body></html>`;
+  }
+}
+
 function activate(context) {
+  const sidebar = new GanderViewProvider(context);
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider('gander.dashboard', sidebar, {
+    webviewOptions: { retainContextWhenHidden: true },
+  }));
   context.subscriptions.push(vscode.commands.registerCommand('gander.open', () => openPanel(context)));
-  context.subscriptions.push(vscode.commands.registerCommand('gander.reload', () => openPanel(context)));
+  context.subscriptions.push(vscode.commands.registerCommand('gander.reload', () =>
+    sidebar.view ? sidebar.render() : openPanel(context)));
 
   const sb = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   sb.text = '$(rocket) Gander';

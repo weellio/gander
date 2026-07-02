@@ -7,9 +7,11 @@ app.** Browser users open the URL; VS Code users get it in a tab. One bridge, on
 
 ## What it does
 
-- Adds a **🚀 Gander** status-bar button and a **"Gander: Open Dashboard"** command.
-- Opens the dashboard in a webview panel (an iframe to the bridge, with a port mapping so
-  it reaches `localhost` reliably from inside the webview sandbox).
+- Adds a **Gander icon to the Activity Bar** (the left rail, like other extensions) — click
+  it for a sidebar view with the live dashboard embedded. Its title bar has ↻ reload and
+  ↗ open-as-full-tab buttons.
+- Adds a **🚀 Gander** status-bar button and a **"Gander: Open Dashboard"** command, which
+  open the dashboard as a full editor tab (via the built-in Simple Browser).
 - If the bridge isn't running and `gander.autostart` is on, it starts it from the repo's
   `bridge/launch.js` using VS Code's bundled Node (no dependency on `node` being on PATH).
 
