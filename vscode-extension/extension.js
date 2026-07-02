@@ -56,13 +56,15 @@ async function ensureBridge(context) {
 }
 
 let panel = null;
-function html(url) {
-  const port = portOf(url);
-  const csp = `default-src 'none'; frame-src ${url} http://localhost:${port} http://127.0.0.1:${port}; style-src 'unsafe-inline';`;
+// `src` is an asExternalUri()-resolved URL (webviews block a raw http://localhost iframe;
+// the resolved URI is one the sandbox permits — and works under Remote/Codespaces too).
+function html(src) {
+  let origin = src; try { origin = new URL(src).origin; } catch (_) {}
+  const csp = `default-src 'none'; frame-src ${origin} http://localhost:* http://127.0.0.1:*; style-src 'unsafe-inline';`;
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <style>html,body{margin:0;padding:0;height:100%;background:#0b0b0d}iframe{border:0;width:100%;height:100vh;display:block}</style>
-</head><body><iframe src="${url}" allow="clipboard-read; clipboard-write; microphone"></iframe></body></html>`;
+</head><body><iframe src="${src}" allow="clipboard-read; clipboard-write; microphone"></iframe></body></html>`;
 }
 
 async function openPanel(context) {
@@ -73,23 +75,23 @@ async function openPanel(context) {
       `Gander bridge isn't reachable at ${url}. Start a Claude Code session (its hook launches the bridge), or run "node bridge/launch.js" from the repo, then run "Gander: Reload Dashboard". You can also set gander.bridgePath.`
     );
   }
-  if (panel) { panel.reveal(vscode.ViewColumn.Active); panel.webview.html = html(url); return; }
   const port = portOf(url);
+  // Resolve to a webview-permitted URL (handles the sandbox + remote tunnelling).
+  let src = url;
+  try { src = (await vscode.env.asExternalUri(vscode.Uri.parse(url))).toString().replace(/\/+$/, ''); } catch (_) {}
+  if (panel) { panel.reveal(vscode.ViewColumn.Active); panel.webview.html = html(src); return; }
   panel = vscode.window.createWebviewPanel('gander', 'Gander', vscode.ViewColumn.Active, {
     enableScripts: true,
     retainContextWhenHidden: true,
-    // route the webview's requests to http://localhost:<port> to the extension host, so
-    // the embedded dashboard reaches the bridge reliably from inside the webview sandbox.
     portMapping: [{ webviewPort: port, extensionHostPort: port }],
   });
-  panel.iconPath = undefined;
-  panel.webview.html = html(url);
+  panel.webview.html = html(src);
   panel.onDidDispose(() => { panel = null; }, null, context.subscriptions);
 }
 
 function activate(context) {
   context.subscriptions.push(vscode.commands.registerCommand('gander.open', () => openPanel(context)));
-  context.subscriptions.push(vscode.commands.registerCommand('gander.reload', () => { if (panel) panel.webview.html = html(bridgeUrl()); else openPanel(context); }));
+  context.subscriptions.push(vscode.commands.registerCommand('gander.reload', () => openPanel(context)));
 
   const sb = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   sb.text = '$(rocket) Gander';
