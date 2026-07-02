@@ -1,0 +1,44 @@
+{
+  "name": "gander-vscode",
+  "displayName": "Gander — Claude Code NOC",
+  "description": "The Gander dashboard inside VS Code — watch and control your Claude Code agents next to your editor and terminal. A thin wrapper around the same bridge the standalone web app uses (no app fork).",
+  "version": "0.1.0",
+  "publisher": "gander",
+  "license": "MIT",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other", "Visualization"],
+  "keywords": ["claude", "claude code", "agents", "dashboard", "noc"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "gander.open", "title": "Gander: Open Dashboard" },
+      { "command": "gander.reload", "title": "Gander: Reload Dashboard" }
+    ],
+    "configuration": {
+      "title": "Gander",
+      "properties": {
+        "gander.url": {
+          "type": "string",
+          "default": "http://localhost:3131",
+          "description": "URL of the running Gander bridge. Change only if you set AOC_PORT."
+        },
+        "gander.autostart": {
+          "type": "boolean",
+          "default": true,
+          "description": "If the bridge isn't reachable, try to start it from the repo (bridge/launch.js)."
+        },
+        "gander.bridgePath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the Gander repo's bridge/launch.js. Only needed if autostart can't find it (i.e. the extension isn't running from inside the repo)."
+        },
+        "gander.openOnStartup": {
+          "type": "boolean",
+          "default": false,
+          "description": "Open the Gander panel automatically when VS Code starts."
+        }
+      }
+    }
+  }
+}

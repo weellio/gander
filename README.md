@@ -119,6 +119,10 @@ cd web && npm install && npm run build   # outputs to dashboard/dist (what the b
 cd web && npm run dev                    # hot-reload dev server
 ```
 
+### Optional: inside VS Code
+
+Prefer everything in one window? A thin **VS Code extension** in [`vscode-extension/`](vscode-extension/) loads the *same* dashboard the bridge serves into a VS Code panel — next to your editor and the integrated terminal. It's a wrapper, not a fork: browser users open `localhost:3131`, VS Code users get the identical dashboard in a tab. Open that folder and press **F5** to try it (no build/install), or `vsce package` it to a `.vsix`. See [vscode-extension/README.md](vscode-extension/README.md).
+
 ### Alternative: as a Claude Code plugin
 
 ```
