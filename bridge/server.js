@@ -1472,6 +1472,34 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, r.error ? 400 : 200, r);
   }
 
+  // Reply to a PARKED/idle session by resuming it headlessly: `claude -p --resume <id> "msg"`
+  // appends a real turn to the same conversation with no terminal window. Uses the user's own
+  // claude login (plan quota — Gander injects NO API key), same as typing it in the terminal.
+  // Refuses if the session is actively working (use the queued channel then).
+  if (url === '/api/resume-reply' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.sessionId || !body.text) return sendJson(res, 400, { error: 'sessionId and text required' });
+    if (!/^[\w-]+$/.test(String(body.sessionId))) return sendJson(res, 400, { error: 'bad session id' });
+    const root = agents.get('sess:' + body.sessionId) || Array.from(agents.values()).find((a) => a.sessionId === body.sessionId);
+    const WORKING = new Set(['thinking', 'coding', 'running', 'reading', 'testing', 'spawning', 'searching']);
+    if (root && WORKING.has(root.state)) return sendJson(res, 200, { ok: false, busy: true, error: 'session is busy — queued instead' });
+    let cwd = body.cwd || (root && root.cwd);
+    if (!cwd) { try { const t = await transcript.read(body.sessionId); cwd = t && t.cwd; } catch (_) {} }
+    if (!cwd || !fs.existsSync(cwd)) return sendJson(res, 200, { ok: false, error: 'could not find the session working directory' });
+    if (!assertCwd(res, cwd)) return;
+    const text = String(body.text).replace(/["`$%\r\n]+/g, ' ').trim().slice(0, 4000);   // rides in "..." on the shell line
+    if (!text) return sendJson(res, 400, { error: 'empty message' });
+    const cli = (cfg.claudeCmd && String(cfg.claudeCmd).trim()) || 'claude';
+    const cliQ = (/\s/.test(cli) && !/^["']/.test(cli)) ? `"${cli}"` : cli;
+    const env = { ...process.env };
+    for (const k of Object.keys(env)) if (/^CLAUDE_?CODE/i.test(k)) delete env[k];   // start as an independent top-level session
+    try {
+      spawn(`${cliQ} -p --resume ${body.sessionId} "${text}"`, { cwd, shell: true, detached: true, stdio: 'ignore', env }).unref();
+      console.log(`[resume-reply] ${body.sessionId} <- ${text.slice(0, 50)}`);
+      return sendJson(res, 200, { ok: true, delivered: 'resume' });
+    } catch (e) { return sendJson(res, 500, { error: e.message }); }
+  }
+
   if (url === '/api/inspect' && req.method === 'GET') {
     const u = new URL(req.url, 'http://localhost');
     const sidParam = u.searchParams.get('session') || '';

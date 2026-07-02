@@ -20,6 +20,9 @@
   let flash = $state('');
   let busy = $state('');
   let flashTimer;
+  let convo = $state([]);          // live conversation (from the transcript on disk — free, no model calls)
+  let convoOpen = $state(false);
+  let convoEl;                     // scroll container
   let sid = $derived(agent ? (agent.sessionId || String(agent.id).replace(/^sess:/, '')) : '');
   // Context-fill gauge: latest turn's context ÷ model limit. Claude Code auto-compacts
   // near the limit, so a high % on a parked session is the moment to compact by hand.
@@ -57,6 +60,26 @@
       gh = j && !j.error && j.url ? j : null;
     } catch (_) {}
   }
+  // Live conversation: read the session's transcript on disk (structured messages) and
+  // poll while the pane is open. Pure reads — no model calls, no cost, plan or API alike.
+  async function loadConvo() {
+    if (!sid) return;
+    try {
+      const r = await fetch('/api/transcript', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: sid }) });
+      const d = await r.json();
+      const msgs = (d.messages || []).filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.text || (m.tools && m.tools.length)));
+      const atBottom = !convoEl || (convoEl.scrollHeight - convoEl.scrollTop - convoEl.clientHeight < 60);
+      convo = msgs.slice(-80);
+      if (atBottom) queueMicrotask(() => { if (convoEl) convoEl.scrollTop = convoEl.scrollHeight; });
+    } catch (_) {}
+  }
+  $effect(() => {
+    if (!convoOpen || !sid) return;
+    loadConvo();
+    const t = setInterval(loadConvo, 2500);
+    return () => clearInterval(t);
+  });
+
   onMount(() => {
     refresh().then(() => { loadInfo(); loadCost(); loadGithub(); loadProcs(); });
     const t = setInterval(refresh, 1200);
@@ -108,6 +131,23 @@
       });
       if (r.ok) { showFlash(type === 'stop' ? '■ Stop sent — halts at next tool' : '✓ Message sent — delivered on next check-in'); if (type === 'message') msg = ''; }
       else showFlash('✗ Failed — is the bridge running?');
+    } catch (_) { showFlash('✗ Failed — is the bridge running?'); }
+    finally { busy = ''; }
+  }
+  // Explicit, opt-in reply for a session with NO open terminal: resumes it headlessly
+  // (a real turn on your own claude login — plan quota, no API key). Warned, because
+  // resuming a session whose terminal is still open can corrupt the conversation.
+  async function resumeReply() {
+    if (!agent || busy) return;
+    if (!msg.trim()) { showFlash('⚠ type a message first'); return; }
+    if (!confirm('Resume this session with no terminal?\n\nThis runs a real turn headlessly and is perfect for a session that has clocked out. But if a terminal window for it is still open, use Send instead — two processes on one conversation can corrupt it.')) return;
+    busy = 'resume';
+    try {
+      const r = await fetch('/api/resume-reply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: sid, cwd: agent.cwd, text: msg }) });
+      const j = await r.json();
+      if (j && j.ok) { showFlash('✓ Resumed — a new turn is running (no terminal). Watch it in 💬 conversation.'); msg = ''; if (convoOpen) setTimeout(loadConvo, 2000); }
+      else if (j && j.busy) showFlash('✗ Session is busy — use Send instead (it queues)');
+      else showFlash('✗ ' + ((j && j.error) || 'could not resume'));
     } catch (_) { showFlash('✗ Failed — is the bridge running?'); }
     finally { busy = ''; }
   }
@@ -213,8 +253,22 @@
       {/if}
 
       <div class="sec">
-        <div class="lbl">Current task / last message</div>
+        <div class="lbl">Current task / last message
+          <button class="convo-toggle" onclick={() => (convoOpen = !convoOpen)} title="Read the whole conversation live, from the session's transcript (no model calls)">{convoOpen ? '▾ hide conversation' : '💬 conversation'}</button>
+        </div>
         {#if agent.lastMessage}<div class="lm">{agent.lastMessage}</div>{:else}<div class="dim">No captured message yet (fills in as the agent works).</div>{/if}
+        {#if convoOpen}
+          <div class="convo" bind:this={convoEl}>
+            {#each convo as m (m.ts + m.role)}
+              <div class="turn {m.role}">
+                {#if m.text}<div class="bub">{m.text}</div>{/if}
+                {#if m.tools && m.tools.length}<div class="tools">⚙ {m.tools.map((t) => t.name).join(' · ')}</div>{/if}
+              </div>
+            {/each}
+            {#if !convo.length}<div class="dim cempty">No conversation captured yet — it fills in live as the session works.</div>{/if}
+          </div>
+          <div class="convo-foot">Live from the transcript on disk · reading costs nothing. Reply below ↓</div>
+        {/if}
       </div>
 
       {#if cost && (cost.tokens || ctxPct !== null)}
@@ -312,6 +366,7 @@
         <div class="rbtns">
           <MicButton onappend={(t) => (msg = (msg ? msg.trim() + ' ' : '') + t)} />
           <button class="act" disabled={busy === 'message'} onclick={() => send('message')}>{busy === 'message' ? 'Sending…' : (pendingImage ? 'Send 🖼' : 'Send')}</button>
+          {#if parked && !pendingImage}<button class="act resume" disabled={busy === 'resume'} onclick={resumeReply} title="Reply with NO terminal: resume this clocked-out session headlessly (runs a real turn on your own claude login — plan quota, no API key). Use only if no terminal window is open for it.">{busy === 'resume' ? 'Resuming…' : '⤳ Resume'}</button>{/if}
           <button class="act stop" disabled={busy === 'stop'} onclick={() => send('stop')}>{busy === 'stop' ? 'Stopping…' : 'Stop'}</button>
         </div>
         {#if dropActive}<div class="dropmask">Drop image to ask about it</div>{/if}
@@ -391,6 +446,21 @@
   .attach img { width: 40px; height: 40px; object-fit: cover; border-radius: 5px; flex-shrink: 0; }
   .atxt { font-size: 10px; color: var(--color-text-secondary); flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ax { background: none; border: none; cursor: pointer; color: var(--color-text-tertiary); font-size: 12px; }
+  .convo-toggle { float: right; font-size: 10px; padding: 1px 7px; border-radius: 5px; cursor: pointer;
+    border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-secondary); }
+  .convo-toggle:hover { border-color: var(--accent, #6366F1); }
+  .convo { margin-top: 8px; max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
+    padding: 8px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); background: var(--color-background-secondary); }
+  .turn { display: flex; flex-direction: column; max-width: 88%; }
+  .turn.user { align-self: flex-end; align-items: flex-end; }
+  .turn.assistant { align-self: flex-start; align-items: flex-start; }
+  .turn .bub { font-size: 11.5px; line-height: 1.45; padding: 6px 9px; border-radius: 10px; white-space: pre-wrap; word-break: break-word; }
+  .turn.user .bub { background: var(--accent, #6366F1); color: #fff; border-bottom-right-radius: 3px; }
+  .turn.assistant .bub { background: var(--color-background-primary); color: var(--color-text-primary); border: 0.5px solid var(--color-border-tertiary); border-bottom-left-radius: 3px; }
+  .turn .tools { font-size: 9.5px; color: var(--color-text-tertiary); font-family: var(--font-mono); margin-top: 2px; }
+  .cempty { padding: 12px; text-align: center; }
+  .convo-foot { font-size: 9.5px; color: var(--color-text-tertiary); margin-top: 4px; }
+
   .reply { position: relative; display: flex; gap: 6px; align-items: flex-end; border-radius: var(--border-radius-md); }
   .reply.drag { outline: 2px dashed var(--accent, #6366F1); outline-offset: 3px; }
   .dropmask { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none;
@@ -404,6 +474,7 @@
   .reply button { font-size: 11px; padding: 6px 10px; border-radius: var(--border-radius-md); cursor: pointer;
     border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); }
   .reply button.stop { color: #EF4444; border-color: #EF4444; }
+  .reply button.act.resume { color: var(--accent, #6366F1); border-color: color-mix(in srgb, var(--accent, #6366F1) 55%, transparent); }
   .reply button.act { transition: transform 0.06s ease, background 0.12s ease, box-shadow 0.12s ease; }
   .reply button.act:hover:not(:disabled) { background: var(--color-background-secondary); }
   .reply button.act:active:not(:disabled) { transform: translateY(1px) scale(0.97); box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.25); }

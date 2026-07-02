@@ -19,7 +19,9 @@
       title: 'Click an agent',
       items: [
         ['Current task / live message', 'What the agent is doing and its latest message. Sub-agents stream their message live as they work (not just at finish); root sessions update at the end of each turn.'],
+        ['💬 Conversation', 'Toggle a live chat view of the whole session — read every turn as it happens, straight from the transcript on disk. Costs nothing (no model calls, just reads the file), so you can follow a session without its terminal open.'],
         ['Reply · Stop', 'Send a message or task to a running session, or stop it at its next tool.'],
+        ['⤳ Resume (no terminal)', 'For a clocked-out session with no open window: type a reply and it resumes the session headlessly — a real turn on your own claude login (plan quota, no API key injected). Explicit + warned, because resuming a session whose terminal is still open can corrupt the conversation (use Send then).'],
         ['💰 Session cost', 'Live estimated spend for that session.'],
         ['📊 Analytics', 'Per-session efficiency gauges from the transcript: cache-hit % (context reused vs re-sent), output-cost share (verbose vs context bulk), and a context-window bar. A parked, near-full session shows a “Compact now” nudge that types /compact to free context.'],
         ['🔍 Audit CLAUDE.md', 'A before/after diff for your CLAUDE.md. 🔒 Flags pasted secrets (remove + rotate); red-cuts lines pointing at files that don’t exist plus generic boilerplate; ambers possibly-stale prose (old to-dos, planning sections, dated notes, moved paths). Compact-proof — it checks files on disk, not the transcript. Shows the tokens each costs every turn and suggests additions (undocumented npm scripts, frameworks, config). Tick/untick each flagged line, then Apply to write the trimmed file (backed up to CLAUDE.md.bak). Guardrails, commands, real files, and prose are kept.'],
