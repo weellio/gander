@@ -55,38 +55,24 @@ async function ensureBridge(context) {
   return false;
 }
 
-let panel = null;
-// `src` is an asExternalUri()-resolved URL (webviews block a raw http://localhost iframe;
-// the resolved URI is one the sandbox permits — and works under Remote/Codespaces too).
-function html(src) {
-  let origin = src; try { origin = new URL(src).origin; } catch (_) {}
-  const csp = `default-src 'none'; frame-src ${origin} http://localhost:* http://127.0.0.1:*; style-src 'unsafe-inline';`;
-  return `<!doctype html><html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="${csp}">
-<style>html,body{margin:0;padding:0;height:100%;background:#0b0b0d}iframe{border:0;width:100%;height:100vh;display:block}</style>
-</head><body><iframe src="${src}" allow="clipboard-read; clipboard-write; microphone"></iframe></body></html>`;
-}
-
+// Open the dashboard in VS Code's built-in Simple Browser — a webview that's purpose-built
+// to load external URLs (incl. localhost), so we don't hand-roll an iframe/CSP. It opens as
+// an editor tab next to your code + terminal. asExternalUri handles Remote/Codespaces.
 async function openPanel(context) {
   const url = bridgeUrl();
   const up = await ensureBridge(context);
   if (!up) {
     vscode.window.showWarningMessage(
-      `Gander bridge isn't reachable at ${url}. Start a Claude Code session (its hook launches the bridge), or run "node bridge/launch.js" from the repo, then run "Gander: Reload Dashboard". You can also set gander.bridgePath.`
+      `Gander bridge isn't reachable at ${url}. Start a Claude Code session (its hook launches the bridge), or run "node bridge/launch.js" from the repo, then run "Gander: Open Dashboard". You can also set gander.bridgePath.`
     );
   }
-  const port = portOf(url);
-  // Resolve to a webview-permitted URL (handles the sandbox + remote tunnelling).
   let src = url;
-  try { src = (await vscode.env.asExternalUri(vscode.Uri.parse(url))).toString().replace(/\/+$/, ''); } catch (_) {}
-  if (panel) { panel.reveal(vscode.ViewColumn.Active); panel.webview.html = html(src); return; }
-  panel = vscode.window.createWebviewPanel('gander', 'Gander', vscode.ViewColumn.Active, {
-    enableScripts: true,
-    retainContextWhenHidden: true,
-    portMapping: [{ webviewPort: port, extensionHostPort: port }],
-  });
-  panel.webview.html = html(src);
-  panel.onDidDispose(() => { panel = null; }, null, context.subscriptions);
+  try { src = (await vscode.env.asExternalUri(vscode.Uri.parse(url))).toString(); } catch (_) {}
+  try {
+    await vscode.commands.executeCommand('simpleBrowser.show', src);
+  } catch (e) {
+    vscode.window.showErrorMessage(`Gander: could not open the Simple Browser (${e && e.message}). Open ${url} in a browser instead.`);
+  }
 }
 
 function activate(context) {
