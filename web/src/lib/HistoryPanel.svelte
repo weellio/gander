@@ -1,5 +1,5 @@
 <script>
-  let { open = $bindable(false), onView } = $props();
+  let { open = $bindable(false), onView, onReplay } = $props();
   let _wasOpen = false;
   $effect(() => { if (open && !_wasOpen) openPanel(); _wasOpen = open; });
   let sessions = $state([]);
@@ -116,6 +116,7 @@
               <span class="sid mono">{s.sessionId.slice(0, 8)}</span>
               <span class="rb-actions">
                 {#if onView}<button class="copy-btn" onclick={() => onView(s.sessionId)} title="Read this session's transcript">View</button>{/if}
+                {#if onReplay}<button class="copy-btn" onclick={() => onReplay(s.sessionId)} title="Replay this session on a timeline — states, tools, cumulative cost">⏪</button>{/if}
                 <button class="copy-btn" onclick={() => resume(s)} title="Open a terminal and resume this session">
                   {launched === s.sessionId ? 'launching…' : '▶ Resume'}
                 </button>
