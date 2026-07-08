@@ -9,6 +9,7 @@
   import NewTask from './lib/NewTask.svelte';
   import Tour from './lib/Tour.svelte';
   import RoutinesPanel from './lib/RoutinesPanel.svelte';
+  import QueuePanel from './lib/QueuePanel.svelte';
   import ActionImages from './lib/ActionImages.svelte';
   import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
   import CostPanel from './lib/CostPanel.svelte';
@@ -136,7 +137,7 @@
   // Manage / Options menus + the panels they control
   let menuOpen = $state(false);
   let optsOpen = $state(false);
-  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false, skills: false });
+  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false, skills: false, queue: false });
   function openP(k) { panels[k] = true; menuOpen = false; }
   // Settings/Config is one drawer with two scopes: 'app' (global: Telegram, budget,
   // sessions, nudge, editor) opened from Settings ▾, and 'project' (this project's
@@ -204,6 +205,7 @@
       { label: 'Activity feed', sub: 'panel', action: () => openP('feed') },
       { label: 'Health / status', sub: 'panel', action: () => openP('health') },
       { label: 'New task — start a session on a goal', sub: 'launch', action: () => (newTaskOpen = true) },
+      { label: 'Task queue — line up goals, auto-start on free slots', sub: 'panel', action: () => openP('queue') },
       { label: 'Routines & briefings', sub: 'panel', action: () => openP('routines') },
       { label: 'Take the tour', sub: 'walkthrough', action: () => (tourOpen = true) },
       { label: 'Export swarm snapshot', sub: 'Mermaid + PNG', action: exportSnapshot },
@@ -405,6 +407,7 @@
             <button class="select" onclick={() => openP('usage')}>Usage / cost</button>
             <button class="select" onclick={() => openP('github')}>GitHub</button>
             <button class="select" onclick={() => openMemory()}>Memory (CLAUDE.md · facts)</button>
+            <button class="select" onclick={() => openP('queue')}>📋 Task queue</button>
             <button class="select" onclick={() => openP('routines')}>Routines &amp; briefings</button>
             <button class="select" onclick={() => openP('history')}>Session history</button>
             <button class="select" onclick={() => openP('search')}>Search</button>
@@ -487,6 +490,7 @@
   <SettingsPanel bind:open={panels.config} scope="app" />
   <HistoryPanel bind:open={panels.history} onView={(sid) => (transcriptId = sid)} />
   <RoutinesPanel bind:open={panels.routines} />
+  <QueuePanel bind:open={panels.queue} />
   <HealthPanel bind:open={panels.health} />
   <ProcessesPanel bind:open={panels.procs} />
   <SuggestionsPanel bind:open={panels.tune} />

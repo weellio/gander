@@ -37,6 +37,7 @@ const health = require('./health.js');
 const transcript = require('./transcript.js');
 const search = require('./search.js');
 const dispatch = require('./dispatch.js');
+const queue = require('./queue.js');
 const STARTED = Date.now();
 let eventsReceived = 0;
 
@@ -1163,6 +1164,33 @@ dispatch.init({
   log: (...a) => console.log(...a),
 });
 
+// ── Task queue scheduler ────────────────────────────────────────────────────
+// Every 10s: settle finished queue tasks, then start the next queued goal if a
+// slot is free (see bridge/queue.js for the rules). Uses dispatch when it's on,
+// the classic terminal launch when it's off.
+function queueTick() {
+  try {
+    queue.tick({
+      now: () => Date.now(),
+      agents: () => Array.from(agents.values()),
+      dispatchEnabled: () => !!cfg.dispatch,
+      dispatchGet: (sid) => { const s = dispatch.get(sid); return s ? { busy: s.busy, lastResult: s.lastResult, exited: s.exited } : null; },
+      dispatchList: () => dispatch.list(),
+      startDispatch: (it) => dispatch.start({ cwd: it.cwd, prompt: it.prompt, permMode: cfg.launchPermMode || '', cli: claudeCliRaw(), extraFlags: cfg.launchFlags }),
+      startTerminal: (it) => { const r = launchSession(it.cwd, null, it.prompt); if (r.ok) captureWin(it.cwd); return r; },
+      stopDispatch: (sid) => dispatch.stop(sid),
+      onDone: (it) => {
+        const ok = it.status === 'done';
+        pushFeed({ ts: Date.now(), agentId: 'queue', agent: 'queue', project: it.project, sessionId: it.sessionId || '', state: ok ? 'done' : 'error', log: `task ${ok ? 'finished' : 'failed'}: ${it.prompt.slice(0, 70)}${it.error ? ' — ' + it.error : ''}`, error: !ok });
+        fireAmbient(ok ? 'done' : 'error', { project: it.project, name: 'queue task', reason: it.prompt.slice(0, 120) });
+        if (!ok) sendTelegram(`⚠️ <b>Gander queue</b>\nTask failed in <b>${it.project}</b>: ${String(it.prompt).slice(0, 140)}\n${it.error || ''}`);
+        else if (cfg.queueTelegram) sendTelegram(`✅ <b>Gander queue</b>\nFinished in <b>${it.project}</b>: ${String(it.prompt).slice(0, 140)}`);
+        console.log(`[queue] #${it.id} ${it.status} (${it.project})`);
+      },
+    });
+  } catch (e) { console.error('[queue] tick error:', e.message); }
+}
+
 function snapshot() {
   const list = Array.from(agents.values());
   for (const a of list) {
@@ -1676,6 +1704,32 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/permissions' && req.method === 'GET') {
     return sendJson(res, 200, { pending: dispatch.pendingList() });
   }
+  // ── Task queue ──────────────────────────────────────────────────────────────
+  if (url === '/api/queue' && req.method === 'GET') {
+    return sendJson(res, 200, queue.list());
+  }
+  if (url === '/api/queue' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.cwd || !body.prompt) return sendJson(res, 400, { error: 'cwd and prompt required' });
+    if (!fs.existsSync(body.cwd)) return sendJson(res, 400, { error: 'path not found' });
+    if (!assertCwd(res, body.cwd)) return;
+    const r = queue.add({ cwd: body.cwd, prompt: body.prompt });
+    if (r.ok) { console.log(`[queue] +#${r.item.id} (${r.item.project}) ${r.item.prompt.slice(0, 60)}`); setTimeout(queueTick, 400); }
+    return sendJson(res, r.error ? 400 : 200, r);
+  }
+  if (url === '/api/queue/action' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.action) return sendJson(res, 400, { error: 'action required' });
+    const r = queue.action(body.id, body.action);
+    if (r.ok && body.action === 'retry') setTimeout(queueTick, 400);
+    return sendJson(res, r.error ? 400 : 200, r);
+  }
+  if (url === '/api/queue-config' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (body && body.telegramOnDone !== undefined) { cfg.queueTelegram = !!body.telegramOnDone; saveConfig(); }
+    return sendJson(res, 200, { ...queue.setConfig(body || {}), telegramOnDone: !!cfg.queueTelegram });
+  }
+
   if (url === '/api/permissions/answer' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.sessionId || !body.requestId) return sendJson(res, 400, { error: 'sessionId and requestId required' });
@@ -2295,6 +2349,7 @@ server.listen(argPort, BIND_HOST, () => {
   setInterval(sampleBurn, 30000); setTimeout(sampleBurn, 6000);
   rescheduleNudge();   // periodic idle-session nudge (cfg.nudgeInterval minutes; 0 = off)
   setInterval(() => routines.tick(runRoutineOpts()), 30000);   // run scheduled routines (HH:MM)
+  setInterval(queueTick, 10000); setTimeout(queueTick, 5000);  // task-queue scheduler
   license.verify(LICENSE_KEY, cfg.gumroadProduct).then((s) => { licenseState = s; console.log(`[license] ${s.mode}`); });
 });
 

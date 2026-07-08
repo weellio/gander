@@ -42,6 +42,19 @@
     } catch (_) { result = '✗ Failed — is the bridge running?'; }
     busy = false;
   }
+  // Queue it instead: line the goal up in the task queue — the bridge starts it
+  // as soon as a slot is free (and never on top of a busy session).
+  async function queueIt() {
+    if (!cwd || busy || !goal.trim()) { if (!goal.trim()) result = '⚠ type a goal to queue'; return; }
+    busy = true; result = '';
+    try {
+      const r = await fetch('/api/queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd, prompt: goal.trim() }) });
+      const j = await r.json();
+      if (j && j.ok) { result = `📋 Queued #${j.item.id} — starts when a slot frees`; goal = ''; setTimeout(() => (open = false), 1100); }
+      else result = '✗ ' + ((j && j.error) || 'could not queue');
+    } catch (_) { result = '✗ Failed — is the bridge running?'; }
+    busy = false;
+  }
   function onKey(e) {
     if (e.key === 'Escape') { open = false; return; }
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); launch(); }
@@ -71,6 +84,7 @@
     </div>
     <div class="ft">
       <span class="hint">{dispatchOn && !forceTerminal ? 'Dispatches a bridge-hosted session working on the goal (blank goal = terminal session).' : 'Opens a new Claude session in that project, working on the goal. (Blank goal = just start a session.)'}</span>
+      <button class="go ghost" disabled={busy || !cwd} onclick={queueIt} title="Add to the task queue — starts when a slot is free instead of right now">📋 Queue</button>
       <button class="go" disabled={busy || !cwd} onclick={launch}>{busy ? 'Launching…' : 'Launch ↵'}</button>
     </div>
   </div>
@@ -101,4 +115,7 @@
   .hint { font-size: 10px; color: var(--color-text-tertiary); }
   .go { font-size: 13px; font-weight: 600; padding: 7px 18px; border-radius: var(--border-radius-md); cursor: pointer; border: none; background: var(--accent, #6366F1); color: #fff; white-space: nowrap; }
   .go:disabled { opacity: 0.5; cursor: default; }
+  .go.ghost { background: transparent; border: 0.5px solid var(--color-border-secondary); color: var(--color-text-secondary); font-weight: 500; }
+  .go.ghost:hover:not(:disabled) { border-color: var(--accent, #6366F1); color: var(--color-text-primary); }
+  .ft { flex-wrap: wrap; }
 </style>
