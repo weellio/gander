@@ -11,6 +11,7 @@
   import RoutinesPanel from './lib/RoutinesPanel.svelte';
   import QueuePanel from './lib/QueuePanel.svelte';
   import DigestPanel from './lib/DigestPanel.svelte';
+  import ReplayPanel from './lib/ReplayPanel.svelte';
   import ActionImages from './lib/ActionImages.svelte';
   import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
   import CostPanel from './lib/CostPanel.svelte';
@@ -164,6 +165,7 @@
   let memCwd = $state('');
   function openMemory(cwd) { if (cwd) { memScope = 'project'; memCwd = cwd; panels.projects = false; } else { memScope = 'global'; memCwd = ''; } panels.memory = true; menuOpen = false; }
   let transcriptId = $state(null);
+  let replayId = $state(null);      // ⏪ session replay scrubber
   let tileModalId = $state(null);   // mosaic tile → full agent modal
   let newTaskOpen = $state(false);  // ＋ New task launcher
   let tourOpen = $state(false);     // first-run guided tour
@@ -506,7 +508,7 @@
   <CostPanel bind:open={panels.usage} />
   <GithubPanel bind:open={panels.github} />
   <SettingsPanel bind:open={panels.config} scope="app" />
-  <HistoryPanel bind:open={panels.history} onView={(sid) => (transcriptId = sid)} />
+  <HistoryPanel bind:open={panels.history} onView={(sid) => (transcriptId = sid)} onReplay={(sid) => (replayId = sid)} />
   <RoutinesPanel bind:open={panels.routines} />
   <QueuePanel bind:open={panels.queue} />
   <DigestPanel bind:open={panels.digest} />
@@ -518,7 +520,8 @@
   <FeedPanel bind:open={panels.feed} onView={(sid) => (transcriptId = sid)} />
   <SearchPanel bind:open={panels.search} onView={(sid) => (transcriptId = sid)} />
   <TranscriptPanel bind:sessionId={transcriptId} />
-  {#if tileModalId}<AgentModal id={tileModalId} onClose={() => (tileModalId = null)} />{/if}
+  <ReplayPanel bind:sessionId={replayId} />
+  {#if tileModalId}<AgentModal id={tileModalId} onClose={() => (tileModalId = null)} onReplay={(sid) => (replayId = sid)} />{/if}
   <NewTask bind:open={newTaskOpen} />
   <Tour bind:open={tourOpen} steps={tourSteps} />
 

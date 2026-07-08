@@ -27,7 +27,23 @@
     loading = false;
   }
 
-  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); if (cwd) loadConfig(); }
+  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); loadFleet(); if (cwd) loadConfig(); }
+
+  // ── Fleet (multi-machine): peer bridges polled by this hub ──
+  let flOpen = $state(false); let flPeers = $state([]); let flStatus = $state(''); let flHealth = $state([]);
+  async function loadFleet() {
+    try { const j = await (await fetch('/api/fleet-config')).json(); flPeers = (j.peers || []).map((p) => ({ ...p, token: '' })); flHealth = j.status || []; } catch (_) {}
+  }
+  function flAdd() { flPeers = [...flPeers, { name: '', url: '', token: '', hasToken: false }]; }
+  function flRemove(i) { flPeers = flPeers.filter((_, x) => x !== i); }
+  async function saveFleet() {
+    flStatus = 'Saving…';
+    const peers = flPeers.filter((p) => p.url.trim()).map((p) => ({ name: p.name.trim(), url: p.url.trim(), token: p.token.trim() || undefined }));
+    const r = await post('/api/fleet-config', { peers });
+    if (r && r.ok) { flStatus = '✓ Saved — polling ' + r.peers.length + ' peer(s)'; loadFleet(); } else flStatus = 'Error: ' + ((r && r.error) || 'failed');
+    setTimeout(() => (flStatus = ''), 2500);
+  }
+  function flOnline(p) { const h = flHealth.find((x) => x.url === p.url); return h ? (h.online ? '🟢' : '🔴') : ''; }
 
   // ── Gander Dispatch (bridge-hosted sessions) ──
   let dpOpen = $state(false); let dpOn = $state(false); let dpStatus = $state(''); let dpSessions = $state(0);
@@ -193,6 +209,29 @@
           {#if dpStatus}<div class="tg-status">{dpStatus}</div>{/if}
           <div class="tg-hint">When ON, <b>▶ Start</b> / <b>＋ New task</b> with a goal (and <b>⤳ Resume</b> replies) run the session <b>inside the bridge</b> over stream-json instead of opening a terminal: replies deliver <b>instantly</b> (no window-typing), <b>permission prompts become Allow / Deny buttons</b> right on the dashboard and in the 🔔 rail, and it works with the dashboard on your phone. Runs on your own <code>claude</code> login — plan quota, no API key.</div>
           <div class="tg-hint">When OFF (or per-launch via “terminal instead” in ＋ New task), everything uses the classic method: a real terminal window + quick-keys/nudge window automation — nothing is removed. Goal-less ▶ Start always opens a terminal either way (an interactive session needs a keyboard). Hosted sessions still write normal transcripts, so History/Resume/cost all keep working.</div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="tg">
+      <button class="collapser" onclick={() => (flOpen = !flOpen)}>
+        <span class="caret">{flOpen ? '▾' : '▸'}</span> 🖥 Fleet — other machines
+        {#if flPeers.length}<span class="tg-state">· {flPeers.length} peer{flPeers.length === 1 ? '' : 's'}</span>{/if}
+      </button>
+      {#if flOpen}
+        <div class="tg-form">
+          <div class="tg-hint">Watch Claude Code agents running on <b>other machines</b> on this floor. On each peer machine: run Gander, set an <code>accessToken</code> + <code>allowRemote</code> in its <code>bridge/aoc-config.json</code> (see <b>docs/REMOTE.md</b> — Tailscale recommended), then add it here. Remote tiles get a 🖥 machine badge; replies/stops are forwarded to the owning bridge.</div>
+          {#each flPeers as p, i (i)}
+            <div class="amb-fields">
+              <span title="online?">{flOnline(p)}</span>
+              <input class="in clr" placeholder="name (laptop)" bind:value={p.name} />
+              <input class="in grow" placeholder="http://100.x.y.z:3131" bind:value={p.url} />
+              <input class="in clr" type="password" placeholder={p.hasToken ? 'token saved' : 'token'} bind:value={p.token} autocomplete="off" />
+              <button class="mini" onclick={() => flRemove(i)}>✕</button>
+            </div>
+          {/each}
+          <div class="tg-btns"><button class="select" onclick={flAdd}>＋ Add peer</button><button class="select" onclick={saveFleet}>Save</button></div>
+          {#if flStatus}<div class="tg-status">{flStatus}</div>{/if}
         </div>
       {/if}
     </div>

@@ -6,8 +6,19 @@
     <link rel="icon" type="image/png" href="./goose.png" />
     <meta name="description" content="A live, animated mission-control dashboard for your Claude Code agents." />
     <title>Gander · Claude Code NOC</title>
-    <script type="module" crossorigin src="./assets/index-DgNJlW0G.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DRnC2_mx.css">
+    <!-- PWA: add-to-home-screen on a phone installs Gander as a standalone app. -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#1a1815" />
+    <link rel="apple-touch-icon" href="./icon.png" />
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
+    <script type="module" crossorigin src="./assets/index-0qhkGF34.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-D1s0HoWL.css">
   </head>
   <body>
     <div id="app"></div>

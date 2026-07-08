@@ -39,6 +39,8 @@ const search = require('./search.js');
 const dispatch = require('./dispatch.js');
 const queue = require('./queue.js');
 const digest = require('./digest.js');
+const replay = require('./replay.js');
+const fleet = require('./fleet.js');
 const STARTED = Date.now();
 let eventsReceived = 0;
 
@@ -1223,8 +1225,21 @@ function snapshot() {
     a.permCount = mine.length || undefined;
     if (dispatch.isHosted(a.sessionId)) a.dispatch = true;
   }
+  // fleet: merge remote peers' agents AFTER local decoration (their sessionIds
+  // never match local windows/dispatch, and they arrive pre-tagged machine/remote)
+  const remote = fleet.agents();
+  const all = remote.length ? list.concat(remote) : list;
+  if (remote.length) {
+    for (const a of remote) {
+      const pj = a.project || 'unknown';
+      const hit = projects.find((p) => p.project === pj);
+      if (hit) { hit.total++; if (a.sessionId) hit.sessions++; hit.states[a.state] = (hit.states[a.state] || 0) + 1; }
+      else projects.push({ project: pj, total: 1, sessions: a.sessionId ? 1 : 0, states: { [a.state]: 1 }, muted: false });
+    }
+  }
   return {
-    agents: list, projects, muted: [...muted], pending, budget: budgetState,
+    agents: all, projects, muted: [...muted], pending, budget: budgetState,
+    fleet: fleet.status(),
     dispatch: { enabled: !!cfg.dispatch, sessions: dispatch.list().length, permissions: perms.length, rateLimit: dispatch.rateLimit() },
   };
 }
@@ -1421,6 +1436,23 @@ const server = http.createServer(async (req, res) => {
     if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(origin)) { res.writeHead(403); res.end('forbidden'); return; }
   }
 
+  // Remote access token: with remote access enabled AND a token configured
+  // (cfg.accessToken / AOC_TOKEN), every non-loopback request must present it —
+  // `X-Gander-Token` header, `?token=` on first load (sets a cookie), or the
+  // cookie itself. Loopback stays frictionless so local hooks/dashboard never
+  // need it. See docs/REMOTE.md for the phone/Tailscale recipe.
+  if (ALLOW_REMOTE && ACCESS_TOKEN) {
+    const ra = String(req.socket.remoteAddress || '');
+    const loopback = ra === '127.0.0.1' || ra === '::1' || ra === '::ffff:127.0.0.1';
+    if (!loopback) {
+      const u = new URL(req.url, 'http://x');
+      const presented = [u.searchParams.get('token') || '', String(req.headers['x-gander-token'] || ''), (/(?:^|;\s*)aoc_token=([^;]+)/.exec(String(req.headers.cookie || '')) || [])[1] || ''];
+      const ok = presented.some((t) => t && tokenEq(decodeURIComponent(t), ACCESS_TOKEN));
+      if (!ok) { res.writeHead(403, { 'Content-Type': 'text/plain' }); res.end('Gander: access token required (open with ?token=... once, or send X-Gander-Token)'); return; }
+      if (u.searchParams.get('token')) res.setHeader('Set-Cookie', 'aoc_token=' + encodeURIComponent(u.searchParams.get('token')) + '; Path=/; HttpOnly; SameSite=Lax');
+    }
+  }
+
   if (req.method === 'OPTIONS') { sendJson(res, 204, {}); return; }
 
   if (url === '/api/state' && req.method === 'GET') {
@@ -1545,6 +1577,18 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/command' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    // Remote (fleet) agent: forward to the owning peer's bridge. The dashboard
+    // sends the tile's id as agentId for remote tiles; a bare sessionId that
+    // only exists in a peer snapshot routes too.
+    const fleetKey = String(body.agentId || '');
+    const remoteBySid = body.sessionId && !dispatch.isHosted(body.sessionId)
+      && !Array.from(agents.values()).some((a) => a.sessionId === body.sessionId)
+      && fleet.agents().some((a) => a.sessionId === body.sessionId);
+    if (fleetKey.startsWith('fleet:') || remoteBySid) {
+      const r = await fleet.forwardCommand(fleetKey.startsWith('fleet:') ? fleetKey : body.sessionId, { type: body.type || 'message', text: body.text });
+      if (r.ok) console.log(`[command→fleet] ${fleetKey || body.sessionId}`);
+      return sendJson(res, r.error ? 400 : 200, r);
+    }
     // Bridge-hosted (dispatched) session: deliver over its stdin RIGHT NOW — no
     // queueing, no waiting for the next hook check-in, no window automation.
     if (body.sessionId && dispatch.isHosted(body.sessionId)) {
@@ -1792,6 +1836,13 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, await transcript.read(body && body.sessionId));
   }
 
+  // Session replay — the transcript rebuilt as a timeline (states, tools,
+  // cumulative tokens/cost) for the ⏪ scrubber. Pure reads, no model calls.
+  if (url === '/api/replay' && req.method === 'POST') {
+    const body = await readBody(req);
+    return sendJson(res, 200, await replay.build(body && body.sessionId));
+  }
+
   if (url === '/api/health' && req.method === 'GET') {
     let version = 'dev';
     try { version = require('../package.json').version || 'dev'; } catch (_) {}
@@ -1912,6 +1963,30 @@ const server = http.createServer(async (req, res) => {
     saveConfig();
     const lx = cfg.ambient.lifx || {};
     return sendJson(res, 200, { ok: true, enabled: !!cfg.ambient.enabled, ...pickAmbient(cfg.ambient), lifx: { enabled: !!lx.enabled, hasToken: !!lx.token, selector: lx.selector || 'all' } });
+  }
+
+  // ── Fleet (multi-machine) config ────────────────────────────────────────────
+  if (url === '/api/fleet-config' && req.method === 'GET') {
+    const f = cfg.fleet || { peers: [], intervalMs: 5000 };
+    // never ship tokens to the browser — just whether one is set
+    return sendJson(res, 200, {
+      intervalMs: f.intervalMs || 5000,
+      peers: (f.peers || []).map((p) => ({ name: p.name, url: p.url, hasToken: !!p.token })),
+      status: fleet.status(),
+    });
+  }
+  if (url === '/api/fleet-config' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !Array.isArray(body.peers)) return sendJson(res, 400, { error: 'peers array required' });
+    // keep an existing peer's saved token when the form sends none (token field left blank)
+    const prev = new Map(((cfg.fleet && cfg.fleet.peers) || []).map((p) => [String(p.url || '').replace(/\/+$/, ''), p.token]));
+    for (const p of body.peers) if (p && !p.token) { const t = prev.get(String(p.url || '').replace(/\/+$/, '')); if (t) p.token = t; }
+    const norm = fleet.configure({ peers: body.peers, intervalMs: body.intervalMs });
+    cfg.fleet = norm;
+    saveConfig();
+    if (norm.peers.length) fleet.start(); else fleet.stop();
+    console.log(`[fleet] ${norm.peers.length} peer(s) configured`);
+    return sendJson(res, 200, { ok: true, intervalMs: norm.intervalMs, peers: norm.peers.map((p) => ({ name: p.name, url: p.url, hasToken: !!p.token })) });
   }
 
   if (url === '/api/telegram-config' && req.method === 'GET') {
@@ -2348,6 +2423,17 @@ const server = http.createServer(async (req, res) => {
 // networks only. The in-handler guard below additionally blocks DNS-rebinding/CSRF.
 const ALLOW_REMOTE = !!(process.env.AOC_ALLOW_REMOTE || cfg.allowRemote);
 const BIND_HOST = ALLOW_REMOTE ? '0.0.0.0' : '127.0.0.1';
+// Shared secret for non-loopback requests when remote access is on (see the
+// token guard in the request handler + docs/REMOTE.md). Constant-time compare.
+const ACCESS_TOKEN = String(process.env.AOC_TOKEN || cfg.accessToken || '').trim();
+function tokenEq(a, b) {
+  try {
+    const crypto = require('crypto');
+    const ba = Buffer.from(String(a)), bb = Buffer.from(String(b));
+    return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+  } catch (_) { return false; }
+}
+if (ALLOW_REMOTE && !ACCESS_TOKEN) console.log('⚠ remote access is enabled with NO access token — anyone on the network can drive this bridge. Set "accessToken" in bridge/aoc-config.json (or AOC_TOKEN). See docs/REMOTE.md.');
 
 server.listen(argPort, BIND_HOST, () => {
   console.log(`Gander bridge listening on http://localhost:${argPort}${ALLOW_REMOTE ? '  (⚠ remote access enabled — trusted networks only)' : ''}`);
@@ -2361,6 +2447,8 @@ server.listen(argPort, BIND_HOST, () => {
   rescheduleNudge();   // periodic idle-session nudge (cfg.nudgeInterval minutes; 0 = off)
   setInterval(() => routines.tick(runRoutineOpts()), 30000);   // run scheduled routines (HH:MM)
   setInterval(queueTick, 10000); setTimeout(queueTick, 5000);  // task-queue scheduler
+  // fleet hub: poll configured peer bridges and merge their agents onto this floor
+  if (cfg.fleet && Array.isArray(cfg.fleet.peers) && cfg.fleet.peers.length) { fleet.configure(cfg.fleet); fleet.start(); console.log(`[fleet] polling ${cfg.fleet.peers.length} peer(s)`); }
   license.verify(LICENSE_KEY, cfg.gumroadProduct).then((s) => { licenseState = s; console.log(`[license] ${s.mode}`); });
 });
 

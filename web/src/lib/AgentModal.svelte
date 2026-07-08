@@ -7,7 +7,7 @@
   import TranscriptPanel from './TranscriptPanel.svelte';
   import ClaudeMdAudit from './ClaudeMdAudit.svelte';
 
-  let { id, onClose } = $props();
+  let { id, onClose, onReplay } = $props();
   let agent = $state(null);
   let info = $state(null);
   let msg = $state('');
@@ -127,7 +127,7 @@
     try {
       const r = await fetch('/api/command', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: sid, type, text: msg }),
+        body: JSON.stringify({ sessionId: sid, agentId: agent.id, type, text: msg }),
       });
       if (r.ok) { showFlash(type === 'stop' ? '■ Stop sent — halts at next tool' : '✓ Message sent — delivered on next check-in'); if (type === 'message') msg = ''; }
       else showFlash('✗ Failed — is the bridge running?');
@@ -249,6 +249,7 @@
         <button class="x" onclick={onClose} aria-label="Close">✕</button>
       </div>
       <div class="meta">
+        {#if agent.machine}<span class="machine" title="Running on a fleet peer — commands are forwarded to that machine's bridge">🖥 {agent.machine}</span>{/if}
         {#if agent.project}<span>{agent.project}</span>{/if}
         {#if agent.sessionId}<span class="mono">· {String(agent.sessionId).slice(0, 8)}</span>{/if}
         {#if agent.parentId}<span>· sub-agent</span>{/if}
@@ -362,6 +363,7 @@
       {#if agent.cwd || sid}
         <div class="actions">
           {#if sid}<button class="select" onclick={() => (txId = sid)}>📄 Transcript</button>{/if}
+          {#if sid && onReplay}<button class="select" onclick={() => onReplay(sid)} title="Replay this session on a timeline — states, tools, cumulative cost">⏪ Replay</button>{/if}
           {#if agent.winPid}<button class="select" onclick={focusWindow} title="Bring this session's terminal window to the front (the window Gander captured when it launched)">🪟 Focus window</button>{/if}
           {#if agent.cwd}<button class="select" onclick={() => openIn('folder')}>📂 Open folder</button>{/if}
           {#if agent.cwd}<button class="select" onclick={() => openIn('editor')}>Open in VS Code</button>{/if}
@@ -439,6 +441,7 @@
     border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-secondary); }
   .ghlink:hover { color: var(--color-text-primary); border-color: var(--accent, #6366F1); }
   .meta { font-size: 11px; color: var(--color-text-secondary); display: flex; gap: 4px; flex-wrap: wrap; }
+  .machine { font-size: 10px; font-weight: 600; padding: 0 7px; border-radius: 99px; background: #06B6D41a; border: 0.5px solid #06B6D466; color: #06B6D4; }
   .path { font-size: 10px; color: var(--color-text-tertiary); word-break: break-all; }
   .mono { font-family: var(--font-mono); }
   .sec { display: flex; flex-direction: column; gap: 5px; }

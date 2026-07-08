@@ -25,6 +25,7 @@
         {#if agent.runaway}💸 ${(agent.burnRate || 0).toFixed(2)}/min{:else}${agent.costUSD.toFixed(2)}{/if}
       </span>
     {/if}
+    {#if agent.machine}<span class="model machine" title="Running on fleet peer “{agent.machine}” — commands are forwarded there">🖥 {agent.machine}</span>{/if}
     {#if agent.model && agent.model !== 'inherit'}<span class="model" title="Defined model">{agent.model}</span>{/if}
     <span class="badge">{awaiting ? '🔔 ' : ''}{STATE_LABEL[agent.state] || agent.state}</span>
   </div>
@@ -68,6 +69,7 @@
   .cost.hot { background: #EF4444; color: #fff; border-color: #EF4444; }
   .model { font-size: 9px; font-family: var(--font-mono); padding: 2px 6px; border-radius: 99px; white-space: nowrap;
     background: var(--color-background-secondary); color: var(--color-text-tertiary); border: 0.5px solid var(--color-border-tertiary); }
+  .model.machine { color: #06B6D4; border-color: #06B6D466; background: #06B6D41a; font-weight: 600; }
   .tile.sub { margin-left: 6px; }
   .tile.awaiting { opacity: 1; border-left-color: #F59E0B; }
   .tile.awaiting::after { content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;

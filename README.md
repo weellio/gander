@@ -32,6 +32,9 @@ It attaches to any project automatically via Claude Code **hooks** — no manual
 - **"Needs you" triage rail** — the 🔔 bell lists every session waiting on a human across all projects — needs input, errored, finished — ranked, each with the reason and how long it's waited. Answer an awaiting prompt inline with the quick-keys — or, for dispatched sessions, **✓ Allow / ✕ Deny the exact permission right in the rail**. The badge turns red only when a human is actually needed.
 - **Live cost + runaway alerts** — each agent tile shows its session spend, and any agent burning money fast (a stuck/looping session) lights up red with a `💸 $/min` badge so you can catch it and stop it before it runs up a bill. Toggle off in Settings if you don't care about spend.
 - **Plan-quota pacing** — subscription plans meter on a rolling **five-hour window**, so the status bar shows `⚡ 5h $X` (what landed in the current window) and — once any dispatched session reports a `rate_limit_event` — the window's **real reset time**. If the CLI reports the limit hit, the chip turns red and a banner says when you're back.
+- **⏪ Session replay** — scrub any session (running or finished) on a timeline: a color strip of its states, a playhead with ▶ playback (10–120×), what tool ran when, and **cumulative tokens/cost at every moment**. "What did that agent do for 40 minutes and $6" becomes a two-minute post-mortem. From the ⏪ buttons in an agent's modal and Session history. Pure transcript reads — costs nothing.
+- **🖥 Fleet (multi-machine)** — run Gander on your desktop, laptop, and a VPS, and see **every machine's agents on one floor**. Add peers in Settings → Fleet; remote tiles carry a 🖥 machine badge and replies/stops are **forwarded to the owning machine's bridge**. Secured by the remote-access token; Tailscale-friendly (see [docs/REMOTE.md](docs/REMOTE.md)).
+- **📱 On your phone** — the dashboard is an installable **PWA** (add-to-home-screen, standalone window, offline shell). Pair it with the remote-access token + Tailscale and you can watch the floor, reply, and **Allow/Deny permissions from bed** — the full recipe is in [docs/REMOTE.md](docs/REMOTE.md).
 
 ## Control center — manage Claude Code, not just watch it
 
@@ -44,7 +47,7 @@ Beyond visualization, Gander is a local control panel for everything Claude Code
 - **GitHub** — open PRs and issues per project via the `gh` CLI, click to open in the browser.
 - **Memory** — view and edit what Claude remembers: the **`CLAUDE.md`** it loads every session (global `~/.claude` or any project) and the `.claude/memory/*.md` fact store — read, edit, or delete each fact, plus the `MEMORY.md` index.
 - **Routines & briefings** — save reusable prompts that call your skills/MCP (e.g. a *Morning Brief* that checks mail, calendar & news), **Run now** or **schedule** them daily at a set time. They run **headlessly** (`claude -p`) and their output lands on the dashboard as a **briefing** — a fresh one greets you with a card and can ping Telegram/desktop. "What did I miss overnight?", answered.
-- **History** — recent sessions across all projects with their first prompt; **▶ Resume** any one (`claude --resume <id>` in a terminal) or copy the command.
+- **History** — recent sessions across all projects with their first prompt; **▶ Resume** any one (`claude --resume <id>` in a terminal), **⏪ Replay** it on the timeline scrubber, or copy the command.
 - **Processes** — the long-running / port-holding processes your sessions spawned and **left open** — a dev server still on `:3000`, a stray `node`/`python`. Gander can't see these from hooks (the tool call returns while the process keeps living), so it scans the OS, attributes each to the session whose window spawned it (orphans grouped apart), and gives you a one-click **Kill** (force-kills the tree). Each agent's modal also lists what *that* session left running. *(Windows-first.)*
 - **Tune** — mines your recent session transcripts for repeated work and suggests the config that removes it: a **PostToolUse hook** for a command you keep running after edits (with a copy-paste snippet), or a **`/command` / routine** for a prompt you keep typing. Deterministic counts; nothing is auto-written — you copy what's useful.
 - **Skills (all projects)** — one table of every skill across your projects and global `~/.claude`, each with its one-line summary (from its `SKILL.md`). **Copy** a skill to another project, or move a broadly-useful one **→ Global** so it applies everywhere — and spot redundant per-project copies of a skill that's already global. With a filter box.
@@ -189,6 +192,8 @@ bridge/
   dispatch.js          # Gander Dispatch: bridge-hosted sessions (bidirectional stream-json + permission control channel)
   queue.js             # task queue: goals per project, auto-started when a slot frees
   digest.js            # ship digest: sessions + commits + spend over the last N days
+  replay.js            # session replay: transcript → timeline events with cumulative cost
+  fleet.js             # multi-machine hub: poll peer bridges, merge their agents, forward commands
   launch.js            # cross-platform idempotent launcher
   license.js           # optional Gumroad license verification
   projects.js          # project registry: discover projects + components, copy between them
@@ -253,6 +258,13 @@ POST /api/queue-config    -> { enabled?, maxSlots?, telegramOnDone? }
 
 # Ship digest
 GET  /api/digest?days=7   -> { totals, byDay, projects:[...], markdown }
+
+# Session replay
+POST /api/replay          -> { sessionId } -> { events:[{t, kind, state, label, tokens, costUSD}], totals... }
+
+# Fleet (multi-machine hub)
+GET  /api/fleet-config    -> { peers:[{name, url, hasToken}], intervalMs, status:[...] }
+POST /api/fleet-config    -> { peers:[{name, url, token?}], intervalMs? }
 ```
 
 States: `idle · thinking · coding · spawning · reading · testing · error · done · awaiting`.
@@ -263,6 +275,8 @@ States: `idle · thinking · coding · spawning · reading · testing · error �
 
 - **Port** — `AOC_PORT` (default `3131`).
 - **Network** — the bridge binds to **`127.0.0.1` only** by default and rejects cross-origin / non-loopback-`Host` requests, so a LAN neighbour or a malicious web page can't drive it (it spawns processes and writes config). To reach it from another machine on a **trusted** network, set `AOC_ALLOW_REMOTE=1` (or `{ "allowRemote": true }`) — this binds `0.0.0.0` and drops the guard, so only do it on a network you trust.
+- **Access token (set it before allowRemote!)** — `{ "accessToken": "..." }` (or `AOC_TOKEN`). When set, every **non-loopback** request must present it: `X-Gander-Token` header, `?token=...` on first load (sets a cookie), or the cookie. Loopback stays frictionless. Constant-time compared; the bridge warns at boot if remote access is on with no token. Phone/Tailscale/cloudflared recipes: **[docs/REMOTE.md](docs/REMOTE.md)**.
+- **Fleet peers** — `{ "fleet": { "peers": [{ "name": "laptop", "url": "http://100.x.y.z:3131", "token": "..." }], "intervalMs": 5000 } }` (or Settings → Fleet). This bridge becomes the **hub**: it polls each peer's `/api/state` (sending the token) and merges their agents onto the floor, tagged 🖥 with the machine name; replies/stops to remote tiles are forwarded to the owning bridge.
 - **Telegram alerts/replies** — `{ "telegramToken": "...", "telegramChatId": "...", "dashboardUrl": "..." }` (or `AOC_TG_TOKEN` / `AOC_TG_CHAT` / `AOC_DASH_URL`). For inbound replies, the bot must have no webhook — use a dedicated bot via `"telegramReplyToken"` if needed.
 - **Avatar images** — imported from the dashboard (**Images…** / **Action images…**), stored in the browser's localStorage.
 - **Runaway burn threshold** — `{ "burnAlert": 5.0 }` ($/min, default `5.0`). An active session gets the red "runaway" highlight only when its smoothed spend stays above this for two samples in a row (so a single big turn doesn't trip it). The visual can be toggled per-browser in Settings → *Cost & burn alerts*. Note: spend is *estimated* from token counts at API list prices.
@@ -295,6 +309,7 @@ Gander watches **Claude Code**, not a specific model — so it works unchanged w
 - **A sub-agent shows no cost.** Cost is per **session** (one transcript); a sub-agent's spend rolls up into its parent session, so only the session (root) carries the figure.
 - **Why "$X/min" / why so high?** Spend is **estimated** from token counts at API list prices — on a Max/subscription plan you aren't literally paying that; treat it as a relative "spending fast" signal.
 - **Replies aren't instant.** For terminal sessions they're queued and delivered when the session next runs a turn; enable **Settings → App configuration → Wake idle sessions** to nudge a parked session so it picks up your reply right away. For **⚡ dispatched** sessions replies deliver instantly over the session's stdin.
+- **Can I use Gander on my phone?** Yes — it's an installable **PWA**. The safe path: set an **access token** (`accessToken` in `bridge/aoc-config.json`), enable `allowRemote`, put the machine on **Tailscale**, open `http://<your-machine>:3131/?token=...` on the phone, and **add to home screen** — it installs as a standalone app showing the live floor, replies, and permission Allow/Deny. Full walkthrough (plus a cloudflared alternative and why you shouldn't port-forward): [docs/REMOTE.md](docs/REMOTE.md). Push-style pings still come via Telegram.
 - **Can I use Gander inside VS Code?** Yes — install the [VS Code extension](vscode-extension/): a **goose icon appears in the Activity Bar** (left rail, like any other extension) and docks the live dashboard in the sidebar; the **🚀 status-bar button** / *"Gander: Open Dashboard"* command open it as a full editor tab instead (roomier for the floor view). Same dashboard, same bridge, nothing forked — and it autostarts the bridge if it isn't running.
 - **My scheduled routine's email/calendar didn't work.** Routines run **headlessly** (`claude -p`), and **interactively-authenticated MCP servers** (e.g. the claude.ai Gmail/Calendar connectors) often **aren't available unattended** — they need an interactive login the headless run can't do. Skills and token-based/local MCP servers work fine. Test a routine with **Run now** first to see what's available before relying on a schedule. Also: routines run with the permission mode you pick (default **skip all prompts**, since nothing's there to answer them) — keep briefing routines **read-only**.
 
