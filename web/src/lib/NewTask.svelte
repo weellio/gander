@@ -7,6 +7,8 @@
   let busy = $state(false);
   let result = $state('');
   let box = $state(null);
+  let dispatchOn = $state(false);     // bridge-hosted launches enabled (Settings → Gander Dispatch)
+  let forceTerminal = $state(false);  // per-launch override back to the classic terminal window
 
   async function load() {
     try {
@@ -19,6 +21,7 @@
         cwd = (m && m.path) || projects[0].path;
       }
     } catch (_) { projects = []; }
+    try { dispatchOn = !!(await (await fetch('/api/dispatch-config')).json()).enabled; } catch (_) { dispatchOn = false; }
   }
   $effect(() => { if (open) { result = ''; load(); setTimeout(() => box && box.focus(), 30); } });
 
@@ -26,9 +29,12 @@
     if (!cwd || busy) return;
     busy = true; result = '';
     try {
-      const r = await fetch('/api/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd, prompt: goal.trim() }) });
+      const body = { cwd, prompt: goal.trim() };
+      if (forceTerminal) body.mode = 'terminal';
+      const r = await fetch('/api/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const j = await r.json();
-      if (j && j.ok) { result = '✓ Launched' + (goal.trim() ? ' on your goal' : ''); goal = ''; setTimeout(() => (open = false), 850); }
+      if (j && j.dispatched) { result = '⚡ Dispatched — hosted by the bridge, watch it on the floor'; goal = ''; setTimeout(() => (open = false), 1100); }
+      else if (j && j.ok) { result = '✓ Launched' + (goal.trim() ? ' on your goal' : ''); goal = ''; setTimeout(() => (open = false), 850); }
       else {
         const e = (j && j.error) || 'could not launch';
         result = '✗ ' + e + (/recognized|not found|enoent/i.test(e) ? ' — set the Claude path in Settings → Claude command' : '');
@@ -58,10 +64,13 @@
       {:else}
         <div class="empty">No projects yet — add one in Manage → Projects.</div>
       {/if}
+      {#if dispatchOn}
+        <label class="dsp"><input type="checkbox" bind:checked={forceTerminal} /> Open a terminal window instead <span class="dspdim">(dispatch is ON — default runs inside the bridge: instant replies, Allow/Deny permission buttons)</span></label>
+      {/if}
       {#if result}<div class="res" class:err={result[0] === '✗'}>{result}</div>{/if}
     </div>
     <div class="ft">
-      <span class="hint">Opens a new Claude session in that project, working on the goal. (Blank goal = just start a session.)</span>
+      <span class="hint">{dispatchOn && !forceTerminal ? 'Dispatches a bridge-hosted session working on the goal (blank goal = terminal session).' : 'Opens a new Claude session in that project, working on the goal. (Blank goal = just start a session.)'}</span>
       <button class="go" disabled={busy || !cwd} onclick={launch}>{busy ? 'Launching…' : 'Launch ↵'}</button>
     </div>
   </div>
@@ -85,6 +94,8 @@
   textarea { resize: vertical; line-height: 1.4; }
   .empty { font-size: 11px; color: var(--color-text-tertiary); padding: 6px 0; }
   .res { font-size: 11px; font-weight: 600; color: #10B981; }
+  .dsp { display: flex; align-items: baseline; gap: 6px; font-size: 11px; color: var(--color-text-secondary); cursor: pointer; margin-top: 2px; }
+  .dspdim { font-size: 10px; color: var(--color-text-tertiary); }
   .res.err { color: #EF4444; }
   .ft { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-top: 0.5px solid var(--color-border-tertiary); }
   .hint { font-size: 10px; color: var(--color-text-tertiary); }

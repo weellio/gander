@@ -36,6 +36,7 @@ const projKeyOf = projects.keyOf;   // module ref (snapshot() has a local `proje
 const health = require('./health.js');
 const transcript = require('./transcript.js');
 const search = require('./search.js');
+const dispatch = require('./dispatch.js');
 const STARTED = Date.now();
 let eventsReceived = 0;
 
@@ -430,6 +431,7 @@ function upsert(ev) {
   if (ev.costUSD !== undefined) { existing.costUSD = Number(ev.costUSD) || 0; existing.costManual = true; }
   if (ev.burnRate !== undefined) { existing.burnRate = Number(ev.burnRate) || 0; existing.costManual = true; }
   if (ev.runaway !== undefined) existing.runawayManual = !!ev.runaway;
+  if (ev.dispatch !== undefined) existing.dispatch = !!ev.dispatch;   // bridge-hosted session
   if (ev.state !== undefined) {
     if (!VALID_STATES.includes(ev.state)) return { error: `invalid state: ${ev.state}` };
     existing.state = ev.state;
@@ -1127,6 +1129,40 @@ function driveLifx(color, effect) {
   return lifxRequest('PUT', sel + '/state', L.token, { power: 'on', color: col, brightness: 1.0, fast: true });   // solid
 }
 
+// ── Gander Dispatch (bridge-hosted sessions) ────────────────────────────────
+// Toggle: cfg.dispatch (Settings → App configuration → Gander Dispatch). When ON,
+// ▶ Start / ＋ New task with a goal run the session INSIDE the bridge over
+// bidirectional stream-json — replies are instant and permission prompts become
+// dashboard Allow/Deny buttons. When OFF, everything uses the classic terminal
+// launch + window-automation path, unchanged.
+const permTimers = new Map();   // sessionId:requestId -> delayed Telegram nudge
+function permKey(sess, perm) { return (sess.sessionId || sess.key) + ':' + perm.requestId; }
+dispatch.init({
+  onEvent: (ev) => { const r = upsert(ev); if (r && !r.error && ev.state) console.log(`[dispatch] ${ev.agentId} -> ${ev.state}${ev.log ? '  «' + ev.log + '»' : ''}`); },
+  onPermission: (sess, perm) => {
+    const ctx = { project: sess.project, name: sess.project, awaitMsg: `needs permission: ${perm.tool} ${perm.detail}`, state: 'awaiting' };
+    fireAmbient('awaiting', ctx);
+    // Telegram only if still unanswered after 20s (you may be right there clicking Allow).
+    const k = permKey(sess, perm);
+    permTimers.set(k, setTimeout(() => {
+      permTimers.delete(k);
+      const still = dispatch.pendingList().some((p) => p.requestId === perm.requestId);
+      if (!still) return;
+      lastAwaitingSession = sess.sessionId;
+      sendTelegram(`🔐 <b>Gander</b>\n<b>${sess.project}</b> wants to use <b>${perm.tool}</b>\n<code>${String(perm.detail).slice(0, 180)}</code>\nAllow/Deny on the dashboard: ${tg.dash}`,
+        (mid) => { if (mid && sess.sessionId) alertMsgMap.set(mid, sess.sessionId); });
+    }, 20000));
+  },
+  onPermissionResolved: (sess, perm) => {
+    const k = permKey(sess, perm);
+    if (permTimers.has(k)) { clearTimeout(permTimers.get(k)); permTimers.delete(k); }
+    if (!sess.pending.size) fireAmbient('clear', { project: sess.project, name: sess.project });
+  },
+  onRateLimit: () => {},   // surfaced via snapshot() → /api/state
+  onExit: () => {},
+  log: (...a) => console.log(...a),
+});
+
 function snapshot() {
   const list = Array.from(agents.values());
   for (const a of list) {
@@ -1149,7 +1185,19 @@ function snapshot() {
   }));
   const pending = {};
   for (const [sid, q] of commands) if (q.length) pending[sid] = q.length;
-  return { agents: list, projects, muted: [...muted], pending, budget: budgetState };
+  // decorate hosted agents with their first pending permission so tiles/modal can Allow/Deny
+  const perms = dispatch.pendingList();
+  for (const a of list) {
+    if (!a.root || !a.sessionId) continue;
+    const mine = perms.filter((p) => p.sessionId === a.sessionId);
+    a.perm = mine.length ? { requestId: mine[0].requestId, tool: mine[0].tool, detail: mine[0].detail, hasSuggestions: !!(mine[0].suggestions || []).length, ts: mine[0].ts } : undefined;
+    a.permCount = mine.length || undefined;
+    if (dispatch.isHosted(a.sessionId)) a.dispatch = true;
+  }
+  return {
+    agents: list, projects, muted: [...muted], pending, budget: budgetState,
+    dispatch: { enabled: !!cfg.dispatch, sessions: dispatch.list().length, permissions: perms.length, rateLimit: dispatch.rateLimit() },
+  };
 }
 
 // ── Claude Code hook payload → registry events ───────────────────────────────
@@ -1468,6 +1516,14 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/command' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    // Bridge-hosted (dispatched) session: deliver over its stdin RIGHT NOW — no
+    // queueing, no waiting for the next hook check-in, no window automation.
+    if (body.sessionId && dispatch.isHosted(body.sessionId)) {
+      const type = body.type || 'message';
+      const r = type === 'stop' ? dispatch.interrupt(body.sessionId) : dispatch.send(body.sessionId, body.text);
+      if (r.ok) console.log(`[command→dispatch] ${body.sessionId} <- ${type}`);
+      return sendJson(res, r.error ? 400 : 200, r.ok ? { ...r, instant: true } : r);
+    }
     const r = queueCommand(body.sessionId, body.type || 'message', body.text);
     if (!r.error) {
       console.log(`[command] ${body.sessionId} <- ${body.type || 'message'}: ${String(body.text || '').slice(0, 60)}`);
@@ -1493,6 +1549,15 @@ const server = http.createServer(async (req, res) => {
     if (!cwd) { try { const t = await transcript.read(body.sessionId); cwd = t && t.cwd; } catch (_) {} }
     if (!cwd || !fs.existsSync(cwd)) return sendJson(res, 200, { ok: false, error: 'could not find the session working directory' });
     if (!assertCwd(res, cwd)) return;
+    // Dispatch mode: resume the parked session INTO the bridge instead of a one-shot
+    // headless turn — it stays hosted (instant follow-ups, permission buttons) until
+    // it goes quiet. The message travels over stdin, so no shell-line sanitising.
+    if (cfg.dispatch && !dispatch.isHosted(body.sessionId)) {
+      const rd = dispatch.start({ cwd, prompt: String(body.text), resume: body.sessionId, permMode: cfg.launchPermMode || '', cli: claudeCliRaw(), extraFlags: cfg.launchFlags });
+      if (rd.ok) { console.log(`[resume→dispatch] ${body.sessionId}`); return sendJson(res, 200, { ok: true, delivered: 'dispatch' }); }
+      // fall through to the classic one-shot resume if dispatch couldn't start
+    }
+    if (dispatch.isHosted(body.sessionId)) return sendJson(res, 200, dispatch.send(body.sessionId, body.text));
     const text = String(body.text).replace(/["`$%\r\n]+/g, ' ').trim().slice(0, 4000);   // rides in "..." on the shell line
     if (!text) return sendJson(res, 400, { error: 'empty message' });
     const cli = (cfg.claudeCmd && String(cfg.claudeCmd).trim()) || 'claude';
@@ -1584,8 +1649,38 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     if (!body || !body.cwd) return sendJson(res, 400, { error: 'cwd required' });
     if (!fs.existsSync(body.cwd)) return sendJson(res, 400, { error: 'path not found' });
+    // Gander Dispatch: when enabled (and not overridden per-launch with mode:"terminal"),
+    // a launch WITH a goal runs inside the bridge — no terminal window, instant replies,
+    // dashboard-native permission prompts. A goal-less launch always opens a terminal
+    // (an interactive session with nobody typing into it has nothing to do headless).
+    const wantDispatch = !!cfg.dispatch && body.mode !== 'terminal' && String(body.prompt || '').trim();
+    if (wantDispatch) {
+      if (!assertCwd(res, body.cwd)) return;
+      const r = dispatch.start({ cwd: body.cwd, prompt: body.prompt, resume: body.resume, permMode: cfg.launchPermMode || '', cli: claudeCliRaw(), extraFlags: cfg.launchFlags });
+      return sendJson(res, r.error ? 400 : 200, r.error ? r : { ...r, dispatched: true });
+    }
     const r = launchSession(body.cwd, body.resume, body.prompt);
     if (r.ok) captureWin(body.cwd);   // remember the window's PID so quick-keys/nudge can reach it
+    return sendJson(res, r.error ? 400 : 200, r);
+  }
+
+  // ── Gander Dispatch: config toggle + permission surface ────────────────────
+  if (url === '/api/dispatch-config' && req.method === 'GET') {
+    return sendJson(res, 200, { enabled: !!cfg.dispatch, sessions: dispatch.list(), rateLimit: dispatch.rateLimit() });
+  }
+  if (url === '/api/dispatch-config' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (body && body.enabled !== undefined) { cfg.dispatch = !!body.enabled; saveConfig(); console.log(`[dispatch] ${cfg.dispatch ? 'enabled' : 'disabled — falling back to terminal launch + window automation'}`); }
+    return sendJson(res, 200, { ok: true, enabled: !!cfg.dispatch });
+  }
+  if (url === '/api/permissions' && req.method === 'GET') {
+    return sendJson(res, 200, { pending: dispatch.pendingList() });
+  }
+  if (url === '/api/permissions/answer' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.sessionId || !body.requestId) return sendJson(res, 400, { error: 'sessionId and requestId required' });
+    const r = dispatch.answerPermission(body.sessionId, body.requestId, { behavior: body.behavior, applySuggestions: !!body.applySuggestions, message: body.message });
+    if (r.ok) console.log(`[permission] ${body.sessionId} ${r.behavior} ${body.requestId}`);
     return sendJson(res, r.error ? 400 : 200, r);
   }
 

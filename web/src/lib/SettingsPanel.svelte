@@ -27,7 +27,12 @@
     loading = false;
   }
 
-  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); if (cwd) loadConfig(); }
+  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); if (cwd) loadConfig(); }
+
+  // ── Gander Dispatch (bridge-hosted sessions) ──
+  let dpOpen = $state(false); let dpOn = $state(false); let dpStatus = $state(''); let dpSessions = $state(0);
+  async function loadDispatch() { try { const j = await (await fetch('/api/dispatch-config')).json(); dpOn = !!j.enabled; dpSessions = (j.sessions || []).length; } catch (_) {} }
+  async function saveDispatch() { dpStatus = 'Saving…'; const r = await post('/api/dispatch-config', { enabled: dpOn }); dpStatus = r && r.ok ? (dpOn ? '✓ Dispatch ON' : '✓ Dispatch off — classic terminal launch') : 'Error'; setTimeout(() => (dpStatus = ''), 2200); }
 
   // ── cost budget (global) ──
   let bud = $state(null); let budDaily = $state(''); let budSession = $state(''); let budStatus = $state(''); let budOpen = $state(false); let budEnforce = $state(false);
@@ -177,6 +182,21 @@
 
     {#if scope === 'app'}
     <div class="appscroll">
+    <div class="tg">
+      <button class="collapser" onclick={() => (dpOpen = !dpOpen)}>
+        <span class="caret">{dpOpen ? '▾' : '▸'}</span> ⚡ Gander Dispatch
+        <span class="tg-state">· {dpOn ? `ON${dpSessions ? ` · ${dpSessions} hosted` : ''}` : 'off (terminal launch)'}</span>
+      </button>
+      {#if dpOpen}
+        <div class="tg-form">
+          <label class="cbrow"><input type="checkbox" bind:checked={dpOn} onchange={saveDispatch} /> <b>Host sessions in the bridge</b> <span class="dim">(no terminal window)</span></label>
+          {#if dpStatus}<div class="tg-status">{dpStatus}</div>{/if}
+          <div class="tg-hint">When ON, <b>▶ Start</b> / <b>＋ New task</b> with a goal (and <b>⤳ Resume</b> replies) run the session <b>inside the bridge</b> over stream-json instead of opening a terminal: replies deliver <b>instantly</b> (no window-typing), <b>permission prompts become Allow / Deny buttons</b> right on the dashboard and in the 🔔 rail, and it works with the dashboard on your phone. Runs on your own <code>claude</code> login — plan quota, no API key.</div>
+          <div class="tg-hint">When OFF (or per-launch via “terminal instead” in ＋ New task), everything uses the classic method: a real terminal window + quick-keys/nudge window automation — nothing is removed. Goal-less ▶ Start always opens a terminal either way (an interactive session needs a keyboard). Hosted sessions still write normal transcripts, so History/Resume/cost all keep working.</div>
+        </div>
+      {/if}
+    </div>
+
     <div class="tg">
       <button class="collapser" onclick={() => (tgOpen = !tgOpen)}>
         <span class="caret">{tgOpen ? '▾' : '▸'}</span> Telegram alerts

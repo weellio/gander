@@ -151,6 +151,22 @@
     } catch (_) { showFlash('✗ Failed — is the bridge running?'); }
     finally { busy = ''; }
   }
+  // Dispatch permission prompt → structured Allow/Deny straight to the CLI's
+  // control channel (no window automation involved).
+  async function answerPerm(behavior, applySuggestions) {
+    if (!agent || !agent.perm || busy) return;
+    busy = 'perm';
+    try {
+      const r = await fetch('/api/permissions/answer', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: sid, requestId: agent.perm.requestId, behavior, applySuggestions }),
+      });
+      const j = await r.json();
+      if (j && j.ok) showFlash(behavior === 'allow' ? '✓ Allowed — Claude continues' : '✕ Denied — Claude will adjust');
+      else showFlash('✗ ' + ((j && j.error) || 'failed'));
+    } catch (_) { showFlash('✗ Failed — is the bridge running?'); }
+    finally { busy = ''; refresh(); }
+  }
   async function openIn(target) {
     if (!agent || !agent.cwd) return;
     try { await fetch('/api/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: agent.cwd, target }) }); } catch (_) {}
@@ -244,11 +260,26 @@
       </div>
       {#if agent.cwd}<div class="path mono">{agent.cwd}</div>{/if}
 
-      {#if agent.state === 'awaiting'}
+      {#if agent.perm}
+        <div class="permcard">
+          <div class="perm-h">🔐 Permission request{#if agent.permCount > 1}<span class="dim2"> · {agent.permCount} pending</span>{/if}</div>
+          <div class="perm-tool"><b>{agent.perm.tool}</b>{#if agent.perm.detail}<span class="mono pdet">{agent.perm.detail}</span>{/if}</div>
+          <div class="perm-btns">
+            <button class="pallow" disabled={busy === 'perm'} onclick={() => answerPerm('allow', false)}>✓ Allow</button>
+            {#if agent.perm.hasSuggestions}<button class="pallow soft" disabled={busy === 'perm'} onclick={() => answerPerm('allow', true)} title="Allow and apply Claude's suggested rule (e.g. auto-accept edits) for the rest of this session">✓ Allow &amp; don't ask again</button>{/if}
+            <button class="pdeny" disabled={busy === 'perm'} onclick={() => answerPerm('deny', false)}>✕ Deny</button>
+          </div>
+          <div class="await-note">Dispatch session — this answers Claude directly over the bridge (no terminal involved). Deny tells it to adjust course; add context in the reply box below.</div>
+        </div>
+      {:else if agent.state === 'awaiting'}
         <div class="await">
           <div class="await-h">🔔 Waiting on you</div>
           <div class="await-msg">{agent.awaitMsg || 'Claude is waiting for your input.'}</div>
-          <div class="await-note">The exact menu lives in the terminal — Gander can't read it. Open it (<b>Open in VS Code</b>) to see the options, then answer with the keys below (e.g. <b>1</b> = first option, <b>y</b>/<b>n</b>, <b>↵</b>).</div>
+          {#if agent.dispatch}
+            <div class="await-note">Dispatch session — just type your answer in the reply box below; it delivers instantly.</div>
+          {:else}
+            <div class="await-note">The exact menu lives in the terminal — Gander can't read it. Open it (<b>Open in VS Code</b>) to see the options, then answer with the keys below (e.g. <b>1</b> = first option, <b>y</b>/<b>n</b>, <b>↵</b>).</div>
+          {/if}
         </div>
       {/if}
 
@@ -337,7 +368,7 @@
         </div>
       {/if}
 
-      {#if agent.cwd}
+      {#if agent.cwd && !agent.dispatch}
         <div class="keys" class:awaiting={agent.state === 'awaiting'} title="Types the key into this session's terminal window — keep the Claude terminal focused there.">
           <span class="klbl">⌨ Answer a prompt{#if agent.state === 'awaiting'} <span class="now">· waiting on you</span>{/if}</span>
           <div class="kbtns">
@@ -372,7 +403,11 @@
         {#if dropActive}<div class="dropmask">Drop image to ask about it</div>{/if}
       </div>
       {#if flash}<div class="flash" class:err={flash[0] === '✗' || flash[0] === '⚠'}>{flash}</div>{/if}
-      <div class="foot">Replies deliver when the agent next checks in. “Stop” halts it at its next tool. Drop/paste an image and Claude saves + Reads it.</div>
+      {#if agent.dispatch}
+        <div class="foot">⚡ Dispatch session — hosted by the bridge. Replies deliver <b>instantly</b>; “Stop” interrupts the current turn. Drop/paste an image and Claude saves + Reads it.</div>
+      {:else}
+        <div class="foot">Replies deliver when the agent next checks in. “Stop” halts it at its next tool. Drop/paste an image and Claude saves + Reads it.</div>
+      {/if}
     {:else}
       <div class="dim" style="padding:8px 4px">Agent not found — it may have finished.</div>
       <button onclick={onClose}>Close</button>
@@ -487,6 +522,18 @@
   .actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .await { border: 0.5px solid #F59E0B; background: color-mix(in srgb, #F59E0B 10%, var(--color-background-secondary));
     border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+  .permcard { border: 0.5px solid #8B5CF6; background: color-mix(in srgb, #8B5CF6 10%, var(--color-background-secondary));
+    border-radius: 8px; padding: 9px 11px; display: flex; flex-direction: column; gap: 6px; }
+  .perm-h { font-size: 11px; font-weight: 700; color: #8B5CF6; }
+  .perm-tool { font-size: 12.5px; color: var(--color-text-primary); word-break: break-word; }
+  .perm-tool .pdet { font-size: 11px; color: var(--color-text-secondary); margin-left: 6px; }
+  .perm-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pallow { font-size: 12px; font-weight: 600; padding: 5px 14px; border-radius: 6px; cursor: pointer; border: none; background: #10B981; color: #fff; }
+  .pallow.soft { background: transparent; border: 0.5px solid #10B981; color: #10B981; }
+  .pallow:hover:not(:disabled) { filter: brightness(1.08); }
+  .pdeny { font-size: 12px; font-weight: 600; padding: 5px 14px; border-radius: 6px; cursor: pointer; border: 0.5px solid #EF4444; background: transparent; color: #EF4444; }
+  .pdeny:hover:not(:disabled) { background: #EF4444; color: #fff; }
+  .perm-btns button:disabled { opacity: 0.55; cursor: default; }
   .await-h { font-size: 11px; font-weight: 700; color: #B7791F; }
   .await-msg { font-size: 12px; color: var(--color-text-primary); white-space: pre-wrap; }
   .await-note { font-size: 10px; color: var(--color-text-tertiary); line-height: 1.45; }

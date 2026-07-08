@@ -32,7 +32,9 @@ describe('history.list()', () => {
 
   test('each session object has the expected shape keys when sessions exist', async () => {
     const sessions = await history.list({ limit: 5 });
-    const required = ['sessionId', 'cwd', 'project', 'startedAt', 'lastActive', 'firstPrompt', 'messageCount', 'resumeCmd'];
+    // matches the documented shape in bridge/history.js (no messageCount — the
+    // index is stat-only by design; 'bytes' is the size signal)
+    const required = ['sessionId', 'cwd', 'project', 'startedAt', 'lastActive', 'firstPrompt', 'bytes', 'resumeCmd'];
     for (const s of sessions) {
       for (const key of required) {
         assert.ok(Object.prototype.hasOwnProperty.call(s, key), `session missing key: ${key}`);

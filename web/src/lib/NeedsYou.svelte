@@ -7,6 +7,14 @@
   let sentId = $state(null);
 
   const sid = (a) => a.sessionId || String(a.id).replace(/^sess:/, '');
+  // dispatch permission request → structured Allow/Deny (no window automation)
+  async function perm(a, behavior) {
+    if (!a.perm) return;
+    try {
+      await fetch('/api/permissions/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: sid(a), requestId: a.perm.requestId, behavior }) });
+      sentId = a.id + ':' + behavior; setTimeout(() => { if (sentId === a.id + ':' + behavior) sentId = null; }, 1100);
+    } catch (_) {}
+  }
   async function key(a, keys, label) {
     try {
       await fetch('/api/sendkeys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: sid(a), keys }) });
@@ -60,7 +68,12 @@
             <div class="nu-body">
               <div class="nu-title">{a.name || a.id}{#if a.project}<span class="nu-proj">{a.project}</span>{/if}{#if age(a)}<span class="nu-age">{age(a)}</span>{/if}</div>
               <div class="nu-sub">{a.state === 'awaiting' ? (a.awaitMsg || 'needs your input') : a.state === 'error' ? 'errored — take a look' : 'finished — give it the next task?'}</div>
-              {#if a.state === 'awaiting'}
+              {#if a.perm}
+                <div class="nu-keys" title="Dispatch session — answers Claude directly over the bridge">
+                  <button class="kk allow" class:sent={sentId === a.id + ':allow'} onclick={() => perm(a, 'allow')}>✓ Allow {a.perm.tool}</button>
+                  <button class="kk deny" class:sent={sentId === a.id + ':deny'} onclick={() => perm(a, 'deny')}>✕ Deny</button>
+                </div>
+              {:else if a.state === 'awaiting' && !a.dispatch}
                 <div class="nu-keys" title="Types into the session's terminal — keep that window focused">
                   {#each KEYS as [lbl, k] (lbl)}<button class="kk" class:sent={sentId === a.id + ':' + lbl} onclick={() => key(a, k, lbl)}>{lbl}</button>{/each}
                 </div>
@@ -105,6 +118,10 @@
     border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-primary); font-family: var(--font-mono); }
   .kk:hover { border-color: var(--accent, #6366F1); }
   .kk.sent { background: var(--accent, #6366F1); color: #fff; }
+  .kk.allow { border-color: #10B981; color: #10B981; font-weight: 600; }
+  .kk.allow:hover { background: #10B981; color: #fff; }
+  .kk.deny { border-color: #EF4444; color: #EF4444; font-weight: 600; }
+  .kk.deny:hover { background: #EF4444; color: #fff; }
   .nu-actcol { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
   .nu-act { font-size: 11px; padding: 3px 9px; border-radius: 5px; cursor: pointer;
     border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-primary); }

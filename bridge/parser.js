@@ -266,7 +266,7 @@ function createParser() {
   };
 }
 
-module.exports = { parseLine, createParser, stateForTool };
+module.exports = { parseLine, createParser, stateForTool, detailForTool };
 
 // ── CLI mode ─────────────────────────────────────────────────────────────────
 function getPort() {
