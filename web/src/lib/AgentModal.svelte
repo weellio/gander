@@ -362,15 +362,15 @@
 
       {#if agent.cwd || sid}
         <div class="actions">
-          {#if sid}<button class="select" onclick={() => (txId = sid)}>📄 Transcript</button>{/if}
-          {#if sid && onReplay}<button class="select" onclick={() => onReplay(sid)} title="Replay this session on a timeline — states, tools, cumulative cost">⏪ Replay</button>{/if}
+          {#if sid && !agent.desktop}<button class="select" onclick={() => (txId = sid)}>📄 Transcript</button>{/if}
+          {#if sid && !agent.desktop && onReplay}<button class="select" onclick={() => onReplay(sid)} title="Replay this session on a timeline — states, tools, cumulative cost">⏪ Replay</button>{/if}
           {#if agent.winPid}<button class="select" onclick={focusWindow} title="Bring this session's terminal window to the front (the window Gander captured when it launched)">🪟 Focus window</button>{/if}
           {#if agent.cwd}<button class="select" onclick={() => openIn('folder')}>📂 Open folder</button>{/if}
           {#if agent.cwd}<button class="select" onclick={() => openIn('editor')}>Open in VS Code</button>{/if}
         </div>
       {/if}
 
-      {#if agent.cwd && !agent.dispatch}
+      {#if agent.cwd && !agent.dispatch && !agent.desktop}
         <div class="keys" class:awaiting={agent.state === 'awaiting'} title="Types the key into this session's terminal window — keep the Claude terminal focused there.">
           <span class="klbl">⌨ Answer a prompt{#if agent.state === 'awaiting'} <span class="now">· waiting on you</span>{/if}</span>
           <div class="kbtns">
@@ -387,6 +387,10 @@
         </div>
       {/if}
 
+      {#if agent.desktop}
+        <div class="foot">🖥 <b>Claude Desktop</b> — watched via its local logs (MCP tool calls, agent-mode activity). Conversations live on claude.ai, so this tile is <b>view-only</b>: there's no reply/stop channel into the app. If its agent mode runs Claude Code with your global hooks, those sessions appear as normal tiles too.</div>
+      {/if}
+      {#if !agent.desktop}
       {#if pendingImage}
         <div class="attach">
           <img src={pendingImage.dataUrl} alt="attachment" />
@@ -409,6 +413,7 @@
         <div class="foot">⚡ Dispatch session — hosted by the bridge. Replies deliver <b>instantly</b>; “Stop” interrupts the current turn. Drop/paste an image and Claude saves + Reads it.</div>
       {:else}
         <div class="foot">Replies deliver when the agent next checks in. “Stop” halts it at its next tool. Drop/paste an image and Claude saves + Reads it.</div>
+      {/if}
       {/if}
     {:else}
       <div class="dim" style="padding:8px 4px">Agent not found — it may have finished.</div>

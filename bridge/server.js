@@ -41,6 +41,7 @@ const queue = require('./queue.js');
 const digest = require('./digest.js');
 const replay = require('./replay.js');
 const fleet = require('./fleet.js');
+const desktop = require('./desktop.js');
 const STARTED = Date.now();
 let eventsReceived = 0;
 
@@ -436,6 +437,7 @@ function upsert(ev) {
   if (ev.burnRate !== undefined) { existing.burnRate = Number(ev.burnRate) || 0; existing.costManual = true; }
   if (ev.runaway !== undefined) existing.runawayManual = !!ev.runaway;
   if (ev.dispatch !== undefined) existing.dispatch = !!ev.dispatch;   // bridge-hosted session
+  if (ev.desktop !== undefined) existing.desktop = !!ev.desktop;      // Claude Desktop watcher tile (view-only)
   if (ev.state !== undefined) {
     if (!VALID_STATES.includes(ev.state)) return { error: `invalid state: ${ev.state}` };
     existing.state = ev.state;
@@ -2449,6 +2451,8 @@ server.listen(argPort, BIND_HOST, () => {
   setInterval(queueTick, 10000); setTimeout(queueTick, 5000);  // task-queue scheduler
   // fleet hub: poll configured peer bridges and merge their agents onto this floor
   if (cfg.fleet && Array.isArray(cfg.fleet.peers) && cfg.fleet.peers.length) { fleet.configure(cfg.fleet); fleet.start(); console.log(`[fleet] polling ${cfg.fleet.peers.length} peer(s)`); }
+  // Claude Desktop watcher: auto-activates when the app is installed (cfg.desktopWatch=false to disable)
+  if (cfg.desktopWatch !== false) desktop.start({ onEvent: (ev) => upsert(ev), log: (...a) => console.log(...a) });
   license.verify(LICENSE_KEY, cfg.gumroadProduct).then((s) => { licenseState = s; console.log(`[license] ${s.mode}`); });
 });
 
