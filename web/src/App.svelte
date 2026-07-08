@@ -114,6 +114,7 @@
       }
       prevErrors = nowErrors;
       budget = d.budget || null;
+      dispatchInfo = d.dispatch || null;
       if (!firstPoll && budget?.overDaily && !prevOverBudget) { playChime(); if ($desktopNotify) notifyDesktop({ name: 'Cost budget', project: `today $${budget.dailyCost.toFixed(2)} (cap $${budget.daily})` }); }
       if (budget && !budget.overDaily) budgetDismissed = false;
       prevOverBudget = !!budget?.overDaily;
@@ -123,6 +124,17 @@
   }
   let usage = $state(null);
   let budget = $state(null);
+  // Plan-quota pacing: rolling 5h spend from transcripts + (when a dispatch
+  // session has reported one) the REAL rate-limit window state from the CLI.
+  let dispatchInfo = $state(null);
+  let rl = $derived(dispatchInfo?.rateLimit || null);
+  let rlBlocked = $derived(rl && rl.status && rl.status !== 'allowed');
+  let rlResetIn = $derived.by(() => {
+    if (!rl?.resetsAt) return '';
+    const s = Math.max(0, Math.round(rl.resetsAt * 1000 - Date.now()) / 1000);
+    const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  });
   let prevOverBudget = false;
   let budgetDismissed = $state(false);
   async function pollUsage() { try { const r = await fetch('/api/usage'); usage = await r.json(); } catch (_) {} }
@@ -354,6 +366,9 @@
       <button onclick={() => (budgetDismissed = true)}>Dismiss</button>
     </div>
   {/if}
+  {#if rlBlocked}
+    <div class="lic">⚡ Your plan's rate limit is in effect{rl?.resetsAt ? ` — the ${String(rl.rateLimitType || '').replace('_', '-')} window resets in ${rlResetIn} (${new Date(rl.resetsAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''}. Sessions will queue or refuse until then; the task queue keeps your goals lined up.</div>
+  {/if}
   {#if healthInfo && healthInfo.hooks && healthInfo.hooks.installed === false}
     <div class="lic">⚙ Gander hooks aren't installed yet — sessions won't report in. Run <code>node install.js</code>, then <code>/hooks</code> (or restart).
       <button onclick={() => (panels.health = true)}>Check status</button>
@@ -507,6 +522,11 @@
     <strong>{selectedProject || 'All open projects'}</strong>
     <span>· {sessionCount} session{sessionCount === 1 ? '' : 's'} · {shown.length} agent{shown.length === 1 ? '' : 's'}</span>
     {#if usage?.totals}<span class="cost" title="Estimated from ~/.claude transcripts">💰 today ${todayCost?.toFixed(2) ?? '0.00'} · total ${usage.totals.costUSD.toFixed(0)}</span>{/if}
+    {#if usage?.window5h?.messages}
+      <span class="cost" class:rlhot={rlBlocked} title={'Plan-quota pacing: spend that landed in the last 5 hours (the window subscription plans meter on)' + (rl?.resetsAt ? '. Window reset time reported live by a dispatched session.' : '. Start a dispatched session to see the live window reset time.')}>
+        ⚡ 5h ${usage.window5h.costUSD.toFixed(2)}{#if rl?.resetsAt}&nbsp;· resets {rlResetIn}{/if}{#if rlBlocked}&nbsp;· LIMIT{/if}
+      </span>
+    {/if}
     {#if errorCount > 0}<button class="errchip" onclick={() => openP('feed')} title="Open the activity feed">⚠ {errorCount} error{errorCount === 1 ? '' : 's'}</button>{/if}
     {#each Object.entries(counts) as [state, n] (state)}
       <span class="cnt"><i style="background:{STATE_COLORS[state] || '#888'}"></i>{STATE_LABEL[state] || state} {n}</span>
@@ -604,6 +624,7 @@
   .statusbar { font-size: 11px; color: var(--color-text-secondary); flex-wrap: wrap; }
   .cnt { display: inline-flex; align-items: center; gap: 4px; }
   .cost { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary); }
+  .cost.rlhot { color: #EF4444; font-weight: 700; }
   .errchip { font-size: 11px; padding: 2px 9px; border-radius: 99px; cursor: pointer; border: 0.5px solid #EF4444;
     background: rgba(239, 68, 68, 0.12); color: #EF4444; font-weight: 600; animation: errpulse 1.6s ease-in-out infinite; }
   @keyframes errpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }

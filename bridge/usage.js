@@ -209,6 +209,12 @@ async function build() {
   const days = new Map();     // 'YYYY-MM-DD' -> { costUSD, tokens }
   const sessions = new Map(); // sessionId -> acc
 
+  // Rolling 5-hour window — the granularity subscription plans meter on. Pure
+  // "recent burn" telemetry: how much landed in the last 5h across all sessions.
+  // (The window's actual reset time comes live from dispatch rate_limit_events.)
+  const windowStartMs = Date.now() - 5 * 3600 * 1000;
+  const window5h = { costUSD: 0, tokens: 0, outputTokens: 0, messages: 0 };
+
   for (const entry of entries) {
     const sessionId = path.basename(entry.file).replace(/\.jsonl$/i, '');
     // Dedup streaming partials: same request/message id is logged many times.
@@ -237,6 +243,12 @@ async function build() {
       const ts = o.timestamp || null;
       const tokens = input + output + cacheWrite + cacheRead;
       const cost = costOf(model, input, output, cacheWrite, cacheRead, overrides);
+
+      // rolling 5h window
+      if (ts) {
+        const tms = Date.parse(ts);
+        if (tms >= windowStartMs) { window5h.costUSD += cost; window5h.tokens += tokens; window5h.outputTokens += output; window5h.messages++; }
+      }
 
       // totals
       totals.inputTokens += input;
@@ -389,6 +401,7 @@ async function build() {
     byDay,
     topSessions,
     bySession,
+    window5h,
     generatedAt: new Date().toISOString(),
     fileCount: entries.length,
   };
@@ -419,6 +432,7 @@ function emptyShape() {
     byDay,
     topSessions: [],
     bySession: {},
+    window5h: { costUSD: 0, tokens: 0, outputTokens: 0, messages: 0 },
     generatedAt: new Date().toISOString(),
     fileCount: 0,
   };
