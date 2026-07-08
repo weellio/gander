@@ -38,6 +38,7 @@ const transcript = require('./transcript.js');
 const search = require('./search.js');
 const dispatch = require('./dispatch.js');
 const queue = require('./queue.js');
+const digest = require('./digest.js');
 const STARTED = Date.now();
 let eventsReceived = 0;
 
@@ -1766,6 +1767,16 @@ const server = http.createServer(async (req, res) => {
 
   if (url === '/api/usage' && req.method === 'GET') {
     return sendJson(res, 200, await usage.summaryAsync());
+  }
+
+  // Ship digest — deterministic "what got done" from transcripts + git (no model calls)
+  if (url === '/api/digest' && req.method === 'GET') {
+    const u2 = new URL(req.url, 'http://localhost');
+    const days = Number(u2.searchParams.get('days')) || 7;
+    try {
+      const d = await digest.build({ days }, { projectPaths: () => projects.discover().map((p) => p.path) });
+      return sendJson(res, 200, { ...d, markdown: digest.toMarkdown(d) });
+    } catch (e) { return sendJson(res, 500, { error: e.message }); }
   }
 
   if (url === '/api/suggestions' && req.method === 'GET') {
