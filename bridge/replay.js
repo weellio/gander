@@ -270,7 +270,9 @@ async function build(sessionId, opts = {}) {
   return {
     ok: true,
     sessionId: sessionId || null,
-    project: cwd ? path.basename(cwd) : null,
+    // split on BOTH separators — a transcript written on Windows can be parsed
+    // on Linux (CI), where path.basename() won't split "C:\a\b"
+    project: cwd ? (String(cwd).split(/[\\/]/).filter(Boolean).pop() || null) : null,
     cwd: cwd || null,
     startedAt: startMs !== null ? new Date(startMs).toISOString() : null,
     endedAt: lastMs !== null ? new Date(lastMs).toISOString() : null,
