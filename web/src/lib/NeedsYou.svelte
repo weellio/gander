@@ -32,12 +32,13 @@
     return Math.round(s / 3600) + 'h';
   }
 
-  // awaiting (oldest first = most urgent) → error → finished roots.
+  // awaiting (oldest first = most urgent) → error → stalled mid-goal → finished roots.
+  const stateOf = (a) => (a.state === 'idle' && a.stalled ? 'stalled' : a.state);
   let items = $derived.by(() => {
-    const rank = { awaiting: 0, error: 1, done: 2 };
+    const rank = { awaiting: 0, error: 1, stalled: 2, done: 3 };
     return agents
-      .filter((a) => a.state === 'awaiting' || a.state === 'error' || (a.state === 'done' && a.root))
-      .sort((x, y) => (rank[x.state] - rank[y.state]) || ((x.updatedAt || 0) - (y.updatedAt || 0)));
+      .filter((a) => a.state === 'awaiting' || a.state === 'error' || (a.state === 'idle' && a.stalled) || (a.state === 'done' && a.root))
+      .sort((x, y) => (rank[stateOf(x)] - rank[stateOf(y)]) || ((x.updatedAt || 0) - (y.updatedAt || 0)));
   });
   let count = $derived(items.length + (budget?.overDaily ? 1 : 0));
   const KEYS = [['1', '1'], ['2', '2'], ['3', '3'], ['↑', '{UP}'], ['↓', '{DOWN}'], ['y', 'y'], ['n', 'n'], ['↵', '{ENTER}'], ['esc', '{ESC}']];
@@ -63,17 +64,17 @@
           </div>
         {/if}
         {#each items as a (a.id)}
-          <div class="nu-item {a.state}">
-            <span class="nu-ic">{a.state === 'awaiting' ? '🔔' : a.state === 'error' ? '⚠️' : '✅'}</span>
+          <div class="nu-item {stateOf(a)}">
+            <span class="nu-ic">{stateOf(a) === 'awaiting' ? '🔔' : stateOf(a) === 'error' ? '⚠️' : stateOf(a) === 'stalled' ? '💤' : '✅'}</span>
             <div class="nu-body">
               <div class="nu-title">{a.name || a.id}{#if a.project}<span class="nu-proj">{a.project}</span>{/if}{#if age(a)}<span class="nu-age">{age(a)}</span>{/if}</div>
-              <div class="nu-sub">{a.state === 'awaiting' ? (a.awaitMsg || 'needs your input') : a.state === 'error' ? 'errored — take a look' : 'finished — give it the next task?'}</div>
+              <div class="nu-sub">{stateOf(a) === 'awaiting' ? (a.awaitMsg || 'needs your input') : stateOf(a) === 'error' ? 'errored — take a look' : stateOf(a) === 'stalled' ? `went quiet mid-goal — its last message looks like a question${a.goal ? ' · “' + String(a.goal).slice(0, 60) + '”' : ''}` : 'finished — give it the next task?'}</div>
               {#if a.perm}
                 <div class="nu-keys" title="Dispatch session — answers Claude directly over the bridge">
                   <button class="kk allow" class:sent={sentId === a.id + ':allow'} onclick={() => perm(a, 'allow')}>✓ Allow {a.perm.tool}</button>
                   <button class="kk deny" class:sent={sentId === a.id + ':deny'} onclick={() => perm(a, 'deny')}>✕ Deny</button>
                 </div>
-              {:else if a.state === 'awaiting' && !a.dispatch}
+              {:else if (a.state === 'awaiting' || stateOf(a) === 'stalled') && !a.dispatch}
                 <div class="nu-keys" title="Types into the session's terminal — keep that window focused">
                   {#each KEYS as [lbl, k] (lbl)}<button class="kk" class:sent={sentId === a.id + ':' + lbl} onclick={() => key(a, k, lbl)}>{lbl}</button>{/each}
                 </div>
@@ -107,6 +108,7 @@
   .nu-item + .nu-item { border-top: 0.5px solid var(--color-border-tertiary); }
   .nu-item.awaiting { background: #F59E0B12; }
   .nu-item.error { background: #EF44440f; }
+  .nu-item.stalled { background: #6366F10f; }
   .nu-ic { font-size: 14px; flex-shrink: 0; line-height: 1.4; }
   .nu-body { flex: 1 1 auto; min-width: 0; }
   .nu-title { font-size: 12.5px; font-weight: 600; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }

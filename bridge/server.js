@@ -42,6 +42,7 @@ const digest = require('./digest.js');
 const replay = require('./replay.js');
 const fleet = require('./fleet.js');
 const desktop = require('./desktop.js');
+const patterns = require('./patterns.js');
 const STARTED = Date.now();
 let eventsReceived = 0;
 
@@ -426,6 +427,7 @@ function upsert(ev) {
   if (ev.color !== undefined) existing.color = ev.color;   // agent's defined front-matter color
   if (ev.model !== undefined) existing.model = ev.model;   // agent's defined model
   if (ev.awaitMsg !== undefined) existing.awaitMsg = ev.awaitMsg;   // why it's waiting on you
+  if (ev.goal !== undefined && ev.goal) existing.goal = ev.goal;    // current task (last substantive prompt)
   if (ev.parentId !== undefined) existing.parentId = String(ev.parentId);
   if (ev.project !== undefined) existing.project = ev.project;
   if (ev.sessionId !== undefined) existing.sessionId = ev.sessionId;
@@ -927,6 +929,19 @@ function buildSuggestions() {
   return { suggestions: out, scanned: files.length };
 }
 
+// Prompt habits + skill usage share one streaming transcript scan (patterns.js).
+// The scan reads every recent transcript, so cache it briefly; concurrent
+// requests (Tune panel + Skills panel opening together) share one in-flight scan.
+const PATTERNS_TTL = 5 * 60 * 1000;
+let patternsCache = { at: 0, days: 0, promise: null };
+function patternsScan(days) {
+  const now = Date.now();
+  if (patternsCache.promise && patternsCache.days === days && now - patternsCache.at < PATTERNS_TTL) return patternsCache.promise;
+  const p = patterns.scan({ days }).catch((e) => { if (patternsCache.promise === p) patternsCache = { at: 0, days: 0, promise: null }; throw e; });
+  patternsCache = { at: now, days, promise: p };
+  return p;
+}
+
 // Launch a Claude Code session in a new terminal at cwd (optionally resuming one).
 // Flags appended to `claude` for ▶ Start / ＋ New task, from the Config panel.
 // permMode: '' (ask, default) | 'acceptEdits' | 'plan' | 'bypass' (skip all prompts).
@@ -1196,14 +1211,34 @@ function queueTick() {
   } catch (e) { console.error('[queue] tick error:', e.message); }
 }
 
+// Stalled mid-goal: a session with a stated goal whose turn ended (Stop → idle)
+// on a message that reads like a question — it's waiting on an answer, not done.
+// Deterministic heuristic: last message asks something + idle ≥ stallMinutes.
+const STALL_MS = Math.max(0, (cfg.stallMinutes === undefined ? 3 : Number(cfg.stallMinutes) || 0) * 60000);
+const ASKY = /\?\s*["')\]]*\s*$|\b(should i|shall i|want me to|would you like( me)? to|do you want( me)? to|let me know (if|when|which|what|how)|say (go|the word)|which (option|approach|one|direction)|awaiting your|your call|before i (proceed|continue|start)|ready when you are|waiting (on|for) (you|your))\b/i;
+function isStalled(a, now) {
+  if (!STALL_MS || !a.root || a.closed || a.desktop || a.remote) return false;
+  if (a.state !== 'idle' || !a.goal || !a.lastMessage) return false;
+  if (now - (a.updatedAt || 0) < STALL_MS) return false;
+  return ASKY.test(String(a.lastMessage).slice(-400));
+}
+
 function snapshot() {
   const list = Array.from(agents.values());
+  const now = Date.now();
   for (const a of list) {
     const active = a.state !== 'idle' && a.state !== 'done';
     a.runaway = active && (a.runawayManual || ((Number(a.burnRate) || 0) >= BURN_ALERT && (a.burnStreak || 0) >= 2));
     if (a.runaway && !a._wasRunaway) fireAmbient('runaway', a);     // burn-rate flipped to runaway
     a._wasRunaway = a.runaway;
     if (a.root && a.cwd) { const w = sessionWindows.get(projKeyOf(a.cwd)); a.winPid = w ? w.pid : undefined; }
+    a.stalled = isStalled(a, now) || undefined;
+    if (a.stalled && !a._stalledFed) {          // announce once per stall (feed + desktop toast, no Telegram — it's a heuristic)
+      a._stalledFed = true;
+      pushFeed({ ts: now, agentId: a.id, agent: a.name || a.id, project: a.project || '', sessionId: a.sessionId || '', state: 'idle', log: `went quiet mid-goal: ${String(a.goal).slice(0, 70)}`, error: false });
+      osNotify('Gander — went quiet mid-goal', `${a.project || 'a session'} stopped on a question — it may be waiting on you`);
+    }
+    if (!a.stalled && a.state !== 'idle') a._stalledFed = false;
   }
   const byProject = {};
   for (const a of list) {
@@ -1284,8 +1319,13 @@ function mapHookToEvents(p) {
   switch (p.hook_event_name) {
     case 'SessionStart':
       return [{ ...base, agentId: rootId, name: project, root: true, state: 'thinking', log: 'session started · ' + project }];
-    case 'UserPromptSubmit':
-      return [{ ...base, agentId: rootId, name: project, root: true, state: 'thinking', log: (p.prompt || 'new prompt').slice(0, 60) }];
+    case 'UserPromptSubmit': {
+      // A substantive prompt becomes the session's current goal (used by the
+      // stalled-mid-goal check). "yes"/"go" continues the previous goal.
+      const pr = String(p.prompt || '').trim();
+      const goal = pr.length >= 8 && !pr.startsWith('<') && patterns.classifyPrompt(pr) !== 'approval' ? pr.replace(/\s+/g, ' ').slice(0, 200) : undefined;
+      return [{ ...base, agentId: rootId, name: project, root: true, state: 'thinking', goal, log: (p.prompt || 'new prompt').slice(0, 60) }];
+    }
     case 'PostToolUse': {
       const id = sub ? subId : rootId;
       const out = [];
@@ -1827,6 +1867,17 @@ const server = http.createServer(async (req, res) => {
 
   if (url === '/api/suggestions' && req.method === 'GET') {
     return sendJson(res, 200, buildSuggestions());
+  }
+
+  // Prompt habits ("turn tax") + skill usage — one cached transcript scan feeds both.
+  if ((url.startsWith('/api/patterns') || url.startsWith('/api/skill-usage')) && req.method === 'GET') {
+    const days = Math.max(1, Math.min(90, parseInt((req.url.split('days=')[1] || ''), 10) || 30));
+    try {
+      const d = await patternsScan(days);
+      if (url.startsWith('/api/skill-usage')) return sendJson(res, 200, { skillUsage: d.skillUsage, generatedAt: d.generatedAt, days: d.days });
+      const { skillUsage, ...rest } = d;
+      return sendJson(res, 200, rest);
+    } catch (e) { return sendJson(res, 500, { error: e.message }); }
   }
 
   if (url === '/api/history' && req.method === 'GET') {

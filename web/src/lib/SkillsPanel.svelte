@@ -15,11 +15,22 @@
   async function jget(u) { try { return await (await fetch(u)).json(); } catch (_) { return null; } }
   async function jpost(u, b) { try { return await (await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) })).json(); } catch (_) { return { error: 'request failed' }; } }
 
+  let usage = $state(null);   // skill name -> { count, lastUsed } from the last 30 days of transcripts
   async function load() {
     loading = true;
-    const d = await jget('/api/skills');
+    const [d, u] = await Promise.all([jget('/api/skills'), jget('/api/skill-usage')]);
     data = d || { skills: [], projects: [] };
+    usage = u && u.skillUsage ? u.skillUsage : null;
     loading = false;
+  }
+  function ago(ts) {
+    const d = Math.round((Date.now() - ts) / 86400e3);
+    return d <= 0 ? 'today' : d === 1 ? '1d ago' : d + 'd ago';
+  }
+  function usedLabel(name) {
+    if (!usage) return '';
+    const u = usage[name];
+    return u ? `${u.count}× · ${ago(u.lastUsed)}` : 'never';
   }
   const keyOf = (s) => s.projectPath + '::' + s.name;
   let globalProj = $derived(data && data.projects ? data.projects.find((p) => p.global) : null);
@@ -81,13 +92,14 @@
         <div class="muted">{data && data.skills.length ? 'No match for that filter.' : 'No skills found in any project yet.'}</div>
       {:else}
         <table class="tbl">
-          <thead><tr><th>Skill</th><th>Project</th><th>Summary</th><th class="ah">Actions</th></tr></thead>
+          <thead><tr><th>Skill</th><th>Project</th><th>Summary</th><th title="Invocations in the last 30 days of transcripts (Skill tool calls + /commands), matched by name">Used·30d</th><th class="ah">Actions</th></tr></thead>
           <tbody>
             {#each rows as s (keyOf(s))}
               <tr>
                 <td class="nm">{s.name}{#if s.global}<span class="gtag">global</span>{/if}</td>
                 <td class="pj">{s.project}</td>
                 <td class="sm" title={s.summary}>{s.summary || '—'}</td>
+                <td class="us" class:never={usedLabel(s.name) === 'never'}>{usedLabel(s.name) || '…'}</td>
                 <td class="act">
                   <select class="psel" bind:value={copyTarget[keyOf(s)]} title="copy to project">
                     <option value="">copy to…</option>
@@ -103,7 +115,7 @@
       {/if}
     </div>
     {#if flash}<div class="flash" class:err={flash[0] === '✗'}>{flash}</div>{/if}
-    <div class="foot"><b>Copy</b> leaves the original in place. <b>→ Global</b> copies the skill to <code>~/.claude</code> then removes it from the source project. Both ask before overwriting an existing skill of the same name.</div>
+    <div class="foot"><b>Copy</b> leaves the original in place. <b>→ Global</b> copies the skill to <code>~/.claude</code> then removes it from the source project. Both ask before overwriting an existing skill of the same name. <b>Used·30d</b> counts real invocations from your transcripts (matched by skill name) — a <span style="color:#F59E0B">never</span>-used skill still costs context every session; consider deleting it, and consider promoting a heavily-used project skill → Global.</div>
   </aside>
 {/if}
 
@@ -125,6 +137,8 @@
   .gtag { font-size: 8px; margin-left: 5px; padding: 1px 5px; border-radius: 999px; background: #10B9811f; color: #10B981; text-transform: uppercase; letter-spacing: .04em; vertical-align: middle; }
   .pj { color: var(--color-text-secondary); white-space: nowrap; }
   .sm { color: var(--color-text-secondary); line-height: 1.4; min-width: 200px; }
+  .us { font-family: var(--font-mono); font-size: 10px; white-space: nowrap; color: var(--color-text-secondary); }
+  .us.never { color: #F59E0B; }
   .ah { width: 1%; }
   .act { white-space: nowrap; display: flex; gap: 4px; align-items: center; }
   .psel { font-size: 10px; max-width: 110px; padding: 2px 4px; border-radius: 5px; border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-primary); }
