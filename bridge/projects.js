@@ -356,11 +356,21 @@ function frontmatterDescription(content) {
 
 // Every skill across every discovered project, with its one-line summary — for the Skills page.
 function skillsIndex() {
-  const projs = discover();
+  // discover() can legitimately list the same folder twice — e.g. the home dir
+  // as both the Global pseudo-project and a session-discovered project. Merge by
+  // path (and dedupe names within a project): duplicate rows crash the
+  // dashboard's keyed table (svelte each_key_duplicate kills the whole render).
+  const byPath = new Map();
+  for (const p of discover()) {
+    const k = keyOf(p.path);
+    const cur = byPath.get(k);
+    if (!cur || (p.sources || []).includes('global')) byPath.set(k, cur ? { ...p, sources: [...new Set([...(cur.sources || []), ...(p.sources || [])])] } : p);
+  }
+  const projs = [...byPath.values()];
   const skills = [];
   for (const p of projs) {
     const isGlobal = (p.sources || []).includes('global');
-    for (const name of (p.skills || [])) {
+    for (const name of new Set(p.skills || [])) {
       let summary = '';
       const r = readComponent('skill', name, p.path);
       if (r && r.content) summary = frontmatterDescription(r.content);

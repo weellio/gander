@@ -39,7 +39,15 @@
   let rows = $derived.by(() => {
     if (!data) return [];
     const q = filter.trim().toLowerCase();
-    return data.skills.filter((s) => !q || s.name.toLowerCase().includes(q) || (s.project || '').toLowerCase().includes(q) || (s.summary || '').toLowerCase().includes(q));
+    // defensive dedupe: a duplicate {#each} key crashes the whole render
+    // (svelte each_key_duplicate), so never trust the list to be unique
+    const seen = new Set();
+    return data.skills.filter((s) => {
+      const k = keyOf(s);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return !q || s.name.toLowerCase().includes(q) || (s.project || '').toLowerCase().includes(q) || (s.summary || '').toLowerCase().includes(q);
+    });
   });
 
   async function copyTo(s) {
