@@ -18,9 +18,11 @@
   let usage = $state(null);   // skill name -> { count, lastUsed } from the last 30 days of transcripts
   async function load() {
     loading = true;
-    const [d, u] = await Promise.all([jget('/api/skills'), jget('/api/skill-usage')]);
-    data = d || { skills: [], projects: [] };
-    usage = u && u.skillUsage ? u.skillUsage : null;
+    // Render the table as soon as the skills list is back; the usage column
+    // fills in when its (incrementally cached) transcript scan returns.
+    const dp = jget('/api/skills');
+    jget('/api/skill-usage').then((u) => { usage = u && u.skillUsage ? u.skillUsage : null; });
+    data = (await dp) || { skills: [], projects: [] };
     loading = false;
   }
   function ago(ts) {

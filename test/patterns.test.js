@@ -103,7 +103,7 @@ describe('scan', () => {
   after(() => { try { fs.rmSync(root, { recursive: true, force: true }); } catch (_) {} });
 
   test('counts typed prompts only and buckets them', async () => {
-    const r = await patterns.scan({ days: 30, root });
+    const r = await patterns.scan({ days: 30, root, cachePath: path.join(root, 'cache0.json') });
     assert.equal(r.totals.prompts, 4, 'typed prompts: goal + yes + poke + correction');
     const by = Object.fromEntries(r.buckets.map((b) => [b.key, b.count]));
     assert.equal(by.approval, 1);
@@ -111,27 +111,53 @@ describe('scan', () => {
     assert.equal(by.correction, 1);
   });
   test('skill usage counts Skill tool calls and /commands, with lastUsed', async () => {
-    const r = await patterns.scan({ days: 30, root });
+    const r = await patterns.scan({ days: 30, root, cachePath: path.join(root, 'cache0.json') });
     assert.equal(r.skillUsage['make-game'].count, 1);
     assert.equal(r.skillUsage['stop-slop'].count, 1);
     assert.ok(r.skillUsage['make-game'].lastUsed > 0);
     assert.ok(!r.skillUsage['ls'], 'plain Bash tool calls are not skills');
   });
   test('buckets carry pct + samples; suggestions stay quiet on tiny data', async () => {
-    const r = await patterns.scan({ days: 30, root });
+    const r = await patterns.scan({ days: 30, root, cachePath: path.join(root, 'cache0.json') });
     const ap = r.buckets.find((b) => b.key === 'approval');
     assert.equal(ap.pct, 25);
     assert.equal(ap.samples.length, 1);
     assert.ok(Array.isArray(r.suggestions));
   });
+  test('incremental cache: unchanged files are not re-parsed; changed files are', async () => {
+    const cachePath = path.join(root, 'cache.json');
+    const a = await patterns.scan({ days: 30, root, cachePath });
+    assert.equal(a.totals.parsed, 1, 'cold scan parses the file');
+    const b = await patterns.scan({ days: 30, root, cachePath });
+    assert.equal(b.totals.parsed, 0, 'warm scan re-parses nothing');
+    assert.equal(b.totals.prompts, a.totals.prompts, 'cached counts identical');
+    assert.deepEqual(b.buckets, a.buckets, 'cached buckets identical');
+    // append a prompt -> that file (and only that file) re-parses, counts update
+    const p = path.join(root, 'd--proj-alpha', 'sess1.jsonl');
+    fs.appendFileSync(p, JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: 'go' } }) + '\n');
+    const c = await patterns.scan({ days: 30, root, cachePath });
+    assert.equal(c.totals.parsed, 1, 'only the changed file re-parses');
+    assert.equal(c.totals.prompts, a.totals.prompts + 1);
+    assert.equal(c.buckets.find((x) => x.key === 'approval').count, 2, 'new "go" lands in approval');
+  });
+  test('cache survives a fresh process (reads back from disk)', async () => {
+    const cachePath = path.join(root, 'cache2.json');
+    await patterns.scan({ days: 30, root, cachePath });
+    assert.ok(fs.existsSync(cachePath), 'cache file written');
+    const raw = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    assert.equal(raw.v, 1);
+    assert.ok(Object.keys(raw.files).length >= 1, 'per-file entries persisted');
+  });
   test('ignores files older than the window', async () => {
+    const cachePath = path.join(root, 'cache0.json');
+    const beforeCount = (await patterns.scan({ days: 30, root, cachePath })).totals.prompts;
     const old = path.join(root, 'd--proj-old');
     fs.mkdirSync(old, { recursive: true });
     const p = path.join(old, 'old.jsonl');
     fs.writeFileSync(p, JSON.stringify({ type: 'user', message: { role: 'user', content: 'yes' } }) + '\n');
     const past = new Date(Date.now() - 90 * 86400e3);
     fs.utimesSync(p, past, past);
-    const r = await patterns.scan({ days: 30, root });
-    assert.equal(r.totals.prompts, 4, 'old transcript must not be scanned');
+    const r = await patterns.scan({ days: 30, root, cachePath });
+    assert.equal(r.totals.prompts, beforeCount, 'old transcript must not be scanned');
   });
 });

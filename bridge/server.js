@@ -929,11 +929,14 @@ function buildSuggestions() {
   return { suggestions: out, scanned: files.length };
 }
 
-// Prompt habits + skill usage share one streaming transcript scan (patterns.js).
-// The scan reads every recent transcript, so cache it briefly; concurrent
-// requests (Tune panel + Skills panel opening together) share one in-flight scan.
-const PATTERNS_TTL = 5 * 60 * 1000;
+// Prompt habits + skill usage share one transcript scan (patterns.js). The scan
+// is incremental — per-file results persist in bridge/aoc-patterns.json and only
+// changed transcripts are re-parsed — so a warm scan is ms-fast. The short TTL
+// just coalesces concurrent requests (Tune + Skills opening together); the boot
+// warm-up below means even the first click after a restart hits a hydrated cache.
+const PATTERNS_TTL = 30 * 1000;
 let patternsCache = { at: 0, days: 0, promise: null };
+setTimeout(() => { patternsScan(30).then((d) => console.log(`[patterns] cache warm: ${d.totals.files} files, ${d.totals.parsed} parsed, ${d.totals.scanMs}ms`)).catch(() => {}); }, 3000);
 function patternsScan(days) {
   const now = Date.now();
   if (patternsCache.promise && patternsCache.days === days && now - patternsCache.at < PATTERNS_TTL) return patternsCache.promise;

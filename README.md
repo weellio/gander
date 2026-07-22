@@ -201,7 +201,8 @@ bridge/
   projects.js          # project registry: discover projects + components, copy between them
   git.js               # per-project git status (branch/dirty/ahead/behind)
   usage.js             # token/cost analytics from ~/.claude transcripts
-  patterns.js          # prompt-habit ("turn tax") + skill-usage mining from transcripts
+  patterns.js          # prompt-habit ("turn tax") + skill-usage mining — incrementally cached
+                       #   (per-file tallies in aoc-patterns.json, revalidated by mtime+size)
   github.js            # PRs/issues via the gh CLI
   configmgr.js         # read/delete hooks + MCP servers in a project
   history.js           # recent resumable sessions

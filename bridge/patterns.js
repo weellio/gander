@@ -73,6 +73,12 @@ const CMD_RE = /<command-name>\/?([\w:-]+)<\/command-name>/;
 const BUILTIN_CMDS = new Set(['model', 'compact', 'clear', 'help', 'hooks', 'mcp', 'agents', 'resume', 'login', 'logout', 'status', 'config', 'cost', 'doctor', 'init', 'memory', 'exit', 'quit', 'context', 'rewind', 'export', 'add-dir', 'bug', 'permissions', 'plugin', 'settings', 'terminal-setup', 'vim', 'workflows', 'fast']);
 
 // ── the scan ─────────────────────────────────────────────────────────────────
+// Incremental: per-file results are cached in a small JSON "database"
+// (bridge/aoc-patterns.json) keyed by path and validated by mtime+size, so a
+// rescan only re-parses transcripts that actually changed — a warm scan over
+// hundreds of MB touches a handful of live session files and returns in ms.
+// Precision is unchanged: unchanged bytes parse to unchanged counts, so reusing
+// them is exact (no vectors, no approximation).
 function transcriptFiles(root, sinceMs, cap) {
   const files = [];
   let dirs; try { dirs = fs.readdirSync(root); } catch (_) { return files; }
@@ -80,65 +86,111 @@ function transcriptFiles(root, sinceMs, cap) {
     let names; try { names = fs.readdirSync(path.join(root, d)).filter((f) => f.endsWith('.jsonl')); } catch (_) { continue; }
     for (const f of names) {
       const p = path.join(root, d, f);
-      try { const st = fs.statSync(p); if (st.mtimeMs >= sinceMs) files.push({ p, dir: d, mtime: st.mtimeMs }); } catch (_) {}
+      try { const st = fs.statSync(p); if (st.mtimeMs >= sinceMs) files.push({ p, mtime: st.mtimeMs, size: st.size }); } catch (_) {}
     }
   }
   files.sort((a, b) => b.mtime - a.mtime);
   return files.slice(0, cap);
 }
 
+// Parse ONE transcript into its per-file tallies (day-independent, so the entry
+// stays valid as the window slides — a file is in or out by its mtime).
+async function parseFile(p, mtime) {
+  const r = { proj: '', prompts: 0, buckets: {}, samples: {}, skills: {} };
+  const hitSkill = (name, ts) => {
+    const key = String(name).replace(/^\//, '');
+    const e = r.skills[key] || (r.skills[key] = { c: 0, last: 0 });
+    e.c++; if (ts > e.last) e.last = ts;
+  };
+  const rl = readline.createInterface({ input: fs.createReadStream(p), crlfDelay: Infinity });
+  for await (const line of rl) {
+    // cheap prefilter: only parse lines that can matter (typed prompts / Skill calls)
+    const isUser = line.includes('"type":"user"');
+    const isSkillCall = line.includes('"name":"Skill"');
+    if (!isUser && !isSkillCall) continue;
+    if (line.length > 2_000_000) continue;
+    let o; try { o = JSON.parse(line); } catch (_) { continue; }
+    if (!r.proj && o.cwd) r.proj = path.basename(String(o.cwd));
+    const ts = o.timestamp ? Date.parse(o.timestamp) || mtime : mtime;
+
+    if (isSkillCall && o.type === 'assistant' && o.message && Array.isArray(o.message.content)) {
+      for (const b of o.message.content) {
+        if (b && b.type === 'tool_use' && b.name === 'Skill' && b.input && b.input.skill) hitSkill(b.input.skill, ts);
+      }
+    }
+
+    if (o.type !== 'user' || !o.message || o.isMeta) continue;
+    const t = userText(o.message);
+    if (!t || isInjected(t)) continue;
+    const cmd = t.match(CMD_RE);
+    if (cmd) { if (!BUILTIN_CMDS.has(cmd[1])) hitSkill(cmd[1], ts); continue; }   // slash-command turn → usage, not a habit
+    r.prompts++;
+    const k = classifyPrompt(t);
+    if (k) {
+      r.buckets[k] = (r.buckets[k] || 0) + 1;
+      const s = r.samples[k] || (r.samples[k] = []);
+      if (s.length < 2) s.push(t.replace(/\s+/g, ' ').slice(0, 140));
+    }
+  }
+  return r;
+}
+
+// One in-process cache per file path; hydrated from disk on first scan.
+const CACHE_VERSION = 1;
+const memo = new Map();   // cachePath -> { v, files: { [path]: { mtime, size, ...parseFile result } } }
+function loadCache(cachePath) {
+  if (memo.has(cachePath)) return memo.get(cachePath);
+  let c = null;
+  try { c = JSON.parse(fs.readFileSync(cachePath, 'utf8')); } catch (_) {}
+  if (!c || c.v !== CACHE_VERSION || !c.files) c = { v: CACHE_VERSION, files: {} };
+  memo.set(cachePath, c);
+  return c;
+}
+function saveCache(cachePath, c) {
+  try { fs.writeFileSync(cachePath + '.tmp', JSON.stringify(c)); fs.renameSync(cachePath + '.tmp', cachePath); } catch (_) {}
+}
+
 async function scan(opts) {
+  const t0 = Date.now();
   const days = Math.max(1, Math.min(90, Number(opts && opts.days) || 30));
   const root = (opts && opts.root) || path.join(os.homedir(), '.claude', 'projects');
+  const cachePath = (opts && opts.cachePath) || path.join(__dirname, 'aoc-patterns.json');
   const sinceMs = Date.now() - days * 86400e3;
   const files = transcriptFiles(root, sinceMs, 400);
+  const cache = loadCache(cachePath);
 
+  let parsed = 0, dirty = false;
+  const live = new Set();
+  for (const f of files) {
+    live.add(f.p);
+    const ent = cache.files[f.p];
+    if (ent && ent.mtime === f.mtime && ent.size === f.size) continue;   // unchanged bytes → cached counts are exact
+    cache.files[f.p] = { mtime: f.mtime, size: f.size, ...(await parseFile(f.p, f.mtime)) };
+    parsed++; dirty = true;
+  }
+  for (const p of Object.keys(cache.files)) {           // drop entries that left the window (or were deleted)
+    if (!live.has(p)) { delete cache.files[p]; dirty = true; }
+  }
+  if (dirty) saveCache(cachePath, cache);
+
+  // aggregate the per-file tallies
   const buckets = {}; for (const k of Object.keys(BUCKET_META)) buckets[k] = { count: 0, samples: [] };
-  const skills = new Map();          // name -> { count, lastUsed, projects:Set }
+  const skills = new Map();
   const projSet = new Set(), sessSet = new Set();
   let prompts = 0;
-
-  const hitSkill = (name, ts, proj) => {
-    const key = String(name).replace(/^\//, '');
-    const e = skills.get(key) || { count: 0, lastUsed: 0, projects: new Set() };
-    e.count++; if (ts > e.lastUsed) e.lastUsed = ts; if (proj) e.projects.add(proj);
-    skills.set(key, e);
-  };
-
   for (const f of files) {
-    let proj = '';
-    const rl = readline.createInterface({ input: fs.createReadStream(f.p), crlfDelay: Infinity });
-    for await (const line of rl) {
-      // cheap prefilter: only parse lines that can matter (typed prompts / Skill calls)
-      const isUser = line.includes('"type":"user"');
-      const isSkillCall = line.includes('"name":"Skill"');
-      if (!isUser && !isSkillCall) continue;
-      if (line.length > 2_000_000) continue;
-      let o; try { o = JSON.parse(line); } catch (_) { continue; }
-      if (!proj && o.cwd) proj = path.basename(String(o.cwd));
-      const ts = o.timestamp ? Date.parse(o.timestamp) || f.mtime : f.mtime;
-      if (ts < sinceMs) continue;
-
-      if (isSkillCall && o.type === 'assistant' && o.message && Array.isArray(o.message.content)) {
-        for (const b of o.message.content) {
-          if (b && b.type === 'tool_use' && b.name === 'Skill' && b.input && b.input.skill) hitSkill(b.input.skill, ts, proj);
-        }
-      }
-
-      if (o.type !== 'user' || !o.message || o.isMeta) continue;
-      const t = userText(o.message);
-      if (!t || isInjected(t)) continue;
-      const cmd = t.match(CMD_RE);
-      if (cmd) { if (!BUILTIN_CMDS.has(cmd[1])) hitSkill(cmd[1], ts, proj); continue; }   // slash-command turn → usage, not a habit
-      prompts++;
-      if (proj) projSet.add(proj);
-      sessSet.add(f.p);
-      const k = classifyPrompt(t);
-      if (k) {
-        const b = buckets[k];
-        b.count++;
-        if (b.samples.length < 3) b.samples.push(t.replace(/\s+/g, ' ').slice(0, 140));
-      }
+    const e = cache.files[f.p];
+    if (!e) continue;
+    prompts += e.prompts;
+    if (e.prompts) { sessSet.add(f.p); if (e.proj) projSet.add(e.proj); }
+    for (const [k, n] of Object.entries(e.buckets || {})) {
+      buckets[k].count += n;
+      for (const s of e.samples?.[k] || []) if (buckets[k].samples.length < 3) buckets[k].samples.push(s);
+    }
+    for (const [name, u] of Object.entries(e.skills || {})) {
+      const agg = skills.get(name) || { count: 0, lastUsed: 0, projects: new Set() };
+      agg.count += u.c; if (u.last > agg.lastUsed) agg.lastUsed = u.last; if (e.proj) agg.projects.add(e.proj);
+      skills.set(name, agg);
     }
   }
 
@@ -151,7 +203,7 @@ async function scan(opts) {
 
   return {
     generatedAt: Date.now(), days,
-    totals: { prompts, sessions: sessSet.size, projects: projSet.size, files: files.length },
+    totals: { prompts, sessions: sessSet.size, projects: projSet.size, files: files.length, parsed, scanMs: Date.now() - t0 },
     buckets: bucketList,
     suggestions: buildFixes(bucketList, prompts),
     skillUsage,

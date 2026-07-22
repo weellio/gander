@@ -107,7 +107,7 @@
       {/if}
     </div>
 
-    <div class="foot">Deterministic — same counts every scan, no model calls. CLAUDE.md lines go in your global <code>~/.claude/CLAUDE.md</code> (Manage → Memory) or a project's. Hooks go in <code>.claude/settings.json</code>; prompts → a <code>/command</code> via <i>component-builder</i>, or a scheduled <b>Routine</b>.</div>
+    <div class="foot">Deterministic — same counts every scan, no model calls. Incrementally cached: a rescan re-reads only transcripts that changed, so it's instant. CLAUDE.md lines go in your global <code>~/.claude/CLAUDE.md</code> (Manage → Memory) or a project's. Hooks go in <code>.claude/settings.json</code>; prompts → a <code>/command</code> via <i>component-builder</i>, or a scheduled <b>Routine</b>.</div>
   </aside>
 {/if}
 
