@@ -51,16 +51,24 @@
     return `${s}s`;
   }
 
-  // group by session/project; orphans last
+  // group: sessions/projects first, then live-Claude children, plugin runtimes,
+  // unrelated-but-port-holding, and only truly parentless processes as orphans
+  const ORDER = { session: 0, project: 1, claude: 2, plugin: 3, other: 4, orphan: 5 };
+  const GLABEL = {
+    claude: 'Claude Code sessions (opened outside Gander)',
+    plugin: 'Claude plugin runtimes',
+    other: 'Not Claude-spawned',
+    orphan: 'Unattributed / orphaned',
+  };
   let groups = $derived.by(() => {
     const g = new Map();
     for (const p of procs) {
-      const key = p.attribution === 'orphan' ? '__orphan' : (p.sessionId || p.project || '__orphan');
-      if (!g.has(key)) g.set(key, { label: p.attribution === 'orphan' ? 'Unattributed / orphaned' : (p.project || 'session'), kind: p.attribution, items: [] });
+      const kind = p.attribution;
+      const key = kind === 'session' || kind === 'project' ? (p.sessionId || p.project || kind) : kind;
+      if (!g.has(key)) g.set(key, { label: GLABEL[kind] || p.project || 'session', kind, items: [] });
       g.get(key).items.push(p);
     }
-    // orphans last
-    return [...g.values()].sort((a, b) => (a.kind === 'orphan' ? 1 : 0) - (b.kind === 'orphan' ? 1 : 0));
+    return [...g.values()].sort((a, b) => (ORDER[a.kind] ?? 9) - (ORDER[b.kind] ?? 9));
   });
 
   function closePanel() { open = false; }
@@ -92,20 +100,23 @@
       {:else}
         {#each groups as grp (grp.label + grp.kind)}
           <div class="section">
-            <div class="lbl" class:orphan={grp.kind === 'orphan'}>
+            <div class="lbl" class:orphan={grp.kind === 'orphan'} class:calm={grp.kind === 'plugin' || grp.kind === 'claude'} class:dim2={grp.kind === 'other'}>
               {grp.label}
               {#if grp.kind === 'project'}<span class="tag">by folder</span>{/if}
+              {#if grp.kind === 'claude' || grp.kind === 'plugin'}<span class="tag ok">parent alive — exits with its session</span>{/if}
+              {#if grp.kind === 'other'}<span class="tag">listed for its port only</span>{/if}
               {#if grp.kind === 'orphan'}<span class="tag warn">parent gone</span>{/if}
             </div>
             {#each grp.items as p (p.pid)}
               <div class="proc">
                 <div class="pmain">
-                  <span class="pname">{p.name}</span>
+                  <span class="pname">{p.name}{#if p.plugin}<span class="plug">{p.plugin}</span>{/if}</span>
                   <span class="ppid mono">pid {p.pid}</span>
                   {#each (p.ports || []) as port (port)}<a class="port" href="http://localhost:{port}" target="_blank" rel="noopener" title="Open http://localhost:{port} in a new tab — check it before you kill it">:{port} ↗</a>{/each}
                   <span class="age mono">{uptime(p.uptimeMs)}</span>
                   <button class="kill" disabled={killing === p.pid} onclick={() => kill(p)} title="Force-kill this process and its children">{killing === p.pid ? '…' : 'Kill'}</button>
                 </div>
+                {#if p.linked}<div class="plink">↳ {p.linked}</div>{/if}
                 {#if p.cmd}<div class="pcmd mono" title={p.cmd}>{p.cmd}</div>{/if}
               </div>
             {/each}
@@ -115,7 +126,7 @@
     </div>
 
     {#if flash}<div class="flash" class:err={flash[0] === '✗'}>{flash}</div>{/if}
-    <div class="foot">Orphans are best-effort: a process whose Claude/terminal parent has exited can’t be tied back to a session, but it’s still listed if it looks like a dev process. Windows-only for now.</div>
+    <div class="foot">Attribution walks each process's real parent chain: children of a live <code>claude.exe</code> (VS Code / terminal sessions) and plugin runtimes (e.g. the Telegram plugin's <code>bun.exe</code> pairs) are labeled and safe to leave — they exit with their session. <b>Orphaned</b> now means the parent is actually gone. Windows-only for now.</div>
   </aside>
 {/if}
 
@@ -131,8 +142,13 @@
   .section { padding: 10px 14px; border-bottom: 0.5px solid var(--color-border-tertiary); display: flex; flex-direction: column; gap: 7px; }
   .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent, #6366F1); font-weight: 600; display: flex; align-items: center; gap: 6px; }
   .lbl.orphan { color: #F59E0B; }
+  .lbl.calm { color: #10B981; }
+  .lbl.dim2 { color: var(--color-text-tertiary); }
   .tag { font-size: 8.5px; text-transform: none; letter-spacing: 0; padding: 1px 5px; border-radius: 999px; background: var(--color-background-secondary); color: var(--color-text-tertiary); font-weight: 400; }
   .tag.warn { background: #F59E0B1a; color: #F59E0B; }
+  .tag.ok { background: #10B9811a; color: #10B981; }
+  .plug { font-size: 8.5px; margin-left: 5px; padding: 1px 5px; border-radius: 999px; background: #6366F11f; color: var(--accent, #6366F1); vertical-align: middle; }
+  .plink { font-size: 10px; color: var(--color-text-secondary); }
 
   .proc { display: flex; flex-direction: column; gap: 2px; }
   .pmain { display: flex; align-items: center; gap: 7px; }

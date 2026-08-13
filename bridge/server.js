@@ -2210,29 +2210,68 @@ const server = http.createServer(async (req, res) => {
 
         // "interesting" = the kind of thing Claude spawns from Bash and leaves open
         const INTERESTING = /^(node|python\d?|pythonw|py|deno|bun|npm|pnpm|yarn|vite|nodemon|next|ts-node|tsx|electron|webpack|esbuild|rollup|jest|vitest|gunicorn|uvicorn|flask|rails|ruby|go|dotnet|java|php|cargo|http-server|serve|ngrok)(\.exe)?$/i;
+
+        // Real ancestry, not guesswork: walk each process's parent chain so a
+        // process is only called "orphan" when its parent is actually gone.
+        // PID-reuse guard: a "parent" that started AFTER its child is a recycled
+        // pid — the real parent is dead, so the chain stops there.
+        const byPid = new Map(); for (const p of all) byPid.set(p.pid, p);
+        const startOf = (p) => (p && p.started ? Date.parse(p.started) || 0 : 0);
+        const ancestry = (p) => {
+          const chain = []; const seen = new Set([p.pid]); let cur = p;
+          for (let i = 0; i < 25; i++) {
+            const par = byPid.get(cur.ppid);
+            if (!par || seen.has(par.pid)) break;
+            if (startOf(par) > startOf(cur) + 1000) break;   // recycled pid ≠ real parent
+            chain.push(par); seen.add(par.pid); cur = par;
+          }
+          return chain;
+        };
+        const PLUGIN_RE = /[\\/]\.claude[\\/]plugins[\\/](?:cache[\\/])?[^\\/]*[\\/]?([^\\/\s]+)[\\/][\d.]+/i;
+
         const now = Date.now();
         const out = [];
         for (const p of all) {
           if (p.pid === process.pid) continue;                          // never list Gander's own bridge
           const name = String(p.name || '');
           const interesting = INTERESTING.test(name);
-          let attribution = 'orphan', sid = null, project = null;
+          let attribution = 'orphan', sid = null, project = null, linked = null, plugin = null;
           for (const s of sess) { if (s.set.has(p.pid)) { attribution = 'session'; sid = s.sid; project = s.project; break; } }
-          if (attribution !== 'session' && interesting) {
-            const cmd = String(p.cmd || '').toLowerCase();
-            const hit = knownProjects.find((k) => k.cwd && cmd.includes(k.cwd));
-            if (hit) { attribution = 'project'; sid = hit.sid; project = hit.project; }
+          const chain = ancestry(p);
+          const claudeAnc = chain.find((a) => /^claude(\.exe)?$/i.test(String(a.name || '')));
+          // the plugin path shows in the launcher's cmdline, not its children's —
+          // so check the whole ancestor chain, not just the process itself
+          let pluginHit = null;
+          for (const q of [p, ...chain]) { pluginHit = String(q.cmd || '').match(PLUGIN_RE); if (pluginHit) break; }
+          if (attribution !== 'session') {
+            if (pluginHit) {
+              attribution = 'plugin'; plugin = pluginHit[1];
+              linked = claudeAnc ? `plugin of claude.exe ${claudeAnc.pid}` : 'Claude plugin runtime';
+            } else if (claudeAnc) {
+              attribution = 'claude';
+              const viaCode = chain.some((a) => /^code(\.exe)?$/i.test(String(a.name || '')));
+              linked = `child of claude.exe ${claudeAnc.pid}${viaCode ? ' (VS Code)' : ''}`;
+            } else if (interesting) {
+              const cmd = String(p.cmd || '').toLowerCase();
+              const hit = knownProjects.find((k) => k.cwd && cmd.includes(k.cwd));
+              if (hit) { attribution = 'project'; sid = hit.sid; project = hit.project; }
+            }
+          }
+          if (attribution === 'orphan') {
+            const par = byPid.get(p.ppid);
+            const parentAlive = par && startOf(par) <= startOf(p) + 1000;
+            if (parentAlive) { attribution = 'other'; linked = `child of ${par.name} ${par.pid} — not Claude-spawned`; }
           }
           // drop system/service noise: a non-interesting process only shows if it's
-          // provably a descendant of a Claude session window.
-          if (!interesting && attribution !== 'session') continue;
+          // provably tied to Claude (session descendant or plugin runtime).
+          if (!interesting && attribution !== 'session' && attribution !== 'plugin') continue;
           // PowerShell's ConvertTo-Json unwraps a single-element array to a scalar and
           // an empty one to {} — coerce both back to a clean array.
           const ports = Array.isArray(p.ports) ? p.ports : (p.ports != null && typeof p.ports !== 'object' ? [p.ports] : []);
           out.push({
             pid: p.pid, name, cmd: p.cmd, ports,
             started: p.started, uptimeMs: p.started ? Math.max(0, now - Date.parse(p.started)) : null,
-            attribution, sessionId: sid, project,
+            attribution, sessionId: sid, project, linked, plugin,
           });
         }
         out.sort((a, b) => (b.ports.length - a.ports.length) || ((b.uptimeMs || 0) - (a.uptimeMs || 0)));
