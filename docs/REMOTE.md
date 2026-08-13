@@ -63,7 +63,7 @@ It prints a `https://<random>.trycloudflare.com` URL — open that on your phone
 Don't. That exposes a tool that can run commands on your PC to the whole internet, guarded by one string. Tailscale gives you the same convenience with real encryption and device auth.
 
 **Does the phone get push notifications?**
-Use the built-in **Telegram alerts** for that — the bridge pings you when a session needs you, and you can reply or `/stop` right from the chat (see the README's Telegram section). The PWA is the other half: the **live floor** in your pocket, where you can read any agent's thread, reply, and **Allow / Deny** permission prompts.
+Use the built-in **Telegram alerts** for that — the bridge pings you when a session needs you, and you can reply or `/stop` right from the chat (see [INSTALL.md](INSTALL.md)). The PWA is the other half: the **live floor** in your pocket, where you can read any agent's thread, reply, and **Allow / Deny** permission prompts.
 
 **My phone connects but the tiles never load.**
 The dashboard streams over a WebSocket to the same host/port — if the page loads, the socket should too. Check that you kept the `?token=` on the very first load (the cookie is what authorizes the socket), and that the bridge was restarted after editing `aoc-config.json`.

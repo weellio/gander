@@ -24,5 +24,5 @@ echo        node "%~dp0bridge\launch.js"
 echo      then open  http://localhost:3131/
 echo.
 echo   Optional: set up Telegram, a custom editor, or the idle-nudge task from the
-echo   dashboard's Config panel / the scripts in scripts\ (see README).
+echo   dashboard's Config panel / the scripts in scripts\ (see docs/INSTALL.md).
 endlocal

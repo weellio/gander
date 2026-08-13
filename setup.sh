@@ -24,5 +24,5 @@ cat <<EOF
      then open  http://localhost:3131/
 
   Optional: set up Telegram, a custom editor, or the idle-nudge task from the
-  dashboard's Config panel / the scripts in scripts/ (see README).
+  dashboard's Config panel / the scripts in scripts/ (see docs/INSTALL.md).
 EOF
