@@ -50,6 +50,7 @@
 
   let agents = $state([]);
   let projects = $state([]);
+  let procs = $state([]);   // background processes → the Office floor's robots
   let online = $state(false);
   let selectedProject = $state(localStorage.getItem('aoc-project') || '');
   let fileInput = $state();
@@ -104,6 +105,7 @@
       const d = await r.json();
       agents = d.agents || [];
       projects = d.projects || [];
+      procs = d.procs || [];
       const nowAwaiting = new Set(agents.filter((a) => a.state === 'awaiting').map((a) => a.id));
       if (!firstPoll) {
         const fresh = agents.filter((a) => a.state === 'awaiting' && !prevAwaiting.has(a.id));
@@ -560,7 +562,7 @@
   {#if shown.length === 0}
     <div class="empty">No agents reporting yet. Run <code>/hooks</code> in a Claude Code session (or start a new one) to begin.</div>
   {:else if $layout === 'office'}
-    <div class="office-wrap"><Office agents={shown} {focusReq} /></div>
+    <div class="office-wrap"><Office agents={shown} {procs} {focusReq} /></div>
   {:else}
     <div class="grid">
       {#each shown as agent (agent.id)}

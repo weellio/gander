@@ -12,6 +12,7 @@
         ['Mosaic', 'A compact responsive tile grid. Here you can switch avatar style (pixel / abstract / desk / your images) and import images.'],
         ['Activity highlight', 'Working agents get a coloured glow; idle agents get a pulsing amber ring so you can spot who to put back to work.'],
         ['Pan / zoom', 'Drag to pan, use the +/− controls (or scroll) to zoom the Office floor; Fit re-centres.'],
+        ['🤖 Process robots', 'Background processes your sessions leave running show as little robots — inside their session\'s room when the owner is on the floor, else in the SERVER ROOM below (plugin runtimes, children of sessions opened outside Gander, port-holders). Indigo = plugin, green = belongs to a live Claude session, amber pulsing = orphaned (parent gone — the Kill candidate). Click a bot for what it\'s linked to, uptime, ports, and a Kill button.'],
         ['Resizable panels', 'Every side panel (the Manage drawers + Settings) is resizable — hover the left edge for the ↔ grip and drag. The width is shared and remembered across reloads.'],
       ],
     },

@@ -43,6 +43,7 @@ const replay = require('./replay.js');
 const fleet = require('./fleet.js');
 const desktop = require('./desktop.js');
 const patterns = require('./patterns.js');
+const procsMod = require('./procs.js');
 const STARTED = Date.now();
 let eventsReceived = 0;
 
@@ -1214,6 +1215,43 @@ function queueTick() {
   } catch (e) { console.error('[queue] tick error:', e.message); }
 }
 
+// ── background process scan — shared by /api/processes and the floor's robots ──
+// One PowerShell snapshot, attributed by bridge/procs.js, cached briefly.
+// snapshot() kicks a lazy refresh when the cache is >30s old, so the robots stay
+// current while the dashboard is open and nothing scans when it isn't.
+const procsCache = { at: 0, list: [], inflight: null };
+function refreshProcs(cb) {
+  if (Date.now() - procsCache.at < 4000) { if (cb) cb(procsCache.list); return; }
+  if (procsCache.inflight) { if (cb) procsCache.inflight.push(cb); return; }
+  procsCache.inflight = cb ? [cb] : [];
+  execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(SCRIPTS_DIR, 'list-procs.ps1')],
+    { timeout: 12000, windowsHide: true, maxBuffer: 12e6 }, (err, stdout) => {
+      let data = { procs: [] };
+      try { data = JSON.parse(String(stdout || '{}')); } catch (_) {}
+      const all = Array.isArray(data.procs) ? data.procs : [];
+      // each Gander-launched session's window pid → its descendant pids
+      const children = new Map();
+      for (const p of all) { if (!children.has(p.ppid)) children.set(p.ppid, []); children.get(p.ppid).push(p.pid); }
+      const descendants = (root) => {
+        const set = new Set(); const stack = [root];
+        while (stack.length) { const x = stack.pop(); for (const ch of (children.get(x) || [])) { if (!set.has(ch)) { set.add(ch); stack.push(ch); } } }
+        return set;
+      };
+      const sess = [];
+      for (const a of agents.values()) {
+        if (!a.root || !a.cwd) continue;
+        const w = sessionWindows.get(projKeyOf(a.cwd));
+        if (w) sess.push({ sid: a.sessionId || String(a.id).replace(/^sess:/, ''), project: a.project, set: descendants(w.pid) });
+      }
+      const knownProjects = [];
+      for (const a of agents.values()) if (a.cwd) knownProjects.push({ cwd: String(a.cwd).toLowerCase(), project: a.project, sid: a.sessionId || String(a.id).replace(/^sess:/, '') });
+      procsCache.list = procsMod.attribute(all, process.pid, sess, knownProjects);
+      procsCache.at = Date.now();
+      const cbs = procsCache.inflight || []; procsCache.inflight = null;
+      for (const f of cbs) { try { f(procsCache.list); } catch (_) {} }
+    });
+}
+
 // Stalled mid-goal: a session with a stated goal whose turn ended (Stop → idle)
 // on a message that reads like a question — it's waiting on an answer, not done.
 // Deterministic heuristic: last message asks something + idle ≥ stallMinutes.
@@ -1277,8 +1315,11 @@ function snapshot() {
       else projects.push({ project: pj, total: 1, sessions: a.sessionId ? 1 : 0, states: { [a.state]: 1 }, muted: false });
     }
   }
+  // floor robots: serve the cached process list; refresh lazily in the background
+  if (process.platform === 'win32' && Date.now() - procsCache.at > 30000 && !procsCache.inflight) refreshProcs();
   return {
     agents: all, projects, muted: [...muted], pending, budget: budgetState,
+    procs: procsMod.compact(procsCache.list),
     fleet: fleet.status(),
     dispatch: { enabled: !!cfg.dispatch, sessions: dispatch.list().length, permissions: perms.length, rateLimit: dispatch.rateLimit() },
   };
@@ -2184,99 +2225,7 @@ const server = http.createServer(async (req, res) => {
 
   if (url === '/api/processes' && req.method === 'GET') {
     if (process.platform !== 'win32') return sendJson(res, 200, { processes: [], note: 'process inspection is Windows-only for now' });
-    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(SCRIPTS_DIR, 'list-procs.ps1')],
-      { timeout: 12000, windowsHide: true, maxBuffer: 12e6 }, (err, stdout) => {
-        let data = { procs: [] };
-        try { data = JSON.parse(String(stdout || '{}')); } catch (_) {}
-        const all = Array.isArray(data.procs) ? data.procs : [];
-
-        // child adjacency, for walking a session window's descendant tree
-        const children = new Map();
-        for (const p of all) { if (!children.has(p.ppid)) children.set(p.ppid, []); children.get(p.ppid).push(p.pid); }
-        const descendants = (root) => {
-          const out = new Set(); const stack = [root];
-          while (stack.length) { const x = stack.pop(); for (const ch of (children.get(x) || [])) { if (!out.has(ch)) { out.add(ch); stack.push(ch); } } }
-          return out;
-        };
-        // each launched session's window pid → its descendant pids
-        const sess = [];
-        for (const a of agents.values()) {
-          if (!a.root || !a.cwd) continue;
-          const w = sessionWindows.get(projKeyOf(a.cwd));
-          if (w) sess.push({ sid: a.sessionId || String(a.id).replace(/^sess:/, ''), project: a.project, set: descendants(w.pid) });
-        }
-        const knownProjects = [];
-        for (const a of agents.values()) if (a.cwd) knownProjects.push({ cwd: String(a.cwd).toLowerCase(), project: a.project, sid: a.sessionId || String(a.id).replace(/^sess:/, '') });
-
-        // "interesting" = the kind of thing Claude spawns from Bash and leaves open
-        const INTERESTING = /^(node|python\d?|pythonw|py|deno|bun|npm|pnpm|yarn|vite|nodemon|next|ts-node|tsx|electron|webpack|esbuild|rollup|jest|vitest|gunicorn|uvicorn|flask|rails|ruby|go|dotnet|java|php|cargo|http-server|serve|ngrok)(\.exe)?$/i;
-
-        // Real ancestry, not guesswork: walk each process's parent chain so a
-        // process is only called "orphan" when its parent is actually gone.
-        // PID-reuse guard: a "parent" that started AFTER its child is a recycled
-        // pid — the real parent is dead, so the chain stops there.
-        const byPid = new Map(); for (const p of all) byPid.set(p.pid, p);
-        const startOf = (p) => (p && p.started ? Date.parse(p.started) || 0 : 0);
-        const ancestry = (p) => {
-          const chain = []; const seen = new Set([p.pid]); let cur = p;
-          for (let i = 0; i < 25; i++) {
-            const par = byPid.get(cur.ppid);
-            if (!par || seen.has(par.pid)) break;
-            if (startOf(par) > startOf(cur) + 1000) break;   // recycled pid ≠ real parent
-            chain.push(par); seen.add(par.pid); cur = par;
-          }
-          return chain;
-        };
-        const PLUGIN_RE = /[\\/]\.claude[\\/]plugins[\\/](?:cache[\\/])?[^\\/]*[\\/]?([^\\/\s]+)[\\/][\d.]+/i;
-
-        const now = Date.now();
-        const out = [];
-        for (const p of all) {
-          if (p.pid === process.pid) continue;                          // never list Gander's own bridge
-          const name = String(p.name || '');
-          const interesting = INTERESTING.test(name);
-          let attribution = 'orphan', sid = null, project = null, linked = null, plugin = null;
-          for (const s of sess) { if (s.set.has(p.pid)) { attribution = 'session'; sid = s.sid; project = s.project; break; } }
-          const chain = ancestry(p);
-          const claudeAnc = chain.find((a) => /^claude(\.exe)?$/i.test(String(a.name || '')));
-          // the plugin path shows in the launcher's cmdline, not its children's —
-          // so check the whole ancestor chain, not just the process itself
-          let pluginHit = null;
-          for (const q of [p, ...chain]) { pluginHit = String(q.cmd || '').match(PLUGIN_RE); if (pluginHit) break; }
-          if (attribution !== 'session') {
-            if (pluginHit) {
-              attribution = 'plugin'; plugin = pluginHit[1];
-              linked = claudeAnc ? `plugin of claude.exe ${claudeAnc.pid}` : 'Claude plugin runtime';
-            } else if (claudeAnc) {
-              attribution = 'claude';
-              const viaCode = chain.some((a) => /^code(\.exe)?$/i.test(String(a.name || '')));
-              linked = `child of claude.exe ${claudeAnc.pid}${viaCode ? ' (VS Code)' : ''}`;
-            } else if (interesting) {
-              const cmd = String(p.cmd || '').toLowerCase();
-              const hit = knownProjects.find((k) => k.cwd && cmd.includes(k.cwd));
-              if (hit) { attribution = 'project'; sid = hit.sid; project = hit.project; }
-            }
-          }
-          if (attribution === 'orphan') {
-            const par = byPid.get(p.ppid);
-            const parentAlive = par && startOf(par) <= startOf(p) + 1000;
-            if (parentAlive) { attribution = 'other'; linked = `child of ${par.name} ${par.pid} — not Claude-spawned`; }
-          }
-          // drop system/service noise: a non-interesting process only shows if it's
-          // provably tied to Claude (session descendant or plugin runtime).
-          if (!interesting && attribution !== 'session' && attribution !== 'plugin') continue;
-          // PowerShell's ConvertTo-Json unwraps a single-element array to a scalar and
-          // an empty one to {} — coerce both back to a clean array.
-          const ports = Array.isArray(p.ports) ? p.ports : (p.ports != null && typeof p.ports !== 'object' ? [p.ports] : []);
-          out.push({
-            pid: p.pid, name, cmd: p.cmd, ports,
-            started: p.started, uptimeMs: p.started ? Math.max(0, now - Date.parse(p.started)) : null,
-            attribution, sessionId: sid, project, linked, plugin,
-          });
-        }
-        out.sort((a, b) => (b.ports.length - a.ports.length) || ((b.uptimeMs || 0) - (a.uptimeMs || 0)));
-        sendJson(res, 200, { processes: out, generatedAt: new Date().toISOString() });
-      });
+    refreshProcs((list) => sendJson(res, 200, { processes: list, generatedAt: new Date(procsCache.at).toISOString() }));
     return;
   }
 

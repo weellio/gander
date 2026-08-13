@@ -6,12 +6,13 @@
   import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
-  let { agents: agentsProp = null, focusReq = null } = $props();
+  let { agents: agentsProp = null, focusReq = null, procs: procsProp = null } = $props();
   let _pendingFocus = null;   // {id} to centre on next frame
   let _flash = null;          // {id, until} highlight ring
   $effect(() => { if (focusReq && focusReq.id) _pendingFocus = focusReq; });
 
   let polled = $state([]); // self-polled agents
+  let polledProcs = $state([]); // self-polled background processes (floor robots)
   let canvas; // bound <canvas>
   let wrap; // bound container
 
@@ -21,6 +22,8 @@
       ? agentsProp
       : polled
   );
+  // Background processes for the floor's robots (same prefer-prop rule).
+  let procs = $derived(Array.isArray(procsProp) ? procsProp : polledProcs);
 
   // ── self-poll /api/state every ~600ms (only matters when no prop given) ──
   async function poll() {
@@ -29,6 +32,7 @@
       const r = await fetch('/api/state', { cache: 'no-store' });
       const d = await r.json();
       if (d && Array.isArray(d.agents)) polled = d.agents;
+      if (d && Array.isArray(d.procs)) polledProcs = d.procs;
     } catch (_) {
       /* keep last scene on failure */
     }
@@ -268,6 +272,62 @@
     ctx.fillText(lbl, x, y + 30 * scale);
   }
 
+  // ── background-process robot ─────────────────────────────────────────────
+  // A little worker bot: boxy body, tread base, antenna with a blinking LED.
+  // Colour says what it is (plugin / claude-child / session / other), amber +
+  // pulsing dashed ring = orphaned (parent gone — the Kill candidates).
+  const ROBOT_COLORS = { plugin: '#6366F1', claude: '#10B981', session: '#06B6D4', project: '#06B6D4', other: '#6B7280', orphan: '#F59E0B' };
+  function drawRobot(ctx, x, y, t, p) {
+    const color = ROBOT_COLORS[p.attribution] || '#6B7280';
+    const blink = 0.5 + 0.5 * Math.sin(t * 4 + (p.pid % 97));
+    ctx.save();
+    ctx.translate(x, y);
+    if (p.attribution === 'orphan') {                       // distress ring
+      ctx.strokeStyle = hexA('#F59E0B', 0.25 + 0.45 * blink);
+      ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.fillStyle = 'rgba(30,34,44,0.9)';                   // treads
+    ctx.fillRect(-7, 5, 5, 3); ctx.fillRect(2, 5, 5, 3);
+    ctx.fillStyle = hexA(color, 0.28);                      // body
+    ctx.strokeStyle = color; ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(-7, -4, 14, 10, 2.5); else ctx.rect(-7, -4, 14, 10);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = color;                                  // eyes
+    ctx.fillRect(-4, -1.5, 2.2, 2.2); ctx.fillRect(1.8, -1.5, 2.2, 2.2);
+    ctx.strokeStyle = color; ctx.lineWidth = 1;             // antenna + LED
+    ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(0, -8); ctx.stroke();
+    ctx.fillStyle = hexA(color, 0.35 + 0.6 * blink);
+    ctx.beginPath(); ctx.arc(0, -9, 1.8, 0, Math.PI * 2); ctx.fill();
+    if (p.ports && p.ports.length) {                        // holding a port
+      ctx.fillStyle = 'rgba(16,185,129,0.9)';
+      ctx.font = '6.5px ui-monospace, monospace'; ctx.textAlign = 'center';
+      ctx.fillText(':' + p.ports[0], 0, 14.5);
+    }
+    ctx.restore();
+    const lbl = p.plugin || String(p.name || '').replace(/\.exe$/i, '');
+    ctx.fillStyle = 'rgba(130,132,142,0.9)';
+    ctx.font = '7.5px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(lbl.length > 10 ? lbl.slice(0, 9) + '…' : lbl, x, y + (p.ports && p.ports.length ? 21 : 15));
+  }
+  // The server room: a rack cabinet with blinking status lights.
+  function drawRack(ctx, x, y, t) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(38,42,54,0.95)'; ctx.strokeStyle = 'rgba(150,160,185,0.4)'; ctx.lineWidth = 1;
+    ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x - 11, y - 16, 22, 32, 3); else ctx.rect(x - 11, y - 16, 22, 32);
+    ctx.fill(); ctx.stroke();
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = 'rgba(90,96,112,0.8)';
+      ctx.fillRect(x - 8, y - 13 + i * 8, 16, 5);
+      ctx.fillStyle = (Math.sin(t * 3 + i * 2.1) > 0) ? '#10B981' : 'rgba(16,185,129,0.2)';
+      ctx.fillRect(x + 5, y - 12 + i * 8, 2, 2);
+    }
+    ctx.restore();
+  }
+
   // Water cooler drawn UPRIGHT (front view) — bottle on a dispenser, like the
   // real thing. (x, y) is the bottom-centre of the base.
   // Punch clock — agents walk here to "clock out" before retiring.
@@ -388,6 +448,23 @@
   let autoFitted = false;
   let drag = null;
   let selectedId = $state(null);   // clicked agent → modal
+  let procSel = $state(null);      // clicked robot → {p, sx, sy} popover
+  let procKilling = $state(false);
+  function fmtUp(ms) {
+    if (ms == null) return '—';
+    const m = Math.floor(ms / 60000), h = Math.floor(m / 60);
+    return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
+  }
+  async function killProc() {
+    const p = procSel && procSel.p;
+    if (!p) return;
+    const where = p.ports && p.ports.length ? ` holding port ${p.ports.join(', ')}` : '';
+    if (!confirm(`Kill ${p.name} (pid ${p.pid})${where}?\n\nForce-kills the process and its child tree.`)) return;
+    procKilling = true;
+    try { await fetch('/api/kill-process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: p.pid }) }); } catch (_) {}
+    procKilling = false;
+    procSel = null;
+  }
   let hitTargets = [];             // {id,x,y,r} in world coords, rebuilt each frame
   let down = null;                 // pointerdown pos, to tell a click from a drag
   const zclamp = (v) => Math.max(0.3, Math.min(3, v));
@@ -426,7 +503,9 @@
     const wx = (e.clientX - rect.left - panX) / zoom, wy = (e.clientY - rect.top - panY) / zoom;
     let best = null, bestD = Infinity;
     for (const h of hitTargets) { const dd = Math.hypot(h.x - wx, h.y - wy); if (dd < h.r && dd < bestD) { best = h; bestD = dd; } }
-    if (best) selectedId = best.id;
+    if (best && best.proc) { procSel = { p: best.proc, sx: e.clientX - rect.left, sy: e.clientY - rect.top }; }
+    else if (best) { selectedId = best.id; procSel = null; }
+    else procSel = null;
   }
 
   function frame(now) {
@@ -746,6 +825,69 @@
         }
         ctx.globalAlpha = 1;
       }
+
+      // ── background-process robots ─────────────────────────────────────────
+      // Every long-running process a session left open gets a little robot:
+      // parked at the back wall of its session's room when we know the owner,
+      // otherwise in the SERVER ROOM below the floor (plugin runtimes + processes
+      // of sessions opened outside Gander, grouped by their claude.exe).
+      const plist = procs || [];
+      if (plist.length) {
+        const rootBySid = new Map(), rootByProj = new Map();
+        for (const r of tree.roots) {
+          if (r.sessionId) rootBySid.set(r.sessionId, r.id);
+          if (r.project && !rootByProj.has(r.project)) rootByProj.set(r.project, r.id);
+        }
+        const roomBots = new Map();   // rootId -> [proc]
+        const rackBots = [];
+        for (const p of plist) {
+          const rootId = (p.sessionId && rootBySid.get(p.sessionId)) || (p.project && rootByProj.get(p.project));
+          if (rootId && desks.get(rootId)?.teamRect) { if (!roomBots.has(rootId)) roomBots.set(rootId, []); roomBots.get(rootId).push(p); }
+          else rackBots.push(p);
+        }
+        // in-room: a row of bots along the room's back (bottom) wall
+        for (const [rootId, bots] of roomBots) {
+          const r = desks.get(rootId).teamRect;
+          bots.sort((a, b) => a.pid - b.pid);
+          bots.forEach((p, i) => {
+            const bx = r.x + 14 + (i % 6) * 26, by = r.y + r.h + 4 - Math.floor(i / 6) * 24;
+            drawRobot(ctx, bx, by, t, p);
+            hitTargets.push({ id: 'proc:' + p.pid, x: bx, y: by, r: 13, proc: p });
+          });
+        }
+        // server room: everything we can't pin to a visible tile
+        if (rackBots.length) {
+          let maxY = -Infinity, minX = Infinity;
+          for (const d of desks.values()) if (d.homeY != null) { if (d.homeY > maxY) maxY = d.homeY; if (d.homeX < minX) minX = d.homeX; }
+          if (maxY === -Infinity) { maxY = H / 2; minX = W / 2 - 100; }
+          // group visually by owner: plugin/claude clusters (by claude.exe pid), then other, orphans last
+          const ORD = { plugin: 0, claude: 1, other: 2, orphan: 3 };
+          rackBots.sort((a, b) => (ORD[a.attribution] ?? 9) - (ORD[b.attribution] ?? 9) || (a.claudePid || 0) - (b.claudePid || 0) || a.pid - b.pid);
+          const cols = Math.min(8, Math.max(4, Math.ceil(Math.sqrt(rackBots.length * 2))));
+          const rows = Math.ceil(rackBots.length / cols);
+          const rw = cols * 30 + 58, rh = rows * 30 + 34;
+          const rx = Math.max(20, minX - 14), ry = maxY + 78;
+          ctx.save();                                             // the room shell
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(rx, ry, rw, rh, 10); else ctx.rect(rx, ry, rw, rh);
+          ctx.fillStyle = 'rgba(120,132,168,0.05)'; ctx.fill();
+          ctx.strokeStyle = 'rgba(150,162,190,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+          ctx.fillStyle = 'rgba(140,145,160,0.85)';
+          ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif';
+          ctx.textAlign = 'left';
+          ctx.fillText('SERVER ROOM', rx + 10, ry - 6);
+          ctx.font = '8px ui-sans-serif, system-ui, sans-serif';
+          ctx.fillStyle = 'rgba(130,135,148,0.6)';
+          ctx.fillText('background processes · click a bot', rx + 82, ry - 6);
+          ctx.restore();
+          drawRack(ctx, rx + 24, ry + rh / 2, t);
+          rackBots.forEach((p, i) => {
+            const bx = rx + 52 + (i % cols) * 30, by = ry + 22 + Math.floor(i / cols) * 30;
+            drawRobot(ctx, bx, by, t, p);
+            hitTargets.push({ id: 'proc:' + p.pid, x: bx, y: by, r: 13, proc: p });
+          });
+        }
+      }
     } catch (_) {
       /* never throw out of rAF */
     }
@@ -795,6 +937,23 @@
     <button onclick={() => zoomBy(1.2)} title="Zoom in">+</button>
     <button class="fit" onclick={fitView} title="Fit">Fit</button>
   </div>
+  {#if procSel}
+    <div class="procpop" style="left:{Math.min(Math.max(8, procSel.sx - 120), (cssW || 400) - 248)}px; top:{Math.min(Math.max(8, procSel.sy + 14), (cssH || 300) - 170)}px">
+      <div class="pp-h">
+        <b>{procSel.p.name}</b>
+        {#if procSel.p.plugin}<span class="pp-plug">{procSel.p.plugin}</span>{/if}
+        <span class="pp-pid">pid {procSel.p.pid}</span>
+        <button class="pp-x" onclick={() => (procSel = null)} aria-label="Close">✕</button>
+      </div>
+      {#if procSel.p.linked}<div class="pp-l">↳ {procSel.p.linked}</div>{/if}
+      {#if procSel.p.project}<div class="pp-l">project: {procSel.p.project}</div>{/if}
+      <div class="pp-l">up {fmtUp(procSel.p.uptimeMs)}{#if procSel.p.ports?.length} · {#each procSel.p.ports as port (port)}<a href="http://localhost:{port}" target="_blank" rel="noopener">:{port}</a>{' '}{/each}{/if}</div>
+      <div class="pp-hint">
+        {#if procSel.p.attribution === 'orphan'}Parent is gone — likely safe to kill.{:else if procSel.p.attribution === 'plugin'}Plugin runtime — exits with its session; killing it breaks that plugin until it respawns.{:else if procSel.p.attribution === 'claude'}Belongs to a live Claude session — exits with it.{:else if procSel.p.attribution === 'other'}Not Claude-spawned — listed for its port.{:else}Spawned by this session.{/if}
+      </div>
+      <button class="pp-kill" disabled={procKilling} onclick={killProc}>{procKilling ? '…' : 'Kill'}</button>
+    </div>
+  {/if}
 </div>
 
 {#if selectedId}
@@ -813,6 +972,20 @@
       radial-gradient(120% 80% at 50% 0%, rgba(99, 102, 241, 0.06), transparent 60%),
       var(--color-background-primary, #fafafa);
   }
+  .procpop { position: absolute; z-index: 40; width: 240px; padding: 9px 11px; border-radius: 9px;
+    background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary);
+    box-shadow: 0 14px 40px rgba(0,0,0,0.4); font-size: 11px; color: var(--color-text-primary); }
+  .pp-h { display: flex; align-items: baseline; gap: 6px; }
+  .pp-h b { font-size: 12px; }
+  .pp-plug { font-size: 8.5px; padding: 1px 5px; border-radius: 999px; background: #6366F11f; color: var(--accent, #6366F1); }
+  .pp-pid { font-family: var(--font-mono); font-size: 9.5px; color: var(--color-text-tertiary); }
+  .pp-x { margin-left: auto; border: 0; background: none; color: var(--color-text-tertiary); cursor: pointer; font-size: 11px; }
+  .pp-l { color: var(--color-text-secondary); margin-top: 3px; line-height: 1.4; word-break: break-word; }
+  .pp-l a { color: #10B981; font-family: var(--font-mono); font-size: 10px; }
+  .pp-hint { margin-top: 5px; font-size: 10px; color: var(--color-text-tertiary); line-height: 1.4; }
+  .pp-kill { margin-top: 7px; padding: 3px 12px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600;
+    background: #EF44441a; border: 0.5px solid #EF444455; color: #EF4444; }
+  .pp-kill:hover:not(:disabled) { background: #EF4444; color: #fff; }
   canvas {
     display: block;
     width: 100%;
