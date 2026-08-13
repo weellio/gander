@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { STATE_COLORS, STATE_LABEL } from './states.js';
   import { paintFigure } from './avatars/desk.js';
+  import { buildClusters, fmtUp, TONE_COL } from './procgroups.js';
   import { animations, costAlerts } from './stores.js';
   import AgentModal from './AgentModal.svelte';
 
@@ -453,11 +454,6 @@
   let selectedId = $state(null);   // clicked agent → modal
   let procSel = $state(null);      // clicked robot → {p, sx, sy} popover
   let procKilling = $state(false);
-  function fmtUp(ms) {
-    if (ms == null) return '—';
-    const m = Math.floor(ms / 60000), h = Math.floor(m / 60);
-    return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
-  }
   async function killProc() {
     const p = procSel && procSel.p;
     if (!p) return;
@@ -888,50 +884,8 @@
             if (rackAnchor) { maxY = rackAnchor.maxY; minX = rackAnchor.minX; }
             else { maxY = H * 0.3; minX = W / 2 - 160; }
           } else { rackAnchor = { maxY, minX }; }
-          const byKey = new Map();
-          for (const p of rackBots) {
-            // leftovers attributed to a session/project whose tile has clocked out
-            // keep their project identity — they are still Claude-spawned
-            const key = p.claudePid ? 'c' + p.claudePid
-              : p.attribution === 'orphan' ? 'orphan'
-              : (p.attribution === 'session' || p.attribution === 'project') && p.project ? 'proj:' + p.project
-              : 'other';
-            if (!byKey.has(key)) byKey.set(key, []);
-            byKey.get(key).push(p);
-          }
-          const clusters = [];
-          for (const [key, bots] of byKey) {
-            bots.sort((a, b) => a.pid - b.pid);
-            if (key[0] === 'c') {
-              const pid = bots[0].claudePid;
-              const work = bots.filter((b) => b.attribution !== 'plugin');
-              const up = Math.max(...bots.map((b) => b.uptimeMs || 0));
-              // "safe to close" only for sessions parked >24h — a young sidecar-only
-              // cluster is probably the window the user is sitting in right now
-              const days = Math.floor(up / 86400e3);
-              clusters.push({
-                key, claudePid: pid, bots,
-                title: `claude.exe ${pid}`, sub: `Claude session · up ~${fmtUp(up)}`,
-                verdict: work.length
-                  ? 'has live work: ' + work.map((b) => b.name.replace(/\.exe$/i, '') + (b.ports?.[0] ? ' :' + b.ports[0] : '')).join(', ')
-                  : (up > 86400e3 ? `parked ~${days}d — only plugin sidecars · safe to close` : 'only plugin sidecars — exits with its window'),
-                tone: work.length ? 'work' : (up > 86400e3 ? 'close' : 'dim'),
-              });
-            } else if (key.startsWith('proj:')) {
-              clusters.push({
-                key, bots, title: key.slice(5), sub: 'left running by a Claude session (clocked out)',
-                verdict: bots.map((b) => b.name.replace(/\.exe$/i, '') + (b.ports?.[0] ? ' :' + b.ports[0] : '')).join(', '),
-                tone: 'work',
-              });
-            } else if (key === 'other') {
-              clusters.push({ key, bots, title: 'NOT CLAUDE-SPAWNED', sub: '', verdict: 'listed for their ports only', tone: 'dim' });
-            } else {
-              clusters.push({ key, bots, title: 'ORPHANED', sub: 'no owning session', verdict: 'may still be a service you rely on — kill only what you recognize', tone: 'warn' });
-            }
-          }
-          const TONE_ORD = { close: 0, work: 1, dim: 2, warn: 3 };
-          clusters.sort((a, b) => (TONE_ORD[a.tone] ?? 9) - (TONE_ORD[b.tone] ?? 9) || (a.claudePid || 0) - (b.claudePid || 0));
-          const TONE_COL = { close: '#10B981', work: '#06B6D4', dim: '#8b93a2', warn: '#F59E0B' };
+          // shared grouping + verdicts (procgroups.js) — same truth as the Mosaic strip
+          const clusters = buildClusters(rackBots);
 
           // well below the floor so nothing runs into desk/cooler labels
           const rx = Math.max(60, minX - 14);

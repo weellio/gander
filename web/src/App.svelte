@@ -30,6 +30,7 @@
   import CommandPalette from './lib/CommandPalette.svelte';
   import Hierarchy from './lib/Hierarchy.svelte';
   import Office from './lib/Office.svelte';
+  import ProcsStrip from './lib/ProcsStrip.svelte';
   import { theme, applyTheme, PRESETS, BACKGROUNDS } from './lib/theme.js';
 
   // appearance controls (merged in from the old Theme menu)
@@ -569,6 +570,7 @@
         <AgentTile {agent} onOpen={(id) => (tileModalId = id)} />
       {/each}
     </div>
+    <ProcsStrip {procs} />
   {/if}
 
   {#if $layout !== 'office'}<Hierarchy agents={shown} />{/if}
