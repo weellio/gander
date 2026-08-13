@@ -579,6 +579,29 @@
         _pendingFocus = null;
       }
 
+      // group background processes EARLY so each room can grow its floor to fit
+      // its bots (they park inside the back wall, never straddling it)
+      const plist = procs || [];
+      const roomBots = new Map();   // rootId -> [proc]
+      const rackBots = [];
+      for (const d of desks.values()) d.botRows = 0;
+      if (plist.length) {
+        const rootBySid = new Map(), rootByProj = new Map();
+        for (const r of tree.roots) {
+          if (r.sessionId) rootBySid.set(r.sessionId, r.id);
+          if (r.project && !rootByProj.has(r.project)) rootByProj.set(r.project, r.id);
+        }
+        for (const p of plist) {
+          const rootId = (p.sessionId && rootBySid.get(p.sessionId)) || (p.project && rootByProj.get(p.project));
+          if (rootId && desks.get(rootId)?.teamRect) { if (!roomBots.has(rootId)) roomBots.set(rootId, []); roomBots.get(rootId).push(p); }
+          else rackBots.push(p);
+        }
+        for (const [rootId, bots] of roomBots) {
+          bots.sort((a, b) => a.pid - b.pid);
+          desks.get(rootId).botRows = Math.ceil(bots.length / 6);
+        }
+      }
+
       // ── rooms: team rooms enclose the orchestrator + its cubicle floor; solo
       // orchestrators each get their own small private office. ──
       ctx.save();
@@ -586,7 +609,9 @@
         const rd = desks.get(root.id);
         if (!rd || !rd.teamRect) continue;
         const r = rd.teamRect, solo = !r.team;
-        const px = solo ? 9 : 12, pt = solo ? 13 : 16, pb = solo ? 20 : 14, rad = solo ? 10 : 14;
+        const pbBase = solo ? 20 : 14;
+        const px = solo ? 9 : 12, pt = solo ? 13 : 16, rad = solo ? 10 : 14;
+        const pb = rd.botRows ? Math.max(pbBase, 14 + rd.botRows * 34) : pbBase;   // grow for parked bots
         const bx = r.x - px, by = r.y - pt, bw = r.w + px * 2, bh = r.h + pt + pb;
         ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, rad); else ctx.rect(bx, by, bw, bh);
@@ -844,26 +869,12 @@
       // parked at the back wall of its session's room when we know the owner,
       // otherwise in the SERVER ROOM below the floor (plugin runtimes + processes
       // of sessions opened outside Gander, grouped by their claude.exe).
-      const plist = procs || [];
       if (plist.length) {
-        const rootBySid = new Map(), rootByProj = new Map();
-        for (const r of tree.roots) {
-          if (r.sessionId) rootBySid.set(r.sessionId, r.id);
-          if (r.project && !rootByProj.has(r.project)) rootByProj.set(r.project, r.id);
-        }
-        const roomBots = new Map();   // rootId -> [proc]
-        const rackBots = [];
-        for (const p of plist) {
-          const rootId = (p.sessionId && rootBySid.get(p.sessionId)) || (p.project && rootByProj.get(p.project));
-          if (rootId && desks.get(rootId)?.teamRect) { if (!roomBots.has(rootId)) roomBots.set(rootId, []); roomBots.get(rootId).push(p); }
-          else rackBots.push(p);
-        }
-        // in-room: a row of bots along the room's back (bottom) wall
+        // in-room: rows of bots INSIDE the room's (grown) back-wall area
         for (const [rootId, bots] of roomBots) {
           const r = desks.get(rootId).teamRect;
-          bots.sort((a, b) => a.pid - b.pid);
           bots.forEach((p, i) => {
-            const bx = r.x + 18 + (i % 6) * 32, by = r.y + r.h + 8 - Math.floor(i / 6) * 30;
+            const bx = r.x + 18 + (i % 6) * 34, by = r.y + r.h + 12 + Math.floor(i / 6) * 34;
             drawRobot(ctx, bx, by, t, p);
             hitTargets.push({ id: 'proc:' + p.pid, x: bx, y: by, r: 13, proc: p });
           });
