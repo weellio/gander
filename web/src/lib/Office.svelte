@@ -277,7 +277,7 @@
   // Colour says what it is (plugin / claude-child / session / other), amber +
   // pulsing dashed ring = orphaned (parent gone — the Kill candidates).
   const ROBOT_COLORS = { plugin: '#6366F1', claude: '#10B981', session: '#06B6D4', project: '#06B6D4', other: '#6B7280', orphan: '#F59E0B' };
-  function drawRobot(ctx, x, y, t, p) {
+  function drawRobot(ctx, x, y, t, p, showLabel = true) {
     const color = ROBOT_COLORS[p.attribution] || '#6B7280';
     const blink = 0.5 + 0.5 * Math.sin(t * 4 + (p.pid % 97));
     ctx.save();
@@ -307,11 +307,13 @@
       ctx.fillText(':' + p.ports[0], 0, 14.5);
     }
     ctx.restore();
-    const lbl = p.plugin || String(p.name || '').replace(/\.exe$/i, '');
-    ctx.fillStyle = 'rgba(130,132,142,0.9)';
-    ctx.font = '7.5px ui-sans-serif, system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(lbl.length > 10 ? lbl.slice(0, 9) + '…' : lbl, x, y + (p.ports && p.ports.length ? 21 : 15));
+    if (showLabel) {
+      const lbl = p.plugin || String(p.name || '').replace(/\.exe$/i, '');
+      ctx.fillStyle = 'rgba(130,132,142,0.9)';
+      ctx.font = '7.5px ui-sans-serif, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(lbl.length > 10 ? lbl.slice(0, 9) + '…' : lbl, x, y + (p.ports && p.ports.length ? 21 : 15));
+    }
   }
   // The server room: a rack cabinet with blinking status lights.
   function drawRack(ctx, x, y, t) {
@@ -465,6 +467,19 @@
     procKilling = false;
     procSel = null;
   }
+  // End a whole parked session: kill its claude.exe (tree) — the session stays
+  // resumable from History, and all its sidecar robots exit with it.
+  async function killSession() {
+    const c = procSel && procSel.cluster;
+    if (!c || !c.claudePid) return;
+    const work = c.bots.filter((b) => b.attribution !== 'plugin');
+    const warn = work.length ? `\n\nWARNING — it still has live work that dies with it:\n${work.map((b) => `  ${b.name}${b.ports?.length ? ' :' + b.ports.join(',') : ''}`).join('\n')}` : '';
+    if (!confirm(`End this Claude session (kill claude.exe ${c.claudePid} and its ${c.bots.length} background process${c.bots.length === 1 ? '' : 'es'})?\n\nThe conversation stays resumable from Session history.${warn}`)) return;
+    procKilling = true;
+    try { await fetch('/api/kill-process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: c.claudePid }) }); } catch (_) {}
+    procKilling = false;
+    procSel = null;
+  }
   let hitTargets = [];             // {id,x,y,r} in world coords, rebuilt each frame
   let down = null;                 // pointerdown pos, to tell a click from a drag
   const zclamp = (v) => Math.max(0.3, Math.min(3, v));
@@ -504,6 +519,7 @@
     let best = null, bestD = Infinity;
     for (const h of hitTargets) { const dd = Math.hypot(h.x - wx, h.y - wy); if (dd < h.r && dd < bestD) { best = h; bestD = dd; } }
     if (best && best.proc) { procSel = { p: best.proc, sx: e.clientX - rect.left, sy: e.clientY - rect.top }; }
+    else if (best && best.cluster) { procSel = { cluster: best.cluster, sx: e.clientX - rect.left, sy: e.clientY - rect.top }; }
     else if (best) { selectedId = best.id; procSel = null; }
     else procSel = null;
   }
@@ -850,42 +866,101 @@
           const r = desks.get(rootId).teamRect;
           bots.sort((a, b) => a.pid - b.pid);
           bots.forEach((p, i) => {
-            const bx = r.x + 14 + (i % 6) * 26, by = r.y + r.h + 4 - Math.floor(i / 6) * 24;
+            const bx = r.x + 18 + (i % 6) * 32, by = r.y + r.h + 8 - Math.floor(i / 6) * 30;
             drawRobot(ctx, bx, by, t, p);
             hitTargets.push({ id: 'proc:' + p.pid, x: bx, y: by, r: 13, proc: p });
           });
         }
-        // server room: everything we can't pin to a visible tile
+        // server room: everything we can't pin to a visible tile, grouped by
+        // OWNER with a verdict on each group — the triage is in the picture:
+        //   claude.exe cluster, only plugin sidecars → "idle — safe to close"
+        //   claude.exe cluster with real children     → "has live work: …"
+        //   no owner at all                           → "kill only what you recognize"
         if (rackBots.length) {
           let maxY = -Infinity, minX = Infinity;
           for (const d of desks.values()) if (d.homeY != null) { if (d.homeY > maxY) maxY = d.homeY; if (d.homeX < minX) minX = d.homeX; }
           if (maxY === -Infinity) { maxY = H / 2; minX = W / 2 - 100; }
-          // group visually by owner: plugin/claude clusters (by claude.exe pid), then other, orphans last
-          const ORD = { plugin: 0, claude: 1, other: 2, orphan: 3 };
-          rackBots.sort((a, b) => (ORD[a.attribution] ?? 9) - (ORD[b.attribution] ?? 9) || (a.claudePid || 0) - (b.claudePid || 0) || a.pid - b.pid);
-          const cols = Math.min(8, Math.max(4, Math.ceil(Math.sqrt(rackBots.length * 2))));
-          const rows = Math.ceil(rackBots.length / cols);
-          const rw = cols * 30 + 58, rh = rows * 30 + 34;
-          const rx = Math.max(20, minX - 14), ry = maxY + 78;
-          ctx.save();                                             // the room shell
-          ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect(rx, ry, rw, rh, 10); else ctx.rect(rx, ry, rw, rh);
-          ctx.fillStyle = 'rgba(120,132,168,0.05)'; ctx.fill();
-          ctx.strokeStyle = 'rgba(150,162,190,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+          const byKey = new Map();
+          for (const p of rackBots) {
+            const key = p.claudePid ? 'c' + p.claudePid : (p.attribution === 'orphan' ? 'orphan' : 'other');
+            if (!byKey.has(key)) byKey.set(key, []);
+            byKey.get(key).push(p);
+          }
+          const clusters = [];
+          for (const [key, bots] of byKey) {
+            bots.sort((a, b) => a.pid - b.pid);
+            if (key[0] === 'c') {
+              const pid = bots[0].claudePid;
+              const work = bots.filter((b) => b.attribution !== 'plugin');
+              const up = Math.max(...bots.map((b) => b.uptimeMs || 0));
+              // "safe to close" only for sessions parked >24h — a young sidecar-only
+              // cluster is probably the window the user is sitting in right now
+              const days = Math.floor(up / 86400e3);
+              clusters.push({
+                key, claudePid: pid, bots,
+                title: `claude.exe ${pid}`, sub: `Claude session · up ~${fmtUp(up)}`,
+                verdict: work.length
+                  ? 'has live work: ' + work.map((b) => b.name.replace(/\.exe$/i, '') + (b.ports?.[0] ? ' :' + b.ports[0] : '')).join(', ')
+                  : (up > 86400e3 ? `parked ~${days}d — only plugin sidecars · safe to close` : 'only plugin sidecars — exits with its window'),
+                tone: work.length ? 'work' : (up > 86400e3 ? 'close' : 'dim'),
+              });
+            } else if (key === 'other') {
+              clusters.push({ key, bots, title: 'NOT CLAUDE-SPAWNED', sub: '', verdict: 'listed for their ports only', tone: 'dim' });
+            } else {
+              clusters.push({ key, bots, title: 'ORPHANED', sub: 'no owning session', verdict: 'may still be a service you rely on — kill only what you recognize', tone: 'warn' });
+            }
+          }
+          const TONE_ORD = { close: 0, work: 1, dim: 2, warn: 3 };
+          clusters.sort((a, b) => (TONE_ORD[a.tone] ?? 9) - (TONE_ORD[b.tone] ?? 9) || (a.claudePid || 0) - (b.claudePid || 0));
+          const TONE_COL = { close: '#10B981', work: '#06B6D4', dim: '#8b93a2', warn: '#F59E0B' };
+
+          // well below the floor so nothing runs into desk/cooler labels
+          const rx = Math.max(60, minX - 14);
+          let cy0 = maxY + 128;
+          ctx.save();
           ctx.fillStyle = 'rgba(140,145,160,0.85)';
-          ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif';
-          ctx.textAlign = 'left';
-          ctx.fillText('SERVER ROOM', rx + 10, ry - 6);
-          ctx.font = '8px ui-sans-serif, system-ui, sans-serif';
-          ctx.fillStyle = 'rgba(130,135,148,0.6)';
-          ctx.fillText('background processes · click a bot', rx + 82, ry - 6);
+          ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left';
+          ctx.fillText('SERVER ROOM', rx, cy0 - 14);
+          ctx.font = '8px ui-sans-serif, system-ui, sans-serif'; ctx.fillStyle = 'rgba(130,135,148,0.6)';
+          ctx.fillText('background processes · click a bot or a group header', rx + 78, cy0 - 14);
           ctx.restore();
-          drawRack(ctx, rx + 24, ry + rh / 2, t);
-          rackBots.forEach((p, i) => {
-            const bx = rx + 52 + (i % cols) * 30, by = ry + 22 + Math.floor(i / cols) * 30;
-            drawRobot(ctx, bx, by, t, p);
-            hitTargets.push({ id: 'proc:' + p.pid, x: bx, y: by, r: 13, proc: p });
-          });
+          drawRack(ctx, rx - 30, cy0 + 30, t);
+          for (const c of clusters) {
+            const cols = Math.min(7, Math.max(3, c.bots.length));
+            const rows = Math.ceil(c.bots.length / cols);
+            const boxW = Math.max(280, cols * 40 + 34), boxH = 62 + rows * 40;
+            const col = TONE_COL[c.tone];
+            ctx.save();                                        // group box, tinted by verdict
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(rx, cy0, boxW, boxH, 9); else ctx.rect(rx, cy0, boxW, boxH);
+            ctx.fillStyle = hexA(col, 0.045); ctx.fill();
+            ctx.strokeStyle = hexA(col, c.tone === 'dim' ? 0.25 : 0.45); ctx.lineWidth = 1; ctx.stroke();
+            ctx.textAlign = 'left';
+            ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif';
+            ctx.fillStyle = 'rgba(200,204,214,0.9)';
+            ctx.fillText(c.title, rx + 12, cy0 + 15);
+            if (c.sub) { ctx.font = '8px ui-sans-serif, system-ui, sans-serif'; ctx.fillStyle = 'rgba(140,145,158,0.75)'; ctx.fillText(c.sub, rx + 14 + ctx.measureText(c.title).width + 26, cy0 + 15); }
+            ctx.font = '600 8px ui-sans-serif, system-ui, sans-serif';   // the verdict pill
+            const vw = ctx.measureText(c.verdict).width + 12;
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(rx + 10, cy0 + 22, vw, 13, 6.5); else ctx.rect(rx + 10, cy0 + 22, vw, 13);
+            ctx.fillStyle = hexA(col, 0.14); ctx.fill();
+            ctx.fillStyle = col;
+            ctx.fillText(c.verdict, rx + 16, cy0 + 31.5);
+            ctx.restore();
+            // clickable header/verdict area → cluster popover (End-session action)
+            hitTargets.push({ id: 'cluster:' + c.key, x: rx + Math.min(boxW, vw + 30) / 2, y: cy0 + 24, r: 28, cluster: c });
+            // one label per RUN of identical bots in a row (six "telegram"s → one),
+            // so the words stop running together
+            const lblOf = (p) => p.plugin || String(p.name || '').replace(/\.exe$/i, '');
+            c.bots.forEach((p, i) => {
+              const bx = rx + 28 + (i % cols) * 40, by = cy0 + 54 + Math.floor(i / cols) * 40;
+              const first = i % cols === 0 || lblOf(p) !== lblOf(c.bots[i - 1]);
+              drawRobot(ctx, bx, by, t, p, first || !!(p.ports && p.ports.length));
+              hitTargets.push({ id: 'proc:' + p.pid, x: bx, y: by, r: 14, proc: p });
+            });
+            cy0 += boxH + 18;
+          }
         }
       }
     } catch (_) {
@@ -937,7 +1012,25 @@
     <button onclick={() => zoomBy(1.2)} title="Zoom in">+</button>
     <button class="fit" onclick={fitView} title="Fit">Fit</button>
   </div>
-  {#if procSel}
+  {#if procSel && procSel.cluster}
+    <div class="procpop" style="left:{Math.min(Math.max(8, procSel.sx - 120), (cssW || 400) - 268)}px; top:{Math.min(Math.max(8, procSel.sy + 14), (cssH || 300) - 190)}px">
+      <div class="pp-h">
+        <b>{procSel.cluster.title}</b>
+        <span class="pp-pid">{procSel.cluster.bots.length} process{procSel.cluster.bots.length === 1 ? '' : 'es'}</span>
+        <button class="pp-x" onclick={() => (procSel = null)} aria-label="Close">✕</button>
+      </div>
+      {#if procSel.cluster.sub}<div class="pp-l">{procSel.cluster.sub}</div>{/if}
+      <div class="pp-l" style="color:{procSel.cluster.tone === 'close' ? '#10B981' : procSel.cluster.tone === 'warn' ? '#F59E0B' : 'inherit'}">{procSel.cluster.verdict}</div>
+      {#if procSel.cluster.claudePid}
+        <div class="pp-hint">
+          {#if procSel.cluster.tone === 'close'}This Claude session has been parked for days with nothing running but its plugin sidecars — probably a VS Code window you're done with. Ending it frees all {procSel.cluster.bots.length} processes; the conversation stays resumable from Session history.{:else if procSel.cluster.tone === 'work'}This session still has live work (listed above) that dies with it — check it before ending.{:else}This session started recently — it may be the window you're using right now. Its sidecars exit when you close that window.{/if}
+        </div>
+        <button class="pp-kill" disabled={procKilling} onclick={killSession}>{procKilling ? '…' : `End session — kill claude.exe ${procSel.cluster.claudePid}`}</button>
+      {:else}
+        <div class="pp-hint">{procSel.cluster.tone === 'warn' ? 'No owning session — click individual bots to inspect and kill only what you recognize.' : 'Not Claude-spawned — click individual bots for details.'}</div>
+      {/if}
+    </div>
+  {:else if procSel}
     <div class="procpop" style="left:{Math.min(Math.max(8, procSel.sx - 120), (cssW || 400) - 248)}px; top:{Math.min(Math.max(8, procSel.sy + 14), (cssH || 300) - 170)}px">
       <div class="pp-h">
         <b>{procSel.p.name}</b>

@@ -12,7 +12,7 @@
         ['Mosaic', 'A compact responsive tile grid. Here you can switch avatar style (pixel / abstract / desk / your images) and import images.'],
         ['Activity highlight', 'Working agents get a coloured glow; idle agents get a pulsing amber ring so you can spot who to put back to work.'],
         ['Pan / zoom', 'Drag to pan, use the +/− controls (or scroll) to zoom the Office floor; Fit re-centres.'],
-        ['🤖 Process robots', 'Background processes your sessions leave running show as little robots — inside their session\'s room when the owner is on the floor, else in the SERVER ROOM below (plugin runtimes, children of sessions opened outside Gander, port-holders). Indigo = plugin, green = belongs to a live Claude session, amber pulsing = orphaned (parent gone — the Kill candidate). Click a bot for what it\'s linked to, uptime, ports, and a Kill button.'],
+        ['🤖 Process robots', 'Background processes your sessions leave running show as little robots — inside their session\'s room when the owner is on the floor, else in the SERVER ROOM below, grouped by owning claude.exe with a verdict pill: "parked ~2d — safe to close" (green), "has live work" (cyan — check first), or ORPHANED (amber — may still be a service you rely on). Click a group header to end a parked session in one click (stays resumable from Session history); click a bot for its own details + Kill.'],
         ['Resizable panels', 'Every side panel (the Manage drawers + Settings) is resizable — hover the left edge for the ↔ grip and drag. The width is shared and remembered across reloads.'],
       ],
     },
