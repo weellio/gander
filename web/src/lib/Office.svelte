@@ -41,6 +41,7 @@
   // ── persistent per-desk visual state, keyed by agent id ──
   // { x,y (current), tx,ty (target), seed, walk:{...}|null, nextWalkAt }
   const desks = new Map();
+  let rackAnchor = null;   // last server-room anchor — survives all tiles clocking out
 
   // deterministic pseudo-random from a string id (stable per id)
   function hash(str) {
@@ -877,12 +878,24 @@
         //   claude.exe cluster with real children     → "has live work: …"
         //   no owner at all                           → "kill only what you recognize"
         if (rackBots.length) {
+          // Anchor below the desks — and REMEMBER the anchor, so when every tile
+          // clocks out (idle sessions retire after ~25 min) the server room stays
+          // exactly where it was instead of jumping off-camera. The processes are
+          // still running; the picture must keep saying so.
           let maxY = -Infinity, minX = Infinity;
           for (const d of desks.values()) if (d.homeY != null) { if (d.homeY > maxY) maxY = d.homeY; if (d.homeX < minX) minX = d.homeX; }
-          if (maxY === -Infinity) { maxY = H / 2; minX = W / 2 - 100; }
+          if (maxY === -Infinity) {
+            if (rackAnchor) { maxY = rackAnchor.maxY; minX = rackAnchor.minX; }
+            else { maxY = H * 0.3; minX = W / 2 - 160; }
+          } else { rackAnchor = { maxY, minX }; }
           const byKey = new Map();
           for (const p of rackBots) {
-            const key = p.claudePid ? 'c' + p.claudePid : (p.attribution === 'orphan' ? 'orphan' : 'other');
+            // leftovers attributed to a session/project whose tile has clocked out
+            // keep their project identity — they are still Claude-spawned
+            const key = p.claudePid ? 'c' + p.claudePid
+              : p.attribution === 'orphan' ? 'orphan'
+              : (p.attribution === 'session' || p.attribution === 'project') && p.project ? 'proj:' + p.project
+              : 'other';
             if (!byKey.has(key)) byKey.set(key, []);
             byKey.get(key).push(p);
           }
@@ -903,6 +916,12 @@
                   ? 'has live work: ' + work.map((b) => b.name.replace(/\.exe$/i, '') + (b.ports?.[0] ? ' :' + b.ports[0] : '')).join(', ')
                   : (up > 86400e3 ? `parked ~${days}d — only plugin sidecars · safe to close` : 'only plugin sidecars — exits with its window'),
                 tone: work.length ? 'work' : (up > 86400e3 ? 'close' : 'dim'),
+              });
+            } else if (key.startsWith('proj:')) {
+              clusters.push({
+                key, bots, title: key.slice(5), sub: 'left running by a Claude session (clocked out)',
+                verdict: bots.map((b) => b.name.replace(/\.exe$/i, '') + (b.ports?.[0] ? ' :' + b.ports[0] : '')).join(', '),
+                tone: 'work',
               });
             } else if (key === 'other') {
               clusters.push({ key, bots, title: 'NOT CLAUDE-SPAWNED', sub: '', verdict: 'listed for their ports only', tone: 'dim' });
