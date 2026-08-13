@@ -949,7 +949,7 @@
       {#if procSel.p.project}<div class="pp-l">project: {procSel.p.project}</div>{/if}
       <div class="pp-l">up {fmtUp(procSel.p.uptimeMs)}{#if procSel.p.ports?.length} · {#each procSel.p.ports as port (port)}<a href="http://localhost:{port}" target="_blank" rel="noopener">:{port}</a>{' '}{/each}{/if}</div>
       <div class="pp-hint">
-        {#if procSel.p.attribution === 'orphan'}Parent is gone — likely safe to kill.{:else if procSel.p.attribution === 'plugin'}Plugin runtime — exits with its session; killing it breaks that plugin until it respawns.{:else if procSel.p.attribution === 'claude'}Belongs to a live Claude session — exits with it.{:else if procSel.p.attribution === 'other'}Not Claude-spawned — listed for its port.{:else}Spawned by this session.{/if}
+        {#if procSel.p.attribution === 'orphan'}Parent is gone — no session owns it. But orphaned ≠ useless: a long-lived one holding a port may be a service you rely on (a proxy, a local server). Kill it only if you recognize it and don't need it.{:else if procSel.p.attribution === 'plugin'}Plugin runtime — exits with its session; killing it breaks that plugin until it respawns.{:else if procSel.p.attribution === 'claude'}Belongs to a live Claude session — exits with it.{:else if procSel.p.attribution === 'other'}Not Claude-spawned — listed for its port.{:else}Spawned by this session.{/if}
       </div>
       <button class="pp-kill" disabled={procKilling} onclick={killProc}>{procKilling ? '…' : 'Kill'}</button>
     </div>
