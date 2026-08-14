@@ -49,6 +49,19 @@ describe('attribute', () => {
     assert.equal(by[5].attribution, 'claude');
     assert.match(by[5].linked, /child of claude\.exe 2 \(VS Code\)/);
   });
+  test('window titles do NOT set project (Electron title = focused window, not owner)', () => {
+    const table = TABLE.map((p) => (p.pid === 1 ? { ...p, title: 'server.js — mremail — Visual Studio Code' } : p));
+    const out = procs.attribute(table, 424242, [], [{ cwd: 'd:\\files\\sourcecode\\mremail', project: 'mremail', sid: null }]);
+    const by = Object.fromEntries(out.map((p) => [p.pid, p]));
+    assert.equal(by[5].project, null, 'a focused-window title must not label other sessions');
+  });
+  test('project resolves from a known path in an ancestor cmdline', () => {
+    const table = TABLE.map((p) => (p.pid === 5 ? { ...p, cmd: 'F:\\Python310\\python.exe D:\\files\\sourcecode\\mremail\\webapp.py --port 5000' } : p));
+    const out = procs.attribute(table, 424242, [], [{ cwd: 'd:\\files\\sourcecode\\mremail', project: 'mremail', sid: null }]);
+    const by = Object.fromEntries(out.map((p) => [p.pid, p]));
+    assert.equal(by[5].project, 'mremail');
+    assert.equal(by[5].attribution, 'claude', 'attribution stays claude — project is extra info');
+  });
   test('unrelated port-holders are "other", never orphan', () => {
     const by = run();
     assert.equal(by[7].attribution, 'other');

@@ -48,14 +48,29 @@ function attribute(all, selfPid, sessions, knownProjects) {
     // so check the whole ancestor chain, not just the process itself
     let pluginHit = null;
     for (const q of [p, ...chain]) { pluginHit = String(q.cmd || '').match(PLUGIN_RE); if (pluginHit) break; }
+    // Name the project when the machine TRULY knows it: a known project path in
+    // the cmdline (self or ancestors). Window titles are deliberately NOT used —
+    // VS Code is Electron, so one main process carries a single MainWindowTitle
+    // that reflects whichever window is FOCUSED; matching on it confidently
+    // labels every parked session with the project you happen to be looking at.
+    const resolveProject = () => {
+      for (const q of [p, ...chain]) {
+        const cmd = String(q.cmd || '').toLowerCase();
+        const hit = knownProjects.find((k) => k.cwd && cmd.includes(k.cwd));
+        if (hit) return hit.project;
+      }
+      return null;
+    };
     if (attribution !== 'session') {
       if (pluginHit) {
         attribution = 'plugin'; plugin = pluginHit[1];
-        linked = claudeAnc ? `plugin of claude.exe ${claudeAnc.pid}` : 'Claude plugin runtime';
+        project = resolveProject();
+        linked = (claudeAnc ? `plugin of claude.exe ${claudeAnc.pid}` : 'Claude plugin runtime') + (project ? ` · ${project}` : '');
       } else if (claudeAnc) {
         attribution = 'claude';
         const viaCode = chain.some((a) => /^code(\.exe)?$/i.test(String(a.name || '')));
-        linked = `child of claude.exe ${claudeAnc.pid}${viaCode ? ' (VS Code)' : ''}`;
+        project = resolveProject();
+        linked = `child of claude.exe ${claudeAnc.pid}${viaCode ? ' (VS Code)' : ''}${project ? ` · ${project}` : ''}`;
       } else if (interesting) {
         const cmd = String(p.cmd || '').toLowerCase();
         const hit = knownProjects.find((k) => k.cwd && cmd.includes(k.cwd));

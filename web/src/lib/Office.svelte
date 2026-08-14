@@ -598,7 +598,11 @@
           if (r.project && !rootByProj.has(r.project)) rootByProj.set(r.project, r.id);
         }
         for (const p of plist) {
-          const rootId = (p.sessionId && rootBySid.get(p.sessionId)) || (p.project && rootByProj.get(p.project));
+          // project-name mapping only for true session/project leftovers — a
+          // claude/plugin proc belongs to ITS claude.exe, not to whichever live
+          // tile happens to share the project name
+          const byProj = (p.attribution === 'session' || p.attribution === 'project') && p.project && rootByProj.get(p.project);
+          const rootId = (p.sessionId && rootBySid.get(p.sessionId)) || byProj;
           if (rootId && desks.get(rootId)?.teamRect) { if (!roomBots.has(rootId)) roomBots.set(rootId, []); roomBots.get(rootId).push(p); }
           else rackBots.push(p);
         }

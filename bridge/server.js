@@ -1244,7 +1244,19 @@ function refreshProcs(cb) {
         if (w) sess.push({ sid: a.sessionId || String(a.id).replace(/^sess:/, ''), project: a.project, set: descendants(w.pid) });
       }
       const knownProjects = [];
-      for (const a of agents.values()) if (a.cwd) knownProjects.push({ cwd: String(a.cwd).toLowerCase(), project: a.project, sid: a.sessionId || String(a.id).replace(/^sess:/, '') });
+      const seenCwd = new Set();
+      for (const a of agents.values()) if (a.cwd) { const c = String(a.cwd).toLowerCase(); if (!seenCwd.has(c)) { seenCwd.add(c); knownProjects.push({ cwd: c, project: a.project, sid: a.sessionId || String(a.id).replace(/^sess:/, '') }); } }
+      // registry projects too — so a parked session's window title still names its
+      // folder. The home dir is Global, not a project — never a match target.
+      try {
+        const home = String(os.homedir()).toLowerCase();
+        const pc = projects.getConfig();
+        for (const k of (pc.known || []).concat(pc.roots || [])) {
+          const c = String(k).toLowerCase();
+          if (c === home || seenCwd.has(c)) continue;
+          seenCwd.add(c); knownProjects.push({ cwd: c, project: path.basename(String(k)), sid: null });
+        }
+      } catch (_) {}
       procsCache.list = procsMod.attribute(all, process.pid, sess, knownProjects);
       procsCache.at = Date.now();
       const cbs = procsCache.inflight || []; procsCache.inflight = null;

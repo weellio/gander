@@ -22,6 +22,15 @@ try {
   }
 } catch {}
 
+# Main window titles (a VS Code window carries its folder name — lets the bridge
+# name the project a claude.exe belongs to by walking up to its window)
+$titles = @{}
+try {
+  foreach ($gp in (Get-Process)) {
+    if ($gp.MainWindowTitle) { $titles[[int]$gp.Id] = [string]$gp.MainWindowTitle }
+  }
+} catch {}
+
 $list = foreach ($p in (Get-CimInstance Win32_Process)) {
   $procId = [int]$p.ProcessId
   $cmd = [string]$p.CommandLine
@@ -29,6 +38,11 @@ $list = foreach ($p in (Get-CimInstance Win32_Process)) {
   $start = $null
   try { if ($p.CreationDate) { $start = ([datetime]$p.CreationDate).ToUniversalTime().ToString('o') } } catch {}
   $pp = if ($ports.ContainsKey($procId)) { @($ports[$procId]) } else { @() }
+  $ttl = $null
+  if ($titles.ContainsKey($procId)) {
+    $ttl = $titles[$procId]
+    if ($ttl.Length -gt 120) { $ttl = $ttl.Substring(0, 120) }
+  }
   [pscustomobject]@{
     pid     = $procId
     ppid    = [int]$p.ParentProcessId
@@ -36,6 +50,7 @@ $list = foreach ($p in (Get-CimInstance Win32_Process)) {
     cmd     = $cmd
     started = $start
     ports   = $pp
+    title   = $ttl
   }
 }
 
