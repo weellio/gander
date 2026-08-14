@@ -6,27 +6,33 @@
   let { procs = [] } = $props();
   let clusters = $derived(buildClusters(procs));
   let killing = $state(0);
+  let flash = $state('');
 
-  async function killPid(pid) {
-    try { await fetch('/api/kill-process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid }) }); } catch (_) {}
+  // Kill + REPORT: the bridge busts its process cache after a kill, so the
+  // chips vanish on the next scan (~5-10s). Failures are shown, never swallowed.
+  async function killPid(pid, label) {
+    let r = null;
+    try { r = await (await fetch('/api/kill-process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid }) })).json(); } catch (_) {}
+    if (r && r.ok) { flash = `✓ killed ${label} — updates in a few seconds`; setTimeout(() => (flash = ''), 5000); }
+    else { flash = ''; alert(`Kill failed for ${label}:\n\n${(r && (r.output || r.error)) || 'no response from the bridge'}`); }
   }
   async function killProc(p) {
     const where = p.ports && p.ports.length ? ` holding port ${p.ports.join(', ')}` : '';
     if (!confirm(`Kill ${p.name} (pid ${p.pid})${where}?\n\nForce-kills the process and its child tree.`)) return;
-    killing = p.pid; await killPid(p.pid); killing = 0;
+    killing = p.pid; await killPid(p.pid, `${p.name} ${p.pid}`); killing = 0;
   }
   async function endSession(c) {
     const work = c.bots.filter((b) => b.attribution !== 'plugin');
     const warn = work.length ? `\n\nWARNING — it still has live work that dies with it:\n${work.map((b) => `  ${b.name}${b.ports?.length ? ' :' + b.ports.join(',') : ''}`).join('\n')}` : '';
     if (!confirm(`End this Claude session (kill claude.exe ${c.claudePid} and its ${c.bots.length} background process${c.bots.length === 1 ? '' : 'es'})?\n\nThe conversation stays resumable from Session history.${warn}`)) return;
-    killing = c.claudePid; await killPid(c.claudePid); killing = 0;
+    killing = c.claudePid; await killPid(c.claudePid, `claude.exe ${c.claudePid}`); killing = 0;
   }
   const lblOf = (p) => p.plugin || String(p.name || '').replace(/\.exe$/i, '');
 </script>
 
 {#if clusters.length}
   <div class="strip">
-    <div class="sh">🤖 Server room <span class="dim">· background processes your sessions left running</span></div>
+    <div class="sh">🤖 Server room <span class="dim">· background processes your sessions left running</span>{#if flash}<span class="flash">{flash}</span>{/if}</div>
     <div class="cards">
       {#each clusters as c (c.key)}
         <div class="card" style="--tone:{TONE_COL[c.tone]}">
@@ -69,6 +75,7 @@
   .strip { margin-top: 16px; }
   .sh { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: var(--color-text-tertiary); margin-bottom: 8px; }
   .sh .dim { text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .sh .flash { text-transform: none; letter-spacing: 0; font-weight: 600; color: #10B981; margin-left: 10px; }
   .cards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
   .card { border: 0.5px solid color-mix(in srgb, var(--tone) 45%, transparent); border-radius: var(--border-radius-md);
     background: color-mix(in srgb, var(--tone) 4%, transparent); padding: 9px 11px; }

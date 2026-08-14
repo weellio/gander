@@ -454,28 +454,34 @@
   let selectedId = $state(null);   // clicked agent → modal
   let procSel = $state(null);      // clicked robot → {p, sx, sy} popover
   let procKilling = $state(false);
-  async function killProc() {
+  let procToast = $state('');
+  // Kill + REPORT: the bridge busts its process cache after a kill, so the
+  // robots vanish on the next scan (~5-10s). Failures are shown, never swallowed.
+  async function doKill(pid, label) {
+    procKilling = true;
+    let r = null;
+    try { r = await (await fetch('/api/kill-process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid }) })).json(); } catch (_) {}
+    procKilling = false;
+    procSel = null;
+    if (r && r.ok) { procToast = `✓ killed ${label} — robots update in a few seconds`; setTimeout(() => (procToast = ''), 5000); }
+    else { procToast = ''; alert(`Kill failed for ${label}:\n\n${(r && (r.output || r.error)) || 'no response from the bridge'}`); }
+  }
+  function killProc() {
     const p = procSel && procSel.p;
     if (!p) return;
     const where = p.ports && p.ports.length ? ` holding port ${p.ports.join(', ')}` : '';
     if (!confirm(`Kill ${p.name} (pid ${p.pid})${where}?\n\nForce-kills the process and its child tree.`)) return;
-    procKilling = true;
-    try { await fetch('/api/kill-process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: p.pid }) }); } catch (_) {}
-    procKilling = false;
-    procSel = null;
+    doKill(p.pid, `${p.name} ${p.pid}`);
   }
   // End a whole parked session: kill its claude.exe (tree) — the session stays
   // resumable from History, and all its sidecar robots exit with it.
-  async function killSession() {
+  function killSession() {
     const c = procSel && procSel.cluster;
     if (!c || !c.claudePid) return;
     const work = c.bots.filter((b) => b.attribution !== 'plugin');
     const warn = work.length ? `\n\nWARNING — it still has live work that dies with it:\n${work.map((b) => `  ${b.name}${b.ports?.length ? ' :' + b.ports.join(',') : ''}`).join('\n')}` : '';
     if (!confirm(`End this Claude session (kill claude.exe ${c.claudePid} and its ${c.bots.length} background process${c.bots.length === 1 ? '' : 'es'})?\n\nThe conversation stays resumable from Session history.${warn}`)) return;
-    procKilling = true;
-    try { await fetch('/api/kill-process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: c.claudePid }) }); } catch (_) {}
-    procKilling = false;
-    procSel = null;
+    doKill(c.claudePid, `claude.exe ${c.claudePid}`);
   }
   let hitTargets = [];             // {id,x,y,r} in world coords, rebuilt each frame
   let down = null;                 // pointerdown pos, to tell a click from a drag
@@ -996,6 +1002,7 @@
     <button onclick={() => zoomBy(1.2)} title="Zoom in">+</button>
     <button class="fit" onclick={fitView} title="Fit">Fit</button>
   </div>
+  {#if procToast}<div class="floattoast">{procToast}</div>{/if}
   {#if procSel && procSel.cluster}
     <div class="procpop" style="left:{Math.min(Math.max(8, procSel.sx - 120), (cssW || 400) - 268)}px; top:{Math.min(Math.max(8, procSel.sy + 14), (cssH || 300) - 190)}px">
       <div class="pp-h">
@@ -1049,6 +1056,10 @@
       radial-gradient(120% 80% at 50% 0%, rgba(99, 102, 241, 0.06), transparent 60%),
       var(--color-background-primary, #fafafa);
   }
+  .floattoast { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 45;
+    font-size: 11.5px; color: #10B981; background: var(--color-background-primary);
+    border: 0.5px solid #10B98155; border-radius: 999px; padding: 5px 14px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3); pointer-events: none; white-space: nowrap; }
   .procpop { position: absolute; z-index: 40; width: 240px; padding: 9px 11px; border-radius: 9px;
     background: var(--color-background-primary); border: 0.5px solid var(--color-border-secondary);
     box-shadow: 0 14px 40px rgba(0,0,0,0.4); font-size: 11px; color: var(--color-text-primary); }

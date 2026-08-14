@@ -2234,15 +2234,21 @@ const server = http.createServer(async (req, res) => {
     const pid = Number(body && body.pid);
     if (!Number.isInteger(pid) || pid <= 4) return sendJson(res, 400, { error: 'invalid pid' });
     if (pid === process.pid) return sendJson(res, 400, { error: "refusing to kill Gander's own bridge process" });
+    // After any kill, bust the process cache and rescan immediately — otherwise
+    // the floor's robots keep standing for up to a minute and the kill LOOKS
+    // like it failed even when it succeeded.
+    const afterKill = () => { procsCache.at = 0; try { refreshProcs(); } catch (_) {} };
     if (process.platform === 'win32') {
       execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { timeout: 8000, windowsHide: true }, (err, stdout, stderr) => {
         const out = (String(stdout || '') + String(stderr || '')).trim();
         const ok = /SUCCESS/i.test(out) || (!err && !/not found|no running/i.test(out));
         console.log(`[kill] pid ${pid} -> ${ok ? 'ok' : 'fail'}`);
+        afterKill();
         sendJson(res, 200, { ok, output: out });
       });
     } else {
       execFile('kill', ['-TERM', String(pid)], { timeout: 8000 }, (err, stdout, stderr) => {
+        afterKill();
         sendJson(res, 200, { ok: !err, output: (String(stdout || '') + String(stderr || '')).trim() });
       });
     }
