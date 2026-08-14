@@ -560,16 +560,21 @@
     </div>
   {/if}
 
-  {#if shown.length === 0}
+  {#if shown.length === 0 && !procs.length}
     <div class="empty">No agents reporting yet. Run <code>/hooks</code> in a Claude Code session (or start a new one) to begin.</div>
   {:else if $layout === 'office'}
-    <div class="office-wrap"><Office agents={shown} {procs} {focusReq} /></div>
-  {:else}
-    <div class="grid">
-      {#each shown as agent (agent.id)}
-        <AgentTile {agent} onOpen={(id) => (tileModalId = id)} />
-      {/each}
+    <div class="office-wrap">
+      {#if !shown.length}<div class="floatnote">No active sessions — but background processes are still running, below in the server room.</div>{/if}
+      <Office agents={shown} {procs} {focusReq} />
     </div>
+  {:else}
+    {#if !shown.length}<div class="empty">No active sessions right now — background processes below.</div>{:else}
+      <div class="grid">
+        {#each shown as agent (agent.id)}
+          <AgentTile {agent} onOpen={(id) => (tileModalId = id)} />
+        {/each}
+      </div>
+    {/if}
     <ProcsStrip {procs} />
   {/if}
 
@@ -641,6 +646,10 @@
   @keyframes errpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
   .cnt i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
   .empty { padding: 40px; text-align: center; color: var(--color-text-tertiary); font-size: 13px; }
+  .floatnote { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 5;
+    font-size: 11.5px; color: var(--color-text-secondary); background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-secondary); border-radius: 999px; padding: 5px 14px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.25); pointer-events: none; white-space: nowrap; }
   .ticker { display: flex; align-items: center; gap: 7px; padding: 5px 14px; margin-top: -6px; font-size: 11px;
     color: var(--color-text-secondary); background: var(--color-background-secondary);
     border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); overflow: hidden; white-space: nowrap; }
