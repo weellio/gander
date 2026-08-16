@@ -4,7 +4,7 @@
   import { paintFigure } from './avatars/desk.js';
   import { buildClusters, fmtUp, TONE_COL } from './procgroups.js';
   import { animations, costAlerts, floorSprites } from './stores.js';
-  import { loadGooseSheet, drawGoose } from './sprites.js';
+  import { loadGooseSheet, loadOfficeSheet, drawGoose, drawItem, OFFICE } from './sprites.js';
   import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
@@ -693,6 +693,11 @@
         drawRoom(ctx, bx, by, bw, bh, { edge: 'bottom', x: doorX }, solo ? 'rgba(150,162,190,' : 'rgba(140,152,178,');
         rd.doorPt = { x: doorX, y: by + bh };
         roomsThisFrame.push({ rd, bx, by, bw, bh, doorPt: rd.doorPt });
+        // an IT-Crowd poster on some rooms' back wall (stable per room)
+        if ($floorSprites && officeOK) {
+          const pi = Math.floor((rd.seed || 0) * 4);
+          if (pi < 3) drawItem(ctx, OFFICE.posters[pi], bx + 26, by + 13, 21);
+        }
       }
       ctx.restore();
       const roomAt = (x, y) => roomsThisFrame.find((r) => x >= r.bx && x <= r.bx + r.bw && y >= r.by && y <= r.by + r.bh) || null;
@@ -745,7 +750,18 @@
       ctx.restore();
 
       drawDecor(ctx, W, H, frameN);
-      drawCooler(ctx, cooler.x, cooler.y);
+      if ($floorSprites && officeOK) {
+        // furnished break area from the office sheet: sofa · water cooler · plant
+        drawItem(ctx, OFFICE.sofa, cooler.x - 118, cooler.y + 6, 44);
+        drawItem(ctx, OFFICE.cooler, cooler.x, cooler.y + 6, 56);
+        drawItem(ctx, OFFICE.plant, cooler.x + 54, cooler.y + 6, 46);
+        ctx.fillStyle = 'rgba(120,120,130,0.95)';
+        ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('break room', cooler.x - 30, cooler.y + 20);
+      } else {
+        drawCooler(ctx, cooler.x, cooler.y);
+      }
       drawClock(ctx, clock.x, clock.y);
 
       // draw root desks first (under), then subs
@@ -1026,6 +1042,10 @@
           ctx.fillText('background processes · click a bot or a group header', orx + 84, ory - 18);
           ctx.restore();
           drawRack(ctx, rx - 26, cy0 + 30, t);
+          if ($floorSprites && officeOK) {
+            drawItem(ctx, OFFICE.printer, orx + orw - 36, ory + 58, 42);        // copier in the corner
+            drawItem(ctx, OFFICE.posters[1], orx + 26, ory + 12, 20);           // "GO AWAY" on the server-room wall
+          }
           for (const c of clusters) {
             const cols = Math.min(7, Math.max(3, c.bots.length));
             const rows = Math.ceil(c.bots.length / cols);
@@ -1076,9 +1096,11 @@
     return { x: u * u * x0 + 2 * u * p * cx + p * p * x1, y: u * u * y0 + 2 * u * p * cy + p * p * y1 };
   }
 
-  let sheetOK = false;   // goose sheet loaded + keyed (falls back to vector figures until then)
+  let sheetOK = false;    // goose sheet loaded + keyed (falls back to vector figures until then)
+  let officeOK = false;   // office decor sheet (cooler, sofa, plant, posters, printer)
   onMount(() => {
     loadGooseSheet().then(() => (sheetOK = true)).catch(() => {});
+    loadOfficeSheet().then(() => (officeOK = true)).catch(() => {});
     resize();
     poll();
     const pollId = setInterval(poll, 600);

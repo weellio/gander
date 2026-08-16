@@ -6,6 +6,17 @@
 // AI-generated sheets don't sit on a clean grid, so don't "tidy" these numbers.
 
 const SHEET_URL = '/art/people_sprite_1.png';
+const OFFICE_URL = '/art/office_sprite_dark.png';
+
+// Office decor (same sheet family, dark variant). Verified slices — see the
+// note below about not "tidying" the numbers.
+export const OFFICE = {
+  cooler: [2555, 890, 100, 235],
+  plant: [2690, 940, 120, 215],
+  printer: [2350, 905, 195, 215],
+  sofa: [2270, 1745, 390, 195],
+  posters: [[2985, 270, 145, 200], [2785, 515, 145, 200], [2625, 515, 145, 200]],   // "turning it off and on" · GO AWAY · IT IS WONDERFUL
+};
 
 // [sx, sy, sw, sh] in sheet pixels (3200×2133)
 export const GOOSE = {
@@ -31,12 +42,14 @@ export const GOOSE = {
 };
 const CHARS = ['moss', 'roy', 'jen'];
 
-let keyed = null;        // chroma-keyed offscreen canvas
-let loading = null;
-export function loadGooseSheet() {
-  if (keyed) return Promise.resolve(keyed);
-  if (loading) return loading;
-  loading = new Promise((resolve, reject) => {
+// One keyed-canvas cache per sheet URL — goose characters and office decor
+// share the same key-flood-erode pipeline.
+const sheets = new Map();   // url -> { canvas } | { promise }
+function loadKeyedSheet(url) {
+  const hit = sheets.get(url);
+  if (hit && hit.canvas) return Promise.resolve(hit.canvas);
+  if (hit && hit.promise) return hit.promise;
+  const promise = new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       try {
@@ -101,14 +114,31 @@ export function loadGooseSheet() {
           }
         }
         ox.putImageData(d, 0, 0);
-        keyed = off;
+        sheets.set(url, { canvas: off });
         resolve(off);
       } catch (e) { reject(e); }
     };
-    img.onerror = () => reject(new Error('goose sheet failed to load'));
-    img.src = SHEET_URL;
+    img.onerror = () => { sheets.delete(url); reject(new Error('sheet failed to load: ' + url)); };
+    img.src = url;
   });
-  return loading;
+  sheets.set(url, { promise });
+  return promise;
+}
+
+let keyed = null;         // goose sheet (kept as a direct ref for the hot draw path)
+let officeKeyed = null;   // office decor sheet
+export function loadGooseSheet() { return loadKeyedSheet(SHEET_URL).then((c) => (keyed = c)); }
+export function loadOfficeSheet() { return loadKeyedSheet(OFFICE_URL).then((c) => (officeKeyed = c)); }
+
+// Draw a decor item bottom-anchored at (cx, footY), targetH tall.
+export function drawItem(ctx, rect, cx, footY, targetH) {
+  if (!officeKeyed || !rect) return false;
+  const w = targetH * (rect[2] / rect[3]);
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(officeKeyed, rect[0], rect[1], rect[2], rect[3], cx - w / 2, footY - targetH, w, targetH);
+  ctx.imageSmoothingEnabled = prev;
+  return true;
 }
 
 // stable character per agent id
