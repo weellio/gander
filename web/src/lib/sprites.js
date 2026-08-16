@@ -46,9 +46,40 @@ export function loadGooseSheet() {
         ox.drawImage(img, 0, 0);
         const d = ox.getImageData(0, 0, off.width, off.height);
         const p = d.data;
+        const W = off.width, H = off.height;
         const br = p[0], bg = p[1], bb = p[2];   // top-left pixel = the paper background
-        for (let i = 0; i < p.length; i += 4) {
-          if (Math.abs(p[i] - br) + Math.abs(p[i + 1] - bg) + Math.abs(p[i + 2] - bb) < 48) p[i + 3] = 0;
+        const dist = (i) => Math.abs(p[i] - br) + Math.abs(p[i + 1] - bg) + Math.abs(p[i + 2] - bb);
+        // Flood-fill the key from the OUTSIDE (higher threshold is safe this way:
+        // cream shirts are close to the paper colour, but they're sealed behind
+        // dark outlines the flood can't cross), then defringe the anti-aliased
+        // edge pixels so nothing halos on a dark floor.
+        const seen = new Uint8Array(W * H);
+        const stack = [];
+        for (let x = 0; x < W; x++) { stack.push(x, x + (H - 1) * W); }
+        for (let y = 0; y < H; y++) { stack.push(y * W, W - 1 + y * W); }
+        while (stack.length) {
+          const n = stack.pop();
+          if (seen[n]) continue;
+          seen[n] = 1;
+          if (dist(n * 4) >= 110) continue;        // hit the character outline — stop
+          p[n * 4 + 3] = 0;
+          const x = n % W, y = (n / W) | 0;
+          if (x > 0) stack.push(n - 1);
+          if (x < W - 1) stack.push(n + 1);
+          if (y > 0) stack.push(n - W);
+          if (y < H - 1) stack.push(n + W);
+        }
+        // defringe: an opaque pixel touching transparency that still looks
+        // paper-ish is an anti-aliasing remnant — fade it by how paper-ish it is
+        for (let y = 1; y < H - 1; y++) {
+          for (let x = 1; x < W - 1; x++) {
+            const n = y * W + x, i = n * 4;
+            if (p[i + 3] === 0) continue;
+            if (p[i - 1] === 0 || p[i + 7] === 0 || p[(n - W) * 4 + 3] === 0 || p[(n + W) * 4 + 3] === 0) {
+              const dd = dist(i);
+              if (dd < 160) p[i + 3] = Math.min(p[i + 3], Math.round(255 * (dd / 160)));
+            }
+          }
         }
         ox.putImageData(d, 0, 0);
         keyed = off;
