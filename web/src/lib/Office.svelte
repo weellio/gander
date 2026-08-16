@@ -4,7 +4,7 @@
   import { paintFigure } from './avatars/desk.js';
   import { buildClusters, fmtUp, TONE_COL } from './procgroups.js';
   import { animations, costAlerts, floorSprites } from './stores.js';
-  import { loadGooseSheet, loadOfficeSheet, drawGoose, drawItem, OFFICE } from './sprites.js';
+  import { loadGooseSheet, loadOfficeSheet, loadGeneralSheet, drawGoose, drawItem, drawDroid, OFFICE } from './sprites.js';
   import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
@@ -342,6 +342,33 @@
   function drawRobot(ctx, x, y, t, p, showLabel = true) {
     const color = ROBOT_COLORS[p.attribution] || '#6B7280';
     const blink = 0.5 + 0.5 * Math.sin(t * 4 + (p.pid % 97));
+    // sprite droids when available: the droid TYPE says what the process is
+    // (Beeper=plugin · Helpdesk=claude · Printer=session work · Tea=not ours ·
+    // red-eyed Security=orphan); ring/ports/label stay identical
+    if ($floorSprites && generalOK && drawDroid(ctx, p.attribution, x, y + 9, 30)) {
+      ctx.save();
+      ctx.translate(x, y);
+      if (p.attribution === 'orphan') {
+        ctx.strokeStyle = hexA('#F59E0B', 0.25 + 0.45 * blink);
+        ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.arc(0, -3, 16, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (p.ports && p.ports.length) {
+        ctx.fillStyle = 'rgba(16,185,129,0.9)';
+        ctx.font = '6.5px ui-monospace, monospace'; ctx.textAlign = 'center';
+        ctx.fillText(':' + p.ports[0], 0, 16.5);
+      }
+      ctx.restore();
+      if (showLabel) {
+        const lbl = p.plugin || String(p.name || '').replace(/\.exe$/i, '');
+        ctx.fillStyle = 'rgba(130,132,142,0.9)';
+        ctx.font = '7.5px ui-sans-serif, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(lbl.length > 10 ? lbl.slice(0, 9) + '…' : lbl, x, y + (p.ports && p.ports.length ? 23 : 17));
+      }
+      return;
+    }
     ctx.save();
     ctx.translate(x, y);
     if (p.attribution === 'orphan') {                       // distress ring
@@ -1182,9 +1209,11 @@
 
   let sheetOK = false;    // goose sheet loaded + keyed (falls back to vector figures until then)
   let officeOK = false;   // office decor sheet (cooler, sofa, plant, posters, printer)
+  let generalOK = false;  // geese & robots sheet (process droids)
   onMount(() => {
     loadGooseSheet().then(() => (sheetOK = true)).catch(() => {});
     loadOfficeSheet().then(() => (officeOK = true)).catch(() => {});
+    loadGeneralSheet().then(() => (generalOK = true)).catch(() => {});
     resize();
     poll();
     const pollId = setInterval(poll, 600);

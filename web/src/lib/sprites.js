@@ -42,6 +42,18 @@ export const GOOSE = {
 };
 const CHARS = ['moss', 'roy', 'jen'];
 
+// Droids from general_sprite_1 ("Star Wars meets IT Crowd") — one TYPE per
+// process attribution, so what a robot IS reads at a glance:
+const GENERAL_URL = '/art/general_sprite_1.png';
+export const DROIDS = {
+  plugin: [1480, 1310, 175, 190],    // Binary Beeper — chirpy plugin sidecar
+  claude: [2225, 1285, 175, 215],    // Helpdesk Droid — belongs to a live session
+  session: [1720, 1280, 190, 225],   // Printer Droid — queue/session work output
+  project: [1720, 1280, 190, 225],
+  other: [2685, 1295, 215, 205],     // Tea Droid — not Claude's, just having tea
+  orphan: [2465, 1275, 180, 225],    // Security Droid — red eye, no owner
+};
+
 // One keyed-canvas cache per sheet URL — goose characters and office decor
 // share the same key-flood-erode pipeline.
 const sheets = new Map();   // url -> { canvas } | { promise }
@@ -134,8 +146,22 @@ function loadKeyedSheet(url, opts = {}) {
 
 let keyed = null;         // goose sheet (kept as a direct ref for the hot draw path)
 let officeKeyed = null;   // office decor sheet
+let generalKeyed = null;  // geese & robots sheet (droids)
 export function loadGooseSheet() { return loadKeyedSheet(SHEET_URL, { flood: 110, erode: true }).then((c) => (keyed = c)); }
 export function loadOfficeSheet() { return loadKeyedSheet(OFFICE_URL, { flood: 34, erode: false }).then((c) => (officeKeyed = c)); }
+export function loadGeneralSheet() { return loadKeyedSheet(GENERAL_URL, { flood: 110, erode: true }).then((c) => (generalKeyed = c)); }
+
+// Draw the droid for a process attribution, bottom-anchored. False if not ready.
+export function drawDroid(ctx, attribution, cx, footY, targetH) {
+  const r = generalKeyed && DROIDS[attribution];
+  if (!r) return false;
+  const w = targetH * (r[2] / r[3]);
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(generalKeyed, r[0], r[1], r[2], r[3], cx - w / 2, footY - targetH, w, targetH);
+  ctx.imageSmoothingEnabled = prev;
+  return true;
+}
 
 // Draw a decor item bottom-anchored at (cx, footY), targetH tall.
 export function drawItem(ctx, rect, cx, footY, targetH) {
