@@ -30,7 +30,7 @@ A live, animated dashboard of your **Claude Code agents and sub-agents** — an 
 - **Projects control center** — skills, agents, commands, hooks, MCP, `settings.json`, git status/commit/push — for every project, in one place.
 - **Tune + Skills usage** — deterministic mining of your own transcripts: your prompting "turn tax" with copy-paste fixes, and which skills actually get used (never-used = context dead weight).
 - **🖥 Fleet + Claude Desktop** — all your machines' agents on one floor; a view-only tile for the Claude desktop app.
-- **📱 Anywhere** — installable PWA for your phone, Telegram replies + `/task` queueing from chat, Slack alert mirroring, native desktop toasts, smart-light ambient alerts.
+- **📱 Anywhere** — installable PWA for your phone, **Telegram or Slack** two-way chat (reply to agents, `/task` queueing, alerts — Slack via Socket Mode, zero deps), native desktop toasts, smart-light ambient alerts.
 
 **The full feature reference, with every detail: [docs/FEATURES.md](docs/FEATURES.md).**
 
