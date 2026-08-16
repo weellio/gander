@@ -44,6 +44,8 @@
   // { x,y (current), tx,ty (target), seed, walk:{...}|null, nextWalkAt }
   const desks = new Map();
   let rackAnchor = null;   // last server-room anchor — survives all tiles clocking out
+  let serverRoomRect = null;   // last drawn server-room walls (nav-blocked; agents don't enter)
+  let _dbgRoute = null;        // debug: window.__ganderRoute(sx,sy,tx,ty) draws a path for 8s
 
   // deterministic pseudo-random from a string id (stable per id)
   function hash(str) {
@@ -157,7 +159,10 @@
 
   function layout(tree, W, H) {
     const { roots, children } = tree;
-    const CELLW = 92, CELLH = 84, ROOTH = 94, PADX = 46, PADY = 40, GAP = 70;
+    // GAP must clear the room CHROME drawn around each block: walls (top band 12
+    // + sides), title padding, and the bottom growth for parked bot rows — a
+    // band that ignores it makes the next row of rooms overlap this one.
+    const CELLW = 92, CELLH = 84, ROOTH = 94, PADX = 46, PADY = 40, GAP = 96;
     const maxCols = Math.max(1, Math.floor((W - 2 * PADX) / CELLW));
     let curX = PADX, curY = PADY, bandH = 0, prevSolo = true;
 
@@ -195,7 +200,9 @@
 
       rd.teamRect = { x: curX, y: curY, w: blockW, h: blockH, team: m > 0 };
       curX += blockW + GAP;
-      bandH = Math.max(bandH, blockH);
+      // room chrome below the block: bottom wall + parked-bot rows (botRows is
+      // last frame's count — stable, since bots only change on a proc rescan)
+      bandH = Math.max(bandH, blockH + ((rd.botRows || 0) * 34 + 26));
       prevSolo = isSolo;
     });
   }
@@ -700,25 +707,89 @@
         }
       }
       ctx.restore();
-      const roomAt = (x, y) => roomsThisFrame.find((r) => x >= r.bx && x <= r.bx + r.bw && y >= r.by && y <= r.by + r.bh) || null;
-      // Route a walk through doorways: leave your room via its door, enter the
-      // target's room via ITS door, octilinear in the corridor between.
-      const routeVia = (sx, sy, tx, ty) => {
-        const from = roomAt(sx, sy), to = roomAt(tx, ty);
-        if (from === to) return octElbow(sx, sy, tx, ty);
-        let pts = [{ x: sx, y: sy }], cx = sx, cy = sy;
-        if (from && from.doorPt) {
-          pts = pts.concat(octElbow(cx, cy, from.doorPt.x, from.doorPt.y - 12).slice(1));
-          pts.push({ x: from.doorPt.x, y: from.doorPt.y + 14 });
-          cx = from.doorPt.x; cy = from.doorPt.y + 14;
+      // ── corridor navigation: BFS over a coarse grid where WALLS are blocked
+      // and doorways are the only openings — walkers can never cross a wall.
+      // (The old door-waypoint routing still cut corners through third rooms
+      // and even back through the walker's own office.)
+      const NAVCS = 23;   // half a floor tile per nav cell
+      let navB = null, navOX = 0, navOY = 0, navW = 0, navH = 0;
+      const buildNav = () => {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        const grow = (x0, y0, x1, y1) => { minX = Math.min(minX, x0); minY = Math.min(minY, y0); maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1); };
+        for (const r of roomsThisFrame) grow(r.bx - 40, r.by - 40, r.bx + r.bw + 40, r.by + r.bh + 40);
+        grow(cooler.x - 160, cooler.y - 60, clock.x + 160, clock.y + 60);
+        if (serverRoomRect) grow(serverRoomRect.x - 40, serverRoomRect.y - 40, serverRoomRect.x + serverRoomRect.w + 40, serverRoomRect.y + serverRoomRect.h + 40);
+        if (minX === Infinity) return;
+        navOX = minX - 60; navOY = minY - 60;
+        navW = Math.ceil((maxX - navOX + 120) / NAVCS); navH = Math.ceil((maxY - navOY + 120) / NAVCS);
+        if (navW * navH > 80000) { navB = null; return; }   // pathological zoom-out — fall back
+        navB = new Uint8Array(navW * navH);
+        const mark = (x0, y0, x1, y1, v) => {
+          const cx0 = Math.max(0, Math.floor((x0 - navOX) / NAVCS)), cy0 = Math.max(0, Math.floor((y0 - navOY) / NAVCS));
+          const cx1 = Math.min(navW - 1, Math.floor((x1 - navOX) / NAVCS)), cy1 = Math.min(navH - 1, Math.floor((y1 - navOY) / NAVCS));
+          for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) navB[cy * navW + cx] = v;
+        };
+        const S = 4, T = 12, D = 30;
+        for (const r of roomsThisFrame) {
+          mark(r.bx - S, r.by - T, r.bx + r.bw + S, r.by, 1);                      // top wall band
+          mark(r.bx - S, r.by - T, r.bx, r.by + r.bh + S, 1);                      // left wall
+          mark(r.bx + r.bw, r.by - T, r.bx + r.bw + S, r.by + r.bh + S, 1);        // right wall
+          mark(r.bx - S, r.by + r.bh, r.bx + r.bw + S, r.by + r.bh + S, 1);        // bottom wall
+          mark(r.doorPt.x - D / 2 - 4, r.by + r.bh - NAVCS, r.doorPt.x + D / 2 + 4, r.by + r.bh + S + NAVCS, 0);   // the doorway
         }
-        if (to && to.doorPt) {
-          pts = pts.concat(octElbow(cx, cy, to.doorPt.x, to.doorPt.y + 14).slice(1));
-          pts.push({ x: to.doorPt.x, y: to.doorPt.y - 12 });
-          cx = to.doorPt.x; cy = to.doorPt.y - 12;
-        }
-        return pts.concat(octElbow(cx, cy, tx, ty).slice(1));
+        if (serverRoomRect) mark(serverRoomRect.x - S, serverRoomRect.y - T, serverRoomRect.x + serverRoomRect.w + S, serverRoomRect.y + serverRoomRect.h + S, 1);   // agents never enter the server room
       };
+      buildNav();
+      const nearestOpen = (c) => {
+        if (!navB) return c;
+        if (!navB[c[1] * navW + c[0]]) return c;
+        for (let rad = 1; rad <= 4; rad++) {
+          for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
+            const x = c[0] + dx, y = c[1] + dy;
+            if (x >= 0 && y >= 0 && x < navW && y < navH && !navB[y * navW + x]) return [x, y];
+          }
+        }
+        return c;
+      };
+      const routeVia = (sx, sy, tx, ty) => {
+        if (!navB) return octElbow(sx, sy, tx, ty);
+        const cell = (x, y) => [Math.max(0, Math.min(navW - 1, Math.floor((x - navOX) / NAVCS))), Math.max(0, Math.min(navH - 1, Math.floor((y - navOY) / NAVCS)))];
+        const s = nearestOpen(cell(sx, sy)), t = nearestOpen(cell(tx, ty));
+        const start = s[1] * navW + s[0], goal = t[1] * navW + t[0];
+        if (start === goal) return octElbow(sx, sy, tx, ty);
+        const prev = new Int32Array(navW * navH).fill(-1);
+        prev[start] = start;
+        const q = [start];
+        let found = false;
+        for (let qi = 0; qi < q.length && !found; qi++) {
+          const n = q[qi], x = n % navW, y = (n / navW) | 0;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= navW || ny >= navH) continue;
+            const m = ny * navW + nx;
+            if (prev[m] !== -1 || navB[m]) continue;
+            prev[m] = n; q.push(m);
+            if (m === goal) { found = true; break; }
+          }
+        }
+        if (!found) return octElbow(sx, sy, tx, ty);   // walled off entirely — old behavior beats freezing
+        const cellsPath = [];
+        for (let n = goal; n !== start; n = prev[n]) cellsPath.push(n);
+        cellsPath.push(start); cellsPath.reverse();
+        // compress runs into corner waypoints, in world coordinates
+        const pts = [{ x: sx, y: sy }];
+        for (let i = 1; i < cellsPath.length - 1; i++) {
+          const a = cellsPath[i - 1], b = cellsPath[i], c = cellsPath[i + 1];
+          const d1 = b - a, d2 = c - b;
+          if (d1 !== d2) pts.push({ x: navOX + (b % navW) * NAVCS + NAVCS / 2, y: navOY + ((b / navW) | 0) * NAVCS + NAVCS / 2 });
+        }
+        pts.push({ x: tx, y: ty });
+        return pts;
+      };
+      if (typeof window !== 'undefined') {
+        window.__ganderRoute = (sx, sy, tx, ty) => { _dbgRoute = { pts: routeVia(sx, sy, tx, ty), until: t + 8 }; };
+        window.__ganderRouteScreen = (sx, sy, tx, ty) => window.__ganderRoute((sx - panX) / zoom, (sy - panY) / zoom, (tx - panX) / zoom, (ty - panY) / zoom);
+      }
 
       // ── circuit traces from each orchestrator to its sub-agents ──
       // Octilinear (H/V + 45° corners) routed through a horizontal trunk under the
@@ -1033,6 +1104,7 @@
           const stackH = dims.reduce((s, d) => s + d.boxH + 18, 0) - 18;
           const stackW = Math.max(...dims.map((d) => d.boxW));
           const orx = rx - 52, ory = cy0 - 22, orw = stackW + 52 + 18, orh = stackH + 22 + 20;
+          serverRoomRect = { x: orx, y: ory, w: orw, h: orh };
           drawRoom(ctx, orx, ory, orw, orh, { edge: 'top', x: orx + orw / 2 }, 'rgba(120,132,168,');
           ctx.save();
           ctx.fillStyle = 'rgba(140,145,160,0.85)';
@@ -1084,6 +1156,18 @@
           }
         }
       }
+      // debug route overlay (window.__ganderRoute) — dev aid for pathfinding
+      if (_dbgRoute && t < _dbgRoute.until) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(239,68,68,0.9)'; ctx.lineWidth = 2.5; ctx.setLineDash([7, 5]);
+        ctx.beginPath();
+        _dbgRoute.pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#EF4444';
+        for (const p of [_dbgRoute.pts[0], _dbgRoute.pts[_dbgRoute.pts.length - 1]]) { ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); ctx.fill(); }
+        ctx.restore();
+      } else if (_dbgRoute) { _dbgRoute = null; }
     } catch (_) {
       /* never throw out of rAF */
     }
