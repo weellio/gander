@@ -75,19 +75,21 @@ export function loadGooseSheet() {
         // that are BRIGHT — the fringe is off-white, the outlines are near
         // black, so the erosion stops exactly at the true silhouette. (Bright
         // interiors like faces never border transparency, so they're safe.)
-        for (let pass = 0; pass < 3; pass++) {
+        const erodePass = (brightMin) => {
           const kill = [];
           for (let y = 1; y < H - 1; y++) {
             for (let x = 1; x < W - 1; x++) {
               const n = y * W + x, i = n * 4;
               if (p[i + 3] === 0) continue;
               if (p[i - 1] !== 0 && p[i + 7] !== 0 && p[(n - W) * 4 + 3] !== 0 && p[(n + W) * 4 + 3] !== 0) continue;
-              if (p[i] + p[i + 1] + p[i + 2] > 3 * 172) kill.push(i);   // bright edge pixel = matte remnant
+              if (p[i] + p[i + 1] + p[i + 2] > 3 * brightMin) kill.push(i);
             }
           }
-          if (!kill.length) break;
           for (const i of kill) p[i + 3] = 0;
-        }
+          return kill.length;
+        };
+        for (let pass = 0; pass < 4; pass++) if (!erodePass(150)) break;   // matte remnants, incl. darker beige blends
+        erodePass(-1);                                                     // final colour-blind 1px shave — kills whatever's left
         // final 1px soft feather so the new hard edge doesn't alias
         for (let y = 1; y < H - 1; y++) {
           for (let x = 1; x < W - 1; x++) {
