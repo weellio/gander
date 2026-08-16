@@ -25,9 +25,9 @@ const WORKING = new Set(['thinking', 'coding', 'running', 'reading', 'testing', 
 const START_GRACE_MS = 5 * 60 * 1000;    // terminal launch: no session appeared in time -> failed
 const MIN_RUN_MS = 20 * 1000;            // ignore idle tiles in the first moments after launch
 
-let items = [];                          // [{ id, cwd, project, prompt, status, createdAt, startedAt, doneAt, sessionId, runner, error }]
+let items = [];                          // [{ id, cwd, project, prompt, status, createdAt, startedAt, doneAt, sessionId, runner, error, wtPath, branch, merge }]
 let seq = 1;
-let cfgState = { enabled: true, maxSlots: 2 };
+let cfgState = { enabled: true, maxSlots: 2, worktrees: false };
 
 function projectFromCwd(cwd) {
   const parts = String(cwd || '').split(/[\\/]/).filter(Boolean);
@@ -44,7 +44,7 @@ function load() {
     const j = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
     items = Array.isArray(j.items) ? j.items : [];
     seq = Number(j.seq) || (items.reduce((m, i) => Math.max(m, i.id), 0) + 1);
-    if (j.cfg) cfgState = { enabled: j.cfg.enabled !== false, maxSlots: Math.max(1, Math.min(8, Number(j.cfg.maxSlots) || 2)) };
+    if (j.cfg) cfgState = { enabled: j.cfg.enabled !== false, maxSlots: Math.max(1, Math.min(8, Number(j.cfg.maxSlots) || 2)), worktrees: !!j.cfg.worktrees };
     // a bridge restart orphans anything that was mid-flight — requeue it
     for (const it of items) if (it.status === 'running') { it.status = 'queued'; it.startedAt = null; it.sessionId = null; it.runner = null; }
   } catch (_) {}
@@ -81,12 +81,13 @@ function action(id, what) {
   return { error: 'unknown action' };
 }
 
-function list() { return { enabled: cfgState.enabled, maxSlots: cfgState.maxSlots, items: items.slice().sort((a, b) => b.id - a.id) }; }
+function list() { return { enabled: cfgState.enabled, maxSlots: cfgState.maxSlots, worktrees: cfgState.worktrees, items: items.slice().sort((a, b) => b.id - a.id) }; }
 function setConfig(c) {
   if (c && c.enabled !== undefined) cfgState.enabled = !!c.enabled;
   if (c && c.maxSlots !== undefined) cfgState.maxSlots = Math.max(1, Math.min(8, Number(c.maxSlots) || 2));
+  if (c && c.worktrees !== undefined) cfgState.worktrees = !!c.worktrees;
   save();
-  return { ok: true, enabled: cfgState.enabled, maxSlots: cfgState.maxSlots };
+  return { ok: true, enabled: cfgState.enabled, maxSlots: cfgState.maxSlots, worktrees: cfgState.worktrees };
 }
 
 // ── the scheduler ────────────────────────────────────────────────────────────
@@ -105,6 +106,11 @@ function tick(deps) {
   if (!cfgState.enabled) return { started: 0, finished: 0 };
   const now = deps.now();
   let started = 0, finished = 0;
+  // worktree tasks: on any completion, the BRIDGE merges the task branch back
+  // into the main tree (single-committer) and records the human-readable result
+  const finishWt = (it) => {
+    if (it.wtPath && deps.wt) { try { it.merge = deps.wt.finish(it); } catch (e) { it.merge = 'merge error: ' + (e.message || e); } }
+  };
 
   // 1) settle running items
   for (const it of items) {
@@ -121,17 +127,20 @@ function tick(deps) {
         it.error = s.lastResult.ok ? null : 'turn ended with an error';
         it.doneAt = now; finished++;
         try { deps.stopDispatch(it.sessionId); } catch (_) {}
+        finishWt(it);
         try { deps.onDone(it); } catch (_) {}
       } else if (!s || s.exited) {
         // process died (or never registered) without a result
-        if (!s && it.startedAt && now - it.startedAt > START_GRACE_MS) { it.status = 'failed'; it.error = 'dispatch session ended without a result'; it.doneAt = now; finished++; try { deps.onDone(it); } catch (_) {} }
-        else if (s && s.exited && !s.lastResult) { it.status = 'failed'; it.error = 'dispatch session exited early'; it.doneAt = now; finished++; try { deps.onDone(it); } catch (_) {} }
+        if (!s && it.startedAt && now - it.startedAt > START_GRACE_MS) { it.status = 'failed'; it.error = 'dispatch session ended without a result'; it.doneAt = now; finished++; finishWt(it); try { deps.onDone(it); } catch (_) {} }
+        else if (s && s.exited && !s.lastResult) { it.status = 'failed'; it.error = 'dispatch session exited early'; it.doneAt = now; finished++; finishWt(it); try { deps.onDone(it); } catch (_) {} }
       }
     } else {
       // terminal runner: watch the registry for the session this launch produced
-      const mine = (deps.agents() || []).filter((a) => a.root && a.cwd && keyOf(a.cwd) === keyOf(it.cwd) && (a.createdAt || 0) >= (it.startedAt || 0) - 15000);
+      // (a worktree task's session reports the WORKTREE path as its cwd)
+      const runKey = keyOf(it.wtPath || it.cwd);
+      const mine = (deps.agents() || []).filter((a) => a.root && a.cwd && keyOf(a.cwd) === runKey && (a.createdAt || 0) >= (it.startedAt || 0) - 15000);
       if (!mine.length) {
-        if (now - (it.startedAt || now) > START_GRACE_MS) { it.status = 'failed'; it.error = 'no session appeared (is claude on PATH? trust prompt?)'; it.doneAt = now; finished++; try { deps.onDone(it); } catch (_) {} }
+        if (now - (it.startedAt || now) > START_GRACE_MS) { it.status = 'failed'; it.error = 'no session appeared (is claude on PATH? trust prompt?)'; it.doneAt = now; finished++; finishWt(it); try { deps.onDone(it); } catch (_) {} }
       } else {
         const active = mine.some((a) => WORKING.has(a.state));
         const settled = now - (it.startedAt || now) > MIN_RUN_MS && !active;
@@ -141,6 +150,7 @@ function tick(deps) {
           it.error = anyError ? 'session ended in error state' : null;
           it.sessionId = it.sessionId || (mine[0] && mine[0].sessionId) || null;
           it.doneAt = now; finished++;
+          finishWt(it);
           try { deps.onDone(it); } catch (_) {}
         }
       }
@@ -160,15 +170,25 @@ function tick(deps) {
     if (free <= 0) break;
     if (it.status !== 'queued') continue;
     const k = keyOf(it.cwd);
-    if (busyProjects.has(k)) continue;
+    // worktree mode: each task gets its own tree, so the one-per-project rule
+    // (and the don't-fight-a-human rule) don't apply — the trees can't collide.
+    let usedWt = false;
+    if (cfgState.worktrees && deps.wt) {
+      const w = deps.wt.start(it);
+      if (w && w.ok) { it.wtPath = w.wtPath; it.branch = w.branch; usedWt = true; }
+      else { it.merge = null; it.wtNote = (w && w.error) || 'worktree unavailable'; }   // not a repo etc. → shared-tree rules below
+    }
+    if (!usedWt && busyProjects.has(k)) continue;
     const useDispatch = deps.dispatchEnabled();
     const r = useDispatch ? deps.startDispatch(it) : deps.startTerminal(it);
     if (r && r.ok) {
       it.status = 'running'; it.startedAt = now; it.runner = useDispatch ? 'dispatch' : 'terminal';
       if (useDispatch && r.key) it.key = r.key;
-      busyProjects.add(k); free--; started++;
+      if (!usedWt) busyProjects.add(k);
+      free--; started++;
     } else {
       it.status = 'failed'; it.error = (r && r.error) || 'could not start'; it.doneAt = now;
+      finishWt(it);   // clean up the worktree we just created
       try { deps.onDone(it); } catch (_) {}
     }
   }

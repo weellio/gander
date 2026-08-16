@@ -49,8 +49,8 @@
     if (r && r.ok) load(); else note('✗ ' + ((r && r.error) || 'failed'));
   }
   async function saveCfg() {
-    const r = await post('/api/queue-config', { enabled: q.enabled, maxSlots: Number(q.maxSlots) || 2, telegramOnDone: tgOnDone });
-    if (r) { q.enabled = r.enabled; q.maxSlots = r.maxSlots; tgOnDone = !!r.telegramOnDone; note('✓ saved'); }
+    const r = await post('/api/queue-config', { enabled: q.enabled, maxSlots: Number(q.maxSlots) || 2, telegramOnDone: tgOnDone, worktrees: !!q.worktrees });
+    if (r) { q.enabled = r.enabled; q.maxSlots = r.maxSlots; q.worktrees = !!r.worktrees; tgOnDone = !!r.telegramOnDone; note('✓ saved'); }
   }
   function age(ts) { if (!ts) return ''; const s = Math.max(0, Math.round((Date.now() - ts) / 1000)); if (s < 60) return s + 's'; if (s < 3600) return Math.round(s / 60) + 'm'; return Math.round(s / 3600) + 'h'; }
   const ICON = { queued: '⏳', running: '▶', done: '✅', failed: '⚠️', cancelled: '✕' };
@@ -83,10 +83,14 @@
         <label class="cb"><input type="checkbox" bind:checked={q.enabled} onchange={saveCfg} /> Queue enabled</label>
         <label class="cb">slots <input class="in num" type="number" min="1" max="8" bind:value={q.maxSlots} onchange={saveCfg} /></label>
         <label class="cb"><input type="checkbox" bind:checked={tgOnDone} onchange={saveCfg} /> Telegram on done</label>
+        <label class="cb" title="Each task runs in its own git worktree + branch, so several tasks can run in the SAME project in parallel without fighting over the tree. The bridge merges each task's branch back when its session finishes (conflicts keep the branch for manual merge). Non-repo projects fall back to the classic one-per-project rule."><input type="checkbox" bind:checked={q.worktrees} onchange={saveCfg} /> ⎇ Worktree isolation</label>
         {#if (q.items || []).some((i) => i.status === 'done' || i.status === 'failed' || i.status === 'cancelled')}
           <button class="mini" onclick={() => act(0, 'clear-done')}>clear finished</button>
         {/if}
       </div>
+      {#if q.worktrees}
+        <div class="hint">⎇ Parallel mode: tasks in the same project each get their own worktree + branch (<code>gander/task-N</code>); the bridge merges back on completion — conflicts keep the branch for you to merge manually.</div>
+      {/if}
 
       {#if !(q.items || []).length}
         <div class="empty">Nothing queued. Add a goal above — the bridge starts it as soon as a slot is free, and lines the rest up behind it (one at a time per project).</div>
@@ -99,6 +103,7 @@
                 <span class="when">{it.status === 'running' ? age(it.startedAt) + ' in' : it.doneAt ? age(it.doneAt) + ' ago' : age(it.createdAt) + ' waiting'}</span>
               </div>
               <div class="prompt">{it.prompt}</div>
+              {#if it.branch}<div class="merge" class:kept={it.merge && it.merge !== 'merged' && it.merge !== 'no changes'}>⎇ {it.merge || it.branch}</div>{/if}
               {#if it.error}<div class="err">{it.error}</div>{/if}
             </div>
             <div class="acts">
@@ -131,6 +136,8 @@
   .go { font-size: 12px; font-weight: 600; padding: 5px 14px; border-radius: 6px; cursor: pointer; border: none; background: var(--accent, #6366F1); color: #fff; flex-shrink: 0; }
   .hint { font-size: 10px; color: var(--color-text-tertiary); line-height: 1.4; }
   .cfgrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; }
+  .merge { font-size: 10px; font-family: var(--font-mono); color: #10B981; margin-top: 2px; }
+  .merge.kept { color: #F59E0B; }
   .cb { display: flex; align-items: center; gap: 5px; color: var(--color-text-secondary); cursor: pointer; }
   .mini { font-size: 10px; padding: 2px 8px; border-radius: 5px; cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-secondary); }
   .mini:hover { border-color: var(--accent, #6366F1); color: var(--color-text-primary); }

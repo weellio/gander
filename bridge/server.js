@@ -216,6 +216,7 @@ function retireSweep() {
 const budget = { daily: Number(cfg.dailyBudget) || 0, session: Number(cfg.sessionBudget) || 0, enforce: !!cfg.budgetEnforce };
 let budgetState = { dailyCost: 0, daily: budget.daily, session: budget.session, enforce: budget.enforce, overDaily: false, generatedAt: 0 };
 const budgetAlerted = { day: '', sessions: new Set() };
+const budgetStages = new Map();   // sessionId -> circuit-breaker stage reached (1=steered, 2=warned)
 function dayKey() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 async function checkBudget() {
   try {
@@ -240,7 +241,30 @@ async function checkBudget() {
       }
     }
     if (budget.session > 0 && u.bySession) {
+      // Circuit breaker (Munder-Difflin-inspired): steer → constrain → stop.
+      // A session stopped mid-thought wastes more money than one steered to land,
+      // so at 70% we ask it to wrap up, at 90% we warn hard, and only at the cap
+      // do we stop (when Enforce is on). Each stage fires once per session.
       for (const [sid, s] of Object.entries(u.bySession)) {
+        const pct = s.costUSD / budget.session;
+        const stage = pct >= 1 ? 3 : pct >= 0.9 ? 2 : pct >= 0.7 ? 1 : 0;
+        const prev = budgetStages.get(sid) || 0;
+        if (stage > prev && stage < 3) {
+          budgetStages.set(sid, stage);
+          const ag0 = agents.get('sess:' + sid);
+          if (ag0 && !ag0.closed) {
+            const nm = ag0.project || sid.slice(0, 8);
+            if (stage === 1) {
+              queueCommand(sid, 'message', `[Gander budget] This session is at $${s.costUSD.toFixed(2)} of its $${budget.session} cap (70%). Start landing the work: finish the current piece, commit what's done, and avoid opening new fronts.`);
+              pushFeed({ ts: Date.now(), agentId: 'budget', agent: 'budget', project: nm, state: 'thinking', log: `${nm} at 70% of session budget — steered to wrap up`, error: false });
+            } else {
+              queueCommand(sid, 'message', `[Gander budget] $${s.costUSD.toFixed(2)} of $${budget.session} (90%). Wrap up NOW — commit immediately; the session ${budget.enforce ? 'will be stopped' : 'is flagged'} at the cap.`);
+              pushFeed({ ts: Date.now(), agentId: 'budget', agent: 'budget', project: nm, state: 'error', log: `${nm} at 90% of session budget — final warning sent`, error: false });
+              sendTelegram(`⚠️ <b>Gander budget</b>\n${nm} at 90% of its $${budget.session} session cap.`);
+            }
+            maybeNudge();
+          }
+        }
         if (s.costUSD >= budget.session && !budgetAlerted.sessions.has(sid)) {
           budgetAlerted.sessions.add(sid);
           const ag = agents.get('sess:' + sid);
@@ -311,7 +335,30 @@ let lastAwaitingSession = null;
 let lastActiveSession = null;
 const awaitTimers = new Map();       // rootKey -> delayed-nudge timeout (Telegram after 30s unanswered)
 
+// ── Slack (outbound) ─────────────────────────────────────────────────────────
+// Mirror every ALERT to a Slack incoming webhook when configured — some people
+// prefer Slack to Telegram. Outbound only for now: inbound Slack control needs
+// Socket Mode (a websocket client) or a public endpoint; Telegram stays the
+// two-way channel. Set { "slackWebhook": "https://hooks.slack.com/services/…" }
+// in aoc-config.json, or Settings → App configuration.
+const slk = { url: process.env.AOC_SLACK_WEBHOOK || cfg.slackWebhook || '' };
+function sendSlack(text) {
+  if (!slk.url) return;
+  let u; try { u = new URL(slk.url); } catch (_) { return; }
+  const plain = String(text).replace(/<\/?b>/g, '*').replace(/<[^>]+>/g, '');
+  const payload = JSON.stringify({ text: plain });
+  const req = https.request({ host: u.host, path: u.pathname + u.search, method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }, timeout: 4000 }, (res) => res.resume());
+  req.on('error', (e) => console.error('[slack]', e.message));
+  req.on('timeout', () => req.destroy());
+  req.end(payload);
+}
+
+// Alert markers → mirrored to Slack. Conversational Telegram replies (queue
+// confirmations, "no active session…") stay in the Telegram chat only.
+const ALERTY = /^[🔔⚠✅🛑💸⏱]/u;
 function sendTelegram(text, cb) {
+  if (ALERTY.test(String(text))) sendSlack(text);   // fires even with no Telegram configured
   if (!tg.token || !tg.chat) { if (cb) cb(null); return; }
   const payload = JSON.stringify({ chat_id: tg.chat, text, parse_mode: 'HTML', disable_web_page_preview: true });
   const req = https.request({
@@ -348,9 +395,47 @@ function sessionByProject(name) {
 // Inbound Telegram replies -> operator commands (two-way control).
 // Needs a bot WITHOUT a webhook (getUpdates 409s otherwise) — set telegramReplyToken
 // in aoc-config.json to a dedicated bot if your main bot has a webhook.
+// Resolve a project name (as the user would type it) to a cwd: live agents
+// first, then the projects registry. Case-insensitive on the folder basename.
+function cwdByProjectName(name) {
+  const n = String(name || '').toLowerCase();
+  if (!n) return null;
+  for (const a of agents.values()) if (a.cwd && String(a.project || '').toLowerCase() === n) return a.cwd;
+  try {
+    const pc = projects.getConfig();
+    for (const k of (pc.known || []).concat(pc.roots || [])) {
+      if (path.basename(String(k)).toLowerCase() === n) return String(k);
+    }
+  } catch (_) {}
+  return null;
+}
+function knownProjectNames(limit) {
+  const names = new Set();
+  for (const a of agents.values()) if (a.project) names.add(a.project);
+  try { const pc = projects.getConfig(); for (const k of (pc.known || []).concat(pc.roots || [])) names.add(path.basename(String(k))); } catch (_) {}
+  return [...names].slice(0, limit || 20);
+}
+
 function handleTgMessage(m) {
   if (!m || !m.text || String(m.chat.id) !== String(tg.chat)) return;
   const text = m.text.trim();
+  // /task <project> <goal> — queue new work from the phone; the bridge starts it
+  // the moment a slot frees, exactly like the 📋 panel
+  const taskCmd = text.match(/^\/task\s+(\S+)\s+([\s\S]+)$/i);
+  if (taskCmd) {
+    const cwd = cwdByProjectName(taskCmd[1]);
+    if (!cwd) { sendTelegram(`Unknown project “${taskCmd[1]}”.\nKnown: ${knownProjectNames(15).join(', ')}`); return; }
+    const r = queue.add({ cwd, prompt: taskCmd[2] });
+    sendTelegram(r.ok ? `📋 Queued <b>#${r.item.id}</b> for <b>${r.item.project}</b>:\n${String(taskCmd[2]).slice(0, 200)}` : `Failed to queue: ${r.error}`);
+    return;
+  }
+  if (/^\/queue\b/i.test(text)) {
+    const q = queue.list();
+    const lines = (q.items || []).filter((i) => i.status === 'queued' || i.status === 'running').slice(0, 10)
+      .map((i) => `${i.status === 'running' ? '▶' : '⏳'} #${i.id} <b>${i.project}</b>: ${i.prompt.slice(0, 60)}`);
+    sendTelegram(lines.length ? lines.join('\n') : 'Queue is empty.');
+    return;
+  }
   let sessionId = null;
   const replyId = m.reply_to_message && m.reply_to_message.message_id;
   if (replyId && alertMsgMap.has(replyId)) sessionId = alertMsgMap.get(replyId);
@@ -1200,16 +1285,23 @@ function queueTick() {
       dispatchEnabled: () => !!cfg.dispatch,
       dispatchGet: (sid) => { const s = dispatch.get(sid); return s ? { busy: s.busy, lastResult: s.lastResult, exited: s.exited } : null; },
       dispatchList: () => dispatch.list(),
-      startDispatch: (it) => dispatch.start({ cwd: it.cwd, prompt: it.prompt, permMode: cfg.launchPermMode || '', cli: claudeCliRaw(), extraFlags: cfg.launchFlags }),
-      startTerminal: (it) => { const r = launchSession(it.cwd, null, it.prompt); if (r.ok) captureWin(it.cwd); return r; },
+      startDispatch: (it) => dispatch.start({ cwd: it.wtPath || it.cwd, prompt: it.prompt, permMode: cfg.launchPermMode || '', cli: claudeCliRaw(), extraFlags: cfg.launchFlags }),
+      startTerminal: (it) => { const c = it.wtPath || it.cwd; const r = launchSession(c, null, it.prompt); if (r.ok) captureWin(c); return r; },
+      // worktree isolation (queue setting): per-task worktree + branch; only the
+      // bridge merges back (bridge/git.js)
+      wt: {
+        start: (it) => git.worktreeStart(it.cwd, it.id),
+        finish: (it) => git.worktreeFinish(it.cwd, it.wtPath, it.branch, `#${it.id} ${String(it.prompt).slice(0, 60)}`),
+      },
       stopDispatch: (sid) => dispatch.stop(sid),
       onDone: (it) => {
         const ok = it.status === 'done';
-        pushFeed({ ts: Date.now(), agentId: 'queue', agent: 'queue', project: it.project, sessionId: it.sessionId || '', state: ok ? 'done' : 'error', log: `task ${ok ? 'finished' : 'failed'}: ${it.prompt.slice(0, 70)}${it.error ? ' — ' + it.error : ''}`, error: !ok });
+        const mergeNote = it.merge && it.merge !== 'merged' && it.merge !== 'no changes' ? ` · ${it.merge}` : (it.merge === 'merged' ? ' · merged ✓' : '');
+        pushFeed({ ts: Date.now(), agentId: 'queue', agent: 'queue', project: it.project, sessionId: it.sessionId || '', state: ok ? 'done' : 'error', log: `task ${ok ? 'finished' : 'failed'}: ${it.prompt.slice(0, 70)}${it.error ? ' — ' + it.error : ''}${mergeNote}`, error: !ok });
         fireAmbient(ok ? 'done' : 'error', { project: it.project, name: 'queue task', reason: it.prompt.slice(0, 120) });
-        if (!ok) sendTelegram(`⚠️ <b>Gander queue</b>\nTask failed in <b>${it.project}</b>: ${String(it.prompt).slice(0, 140)}\n${it.error || ''}`);
-        else if (cfg.queueTelegram) sendTelegram(`✅ <b>Gander queue</b>\nFinished in <b>${it.project}</b>: ${String(it.prompt).slice(0, 140)}`);
-        console.log(`[queue] #${it.id} ${it.status} (${it.project})`);
+        if (!ok) sendTelegram(`⚠️ <b>Gander queue</b>\nTask failed in <b>${it.project}</b>: ${String(it.prompt).slice(0, 140)}\n${it.error || ''}${mergeNote}`);
+        else if (cfg.queueTelegram) sendTelegram(`✅ <b>Gander queue</b>\nFinished in <b>${it.project}</b>: ${String(it.prompt).slice(0, 140)}${mergeNote}`);
+        console.log(`[queue] #${it.id} ${it.status} (${it.project})${mergeNote}`);
       },
     });
   } catch (e) { console.error('[queue] tick error:', e.message); }
@@ -2096,6 +2188,17 @@ const server = http.createServer(async (req, res) => {
     if (norm.peers.length) fleet.start(); else fleet.stop();
     console.log(`[fleet] ${norm.peers.length} peer(s) configured`);
     return sendJson(res, 200, { ok: true, intervalMs: norm.intervalMs, peers: norm.peers.map((p) => ({ name: p.name, url: p.url, hasToken: !!p.token })) });
+  }
+
+  if (url === '/api/slack-config' && req.method === 'GET') {
+    return sendJson(res, 200, { configured: !!slk.url, url: slk.url ? slk.url.slice(0, 40) + '…' : '' });
+  }
+  if (url === '/api/slack-config' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { error: 'body required' });
+    if (body.url !== undefined) { cfg.slackWebhook = String(body.url).trim(); slk.url = cfg.slackWebhook; saveConfig(); }
+    if (body.test) sendSlack('🔔 *Gander* — Slack alerts are wired up. You will get: needs-you, errors, runaway cost, budget warnings, and task done/failed.');
+    return sendJson(res, 200, { ok: true, configured: !!slk.url });
   }
 
   if (url === '/api/telegram-config' && req.method === 'GET') {

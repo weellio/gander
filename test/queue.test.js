@@ -139,3 +139,66 @@ describe('queue', () => {
     queue.setConfig({ enabled: true });
   });
 });
+
+// ── worktree isolation ───────────────────────────────────────────────────────
+describe('queue worktrees', () => {
+  beforeEach(() => queue._test.reset());
+  function mkWt() {
+    const calls = { started: [], finished: [] };
+    return {
+      calls,
+      wt: {
+        start: (it) => { calls.started.push(it.id); return { ok: true, wtPath: it.cwd + '__wt' + it.id, branch: 'gander/task-' + it.id }; },
+        finish: (it) => { calls.finished.push(it.id); return 'merged'; },
+      },
+    };
+  }
+
+  test('worktree mode runs two tasks in the SAME project in parallel', () => {
+    queue.setConfig({ maxSlots: 2, worktrees: true });
+    queue.add({ cwd: 'C:\p\alpha', prompt: 'a1' });
+    queue.add({ cwd: 'C:\p\alpha', prompt: 'a2' });
+    const { deps, calls } = mkDeps({});
+    const w = mkWt(); deps.wt = w.wt;
+    const r = queue.tick(deps);
+    assert.equal(r.started, 2, 'same-project pair both started');
+    assert.deepEqual(w.calls.started, [1, 2]);
+    const its = queue.list().items;
+    assert.ok(its.every((i) => i.status === 'running' && i.wtPath && i.branch), 'both isolated in worktrees');
+  });
+
+  test('a busy human session does NOT block worktree starts', () => {
+    queue.setConfig({ maxSlots: 2, worktrees: true });
+    queue.add({ cwd: 'C:\p\alpha', prompt: 'a1' });
+    const { deps } = mkDeps({ agents: [{ root: true, cwd: 'C:\p\alpha', state: 'coding', closed: false }] });
+    const w = mkWt(); deps.wt = w.wt;
+    assert.equal(queue.tick(deps).started, 1, 'worktree task starts alongside the human session');
+  });
+
+  test('non-repo falls back to shared-tree rules (one per project)', () => {
+    queue.setConfig({ maxSlots: 2, worktrees: true });
+    queue.add({ cwd: 'C:\p\alpha', prompt: 'a1' });
+    queue.add({ cwd: 'C:\p\alpha', prompt: 'a2' });
+    const { deps } = mkDeps({});
+    deps.wt = { start: () => ({ error: 'not a git repo' }), finish: () => 'n/a' };
+    const r = queue.tick(deps);
+    assert.equal(r.started, 1, 'fallback keeps the one-per-project rule');
+  });
+
+  test('completion merges back and records the result', () => {
+    queue.setConfig({ maxSlots: 1, worktrees: true });
+    queue.add({ cwd: 'C:\p\alpha', prompt: 'a1' });
+    const { deps, calls } = mkDeps({
+      dispatchList: () => [{ key: 'k1', sessionId: 'S1' }],
+      dispatchGet: () => ({ busy: false, lastResult: { ok: true } }),
+    });
+    const w = mkWt(); deps.wt = w.wt;
+    queue.tick(deps);                       // starts (running)
+    const r2 = queue.tick(deps);            // settles via dispatch result
+    assert.equal(r2.finished, 1);
+    assert.deepEqual(w.calls.finished, [1], 'bridge merged the branch');
+    const it = queue.list().items[0];
+    assert.equal(it.status, 'done');
+    assert.equal(it.merge, 'merged');
+  });
+});

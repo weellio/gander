@@ -129,6 +129,18 @@
     else tgStatus = 'Error: ' + ((r && r.error) || 'failed');
   }
 
+  // ── Slack alerts (outbound webhook) ──
+  let slkCfg = $state(null); let slkUrl = $state(''); let slkStatus = $state(''); let slkOpen = $state(false);
+  async function loadSlk() { try { const r = await fetch('/api/slack-config'); slkCfg = await r.json(); } catch (_) {} }
+  async function saveSlk(test) {
+    slkStatus = 'Saving…';
+    const body = { test };
+    if (slkUrl.trim() !== '') body.url = slkUrl.trim();
+    const r = await post('/api/slack-config', body);
+    if (r && r.ok) { slkStatus = test ? '✓ Test sent — check the Slack channel.' : '✓ Saved.'; slkUrl = ''; loadSlk(); }
+    else slkStatus = 'Error: ' + ((r && r.error) || 'failed');
+  }
+
   // ── Add MCP server to the selected project ──
   // Curated presets so users don't have to memorise package names. Placeholders
   // (in <…>) and env keys are filled in by the user before adding.
@@ -256,6 +268,24 @@
     </div>
 
     <div class="tg">
+      <button class="collapser" onclick={() => { slkOpen = !slkOpen; if (slkOpen) loadSlk(); }}>
+        <span class="caret">{slkOpen ? '▾' : '▸'}</span> Slack alerts
+        {#if slkCfg}<span class="tg-state">{slkCfg.configured ? '· connected' : '· not set up'}</span>{/if}
+      </button>
+      {#if slkOpen}
+        <div class="tg-form">
+          <input class="in" placeholder={slkCfg && slkCfg.configured ? 'webhook URL (blank = keep current)' : 'incoming webhook URL (hooks.slack.com/services/…)'} bind:value={slkUrl} />
+          <div class="tg-btns">
+            <button class="select" onclick={() => saveSlk(false)}>Save</button>
+            <button class="select" onclick={() => saveSlk(true)}>Save &amp; Test</button>
+          </div>
+          {#if slkStatus}<div class="tg-status">{slkStatus}</div>{/if}
+          <div class="tg-hint">Every alert Telegram gets — needs-you, errors, runaway cost, budget warnings, task done/failed — mirrored to a Slack channel. Make a webhook at api.slack.com/apps → Incoming Webhooks. <b>Outbound only</b>: replying/queueing from chat stays on Telegram (Slack inbound needs Socket Mode — planned).</div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="tg">
       <button class="collapser" onclick={() => (budOpen = !budOpen)}>
         <span class="caret">{budOpen ? '▾' : '▸'}</span> Cost budget
         {#if bud && bud.daily}<span class="tg-state">· ${bud.dailyCost?.toFixed?.(2) ?? '0'} / ${bud.daily} today</span>{/if}
@@ -267,7 +297,7 @@
           <label class="cbrow"><input type="checkbox" bind:checked={budEnforce} /> Enforce — <b>stop</b> a session that crosses the cap <span class="dim">(not just alert)</span></label>
           <div class="tg-btns"><button class="select" onclick={saveBudget}>Save</button></div>
           {#if budStatus}<div class="tg-status">{budStatus}</div>{/if}
-          <div class="tg-hint">Alerts go to Telegram + a dashboard banner when crossed. With <b>Enforce</b> on, a session over its cap is <b>Stopped</b> at its next tool, and crossing the daily cap stops every active session. Spend is estimated from transcripts.</div>
+          <div class="tg-hint">Session caps de-escalate in stages (a circuit breaker): at <b>70%</b> the session is steered to wrap up and commit, at <b>90%</b> it gets a final warning (+ Telegram/Slack ping), and only at the cap is it <b>Stopped</b> (with Enforce on) — a session steered to land wastes less than one killed mid-thought. Crossing the daily cap stops every active session. Spend is estimated from transcripts.</div>
         </div>
       {/if}
     </div>
