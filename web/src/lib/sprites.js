@@ -11,8 +11,8 @@ const OFFICE_URL = '/art/office_sprite_dark.png';
 // Office decor (same sheet family, dark variant). Verified slices — see the
 // note below about not "tidying" the numbers.
 export const OFFICE = {
-  cooler: [2555, 890, 100, 235],
-  plant: [2690, 940, 120, 215],
+  cooler: [2565, 850, 120, 260],
+  plant: [2718, 898, 165, 225],
   printer: [2350, 905, 195, 215],
   sofa: [2270, 1745, 390, 195],
   posters: [[2985, 270, 145, 200], [2785, 515, 145, 200], [2625, 515, 145, 200]],   // "turning it off and on" · GO AWAY · IT IS WONDERFUL
@@ -45,7 +45,12 @@ const CHARS = ['moss', 'roy', 'jen'];
 // One keyed-canvas cache per sheet URL — goose characters and office decor
 // share the same key-flood-erode pipeline.
 const sheets = new Map();   // url -> { canvas } | { promise }
-function loadKeyedSheet(url) {
+// opts per sheet: the goose sheet has a PAPER-WHITE bg (generous flood + bright
+// erode to kill the light matte); the office sheet is NEAR-BLACK — a generous
+// flood eats dark furniture (sofa cushions, plant pots, copier bodies), so it
+// gets a tight threshold and no erosion (its fringe is dark and harmless).
+function loadKeyedSheet(url, opts = {}) {
+  const { flood = 110, erode = true } = opts;
   const hit = sheets.get(url);
   if (hit && hit.canvas) return Promise.resolve(hit.canvas);
   if (hit && hit.promise) return hit.promise;
@@ -74,7 +79,7 @@ function loadKeyedSheet(url) {
           const n = stack.pop();
           if (seen[n]) continue;
           seen[n] = 1;
-          if (dist(n * 4) >= 110) continue;        // hit the character outline — stop
+          if (dist(n * 4) >= flood) continue;      // hit the artwork — stop
           p[n * 4 + 3] = 0;
           const x = n % W, y = (n / W) | 0;
           if (x > 0) stack.push(n - 1);
@@ -101,8 +106,10 @@ function loadKeyedSheet(url) {
           for (const i of kill) p[i + 3] = 0;
           return kill.length;
         };
-        for (let pass = 0; pass < 4; pass++) if (!erodePass(150)) break;   // matte remnants, incl. darker beige blends
-        erodePass(-1);                                                     // final colour-blind 1px shave — kills whatever's left
+        if (erode) {
+          for (let pass = 0; pass < 4; pass++) if (!erodePass(150)) break;   // matte remnants, incl. darker beige blends
+          erodePass(-1);                                                     // final colour-blind 1px shave — kills whatever's left
+        }
         // final 1px soft feather so the new hard edge doesn't alias
         for (let y = 1; y < H - 1; y++) {
           for (let x = 1; x < W - 1; x++) {
@@ -127,8 +134,8 @@ function loadKeyedSheet(url) {
 
 let keyed = null;         // goose sheet (kept as a direct ref for the hot draw path)
 let officeKeyed = null;   // office decor sheet
-export function loadGooseSheet() { return loadKeyedSheet(SHEET_URL).then((c) => (keyed = c)); }
-export function loadOfficeSheet() { return loadKeyedSheet(OFFICE_URL).then((c) => (officeKeyed = c)); }
+export function loadGooseSheet() { return loadKeyedSheet(SHEET_URL, { flood: 110, erode: true }).then((c) => (keyed = c)); }
+export function loadOfficeSheet() { return loadKeyedSheet(OFFICE_URL, { flood: 34, erode: false }).then((c) => (officeKeyed = c)); }
 
 // Draw a decor item bottom-anchored at (cx, footY), targetH tall.
 export function drawItem(ctx, rect, cx, footY, targetH) {
