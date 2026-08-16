@@ -129,15 +129,19 @@
     else tgStatus = 'Error: ' + ((r && r.error) || 'failed');
   }
 
-  // ── Slack alerts (outbound webhook) ──
+  // ── Slack (outbound webhook + Socket Mode inbound) ──
   let slkCfg = $state(null); let slkUrl = $state(''); let slkStatus = $state(''); let slkOpen = $state(false);
+  let slkApp = $state(''); let slkBot = $state(''); let slkChan = $state('');
   async function loadSlk() { try { const r = await fetch('/api/slack-config'); slkCfg = await r.json(); } catch (_) {} }
   async function saveSlk(test) {
     slkStatus = 'Saving…';
     const body = { test };
     if (slkUrl.trim() !== '') body.url = slkUrl.trim();
+    if (slkApp.trim() !== '') body.appToken = slkApp.trim();
+    if (slkBot.trim() !== '') body.botToken = slkBot.trim();
+    if (slkChan.trim() !== '') body.channel = slkChan.trim();
     const r = await post('/api/slack-config', body);
-    if (r && r.ok) { slkStatus = test ? '✓ Test sent — check the Slack channel.' : '✓ Saved.'; slkUrl = ''; loadSlk(); }
+    if (r && r.ok) { slkStatus = test ? '✓ Test sent — check the Slack channel.' : '✓ Saved.'; slkUrl = ''; slkApp = ''; slkBot = ''; loadSlk(); }
     else slkStatus = 'Error: ' + ((r && r.error) || 'failed');
   }
 
@@ -269,18 +273,21 @@
 
     <div class="tg">
       <button class="collapser" onclick={() => { slkOpen = !slkOpen; if (slkOpen) loadSlk(); }}>
-        <span class="caret">{slkOpen ? '▾' : '▸'}</span> Slack alerts
-        {#if slkCfg}<span class="tg-state">{slkCfg.configured ? '· connected' : '· not set up'}</span>{/if}
+        <span class="caret">{slkOpen ? '▾' : '▸'}</span> Slack
+        {#if slkCfg}<span class="tg-state">{slkCfg.inbound ? '· two-way' : slkCfg.configured ? '· alerts only' : '· not set up'}</span>{/if}
       </button>
       {#if slkOpen}
         <div class="tg-form">
           <input class="in" placeholder={slkCfg && slkCfg.configured ? 'webhook URL (blank = keep current)' : 'incoming webhook URL (hooks.slack.com/services/…)'} bind:value={slkUrl} />
+          <input class="in" placeholder={slkCfg && slkCfg.hasAppToken ? 'app token xapp-… (blank = keep current)' : 'app-level token (xapp-…) — enables inbound'} bind:value={slkApp} />
+          <input class="in" placeholder={slkCfg && slkCfg.hasBotToken ? 'bot token xoxb-… (blank = keep current)' : 'bot token (xoxb-…) — lets Gander reply'} bind:value={slkBot} />
+          <input class="in" placeholder={slkCfg && slkCfg.channel ? `alert channel (${slkCfg.channel})` : 'alert channel id (optional, e.g. C0123…)'} bind:value={slkChan} />
           <div class="tg-btns">
             <button class="select" onclick={() => saveSlk(false)}>Save</button>
             <button class="select" onclick={() => saveSlk(true)}>Save &amp; Test</button>
           </div>
           {#if slkStatus}<div class="tg-status">{slkStatus}</div>{/if}
-          <div class="tg-hint">Every alert Telegram gets — needs-you, errors, runaway cost, budget warnings, task done/failed — mirrored to a Slack channel. Make a webhook at api.slack.com/apps → Incoming Webhooks. <b>Outbound only</b>: replying/queueing from chat stays on Telegram (Slack inbound needs Socket Mode — planned).</div>
+          <div class="tg-hint">Webhook alone = <b>outbound alerts</b> (needs-you, errors, runaway cost, budget warnings, task done/failed) mirrored to a channel — make one at api.slack.com/apps → Incoming Webhooks. Add an <b>app-level token</b> (Basic Information → App-Level Tokens, scope <code>connections:write</code>, with Socket Mode ON) plus a <b>bot token</b> (OAuth scope <code>chat:write</code>, subscribe to <code>message.im</code> / <code>message.channels</code>) and Slack becomes <b>two-way like Telegram</b>: DM the bot <code>/task &lt;project&gt; &lt;goal&gt;</code>, <code>/queue</code>, <code>/stop</code>, or <code>project: your message</code>. With both tokens the webhook is optional — alerts post to the alert channel (or wherever you last messaged the bot).</div>
         </div>
       {/if}
     </div>

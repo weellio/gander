@@ -1005,7 +1005,8 @@
               } else {
                 const ang = d.seed * Math.PI * 2;
                 tx = cooler.x + Math.cos(ang) * 16; ty = cooler.y - 12 + Math.sin(ang) * 7;
-                kind = 'break'; pause = 3 + Math.random() * 3;
+                kind = 'break'; pause = 8 + Math.random() * 7;   // long enough to enjoy the coffee
+
               }
               d.nextBreakAt = t + 180 + Math.random() * 420;             // 3–10 min between wanders
               if (kind === 'break') d.nextBreakAt += 60 + Math.random() * 60; // cooler: a minute or two more on top

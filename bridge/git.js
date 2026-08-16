@@ -3,6 +3,7 @@
 // Never throws — returns { isRepo:false } / { error } on any trouble.
 
 const { execFile, execFileSync } = require('child_process');
+const fs = require('fs');
 
 function run(dir, args) {
   return new Promise((resolve) => {
@@ -85,7 +86,14 @@ function worktreeStart(cwd, id) {
 // nothing is ever lost), merge the branch into the main tree when it's clean,
 // and clean up. Returns a human-readable merge status string.
 function worktreeFinish(cwd, wtPath, branch, label) {
-  const removeWt = () => { try { gitSync(cwd, ['worktree', 'remove', '--force', wtPath]); } catch (_) {} try { gitSync(cwd, ['worktree', 'prune']); } catch (_) {} };
+  const removeWt = () => {
+    try { gitSync(cwd, ['worktree', 'remove', '--force', wtPath]); } catch (_) {}
+    try { gitSync(cwd, ['worktree', 'prune']); } catch (_) {}
+    // on Windows `worktree remove` silently fails while the task's session still
+    // has the folder as its cwd — retry at the filesystem level (best effort;
+    // a survivor is cleared by the stale-leftover path on the next start)
+    try { if (fs.existsSync(wtPath)) fs.rmSync(wtPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 300 }); } catch (_) {}
+  };
   try {
     // 1) preserve uncommitted work inside the worktree
     try {

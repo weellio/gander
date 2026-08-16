@@ -341,9 +341,16 @@ const awaitTimers = new Map();       // rootKey -> delayed-nudge timeout (Telegr
 // Socket Mode (a websocket client) or a public endpoint; Telegram stays the
 // two-way channel. Set { "slackWebhook": "https://hooks.slack.com/services/…" }
 // in aoc-config.json, or Settings → App configuration.
-const slk = { url: process.env.AOC_SLACK_WEBHOOK || cfg.slackWebhook || '' };
+const slk = { url: process.env.AOC_SLACK_WEBHOOK || cfg.slackWebhook || '', lastChannel: '' };
 function sendSlack(text) {
-  if (!slk.url) return;
+  if (!slk.url) {
+    // no webhook — fall back to the bot token (Socket Mode setups often skip
+    // the webhook entirely): post to the configured channel, else wherever
+    // the user last talked to the bot from
+    const ch = cfg.slackChannel || slk.lastChannel;
+    if (cfg.slackBotToken && ch) sendSlackChannel(ch, text);
+    return;
+  }
   let u; try { u = new URL(slk.url); } catch (_) { return; }
   const plain = String(text).replace(/<\/?b>/g, '*').replace(/<[^>]+>/g, '');
   const payload = JSON.stringify({ text: plain });
@@ -482,6 +489,68 @@ function startTelegramPolling() {
   };
   poll();
   console.log('[telegram] reply polling started');
+}
+
+// ── Slack (inbound) — Socket Mode ────────────────────────────────────────────
+// With an app-level token (xapp-…, scope connections:write) and a bot token
+// (xoxb-…, scopes chat:write + the message events you subscribe to), Slack
+// becomes a full two-way channel like Telegram: /task, /queue, /stop, and
+// "project: message" routing. Zero dependencies — bridge/slack.js speaks
+// Socket Mode over a hand-rolled TLS websocket.
+const slackMod = require('./slack.js');
+let slackSock = null;
+function sendSlackChannel(channel, text) {
+  const token = cfg.slackBotToken || '';
+  if (!token || !channel) return;
+  const plain = String(text).replace(/<\/?b>/g, '*').replace(/<[^>]+>/g, '');
+  slackMod.api(token, 'chat.postMessage', { channel, text: plain }, (e) => { if (e) console.error('[slack] postMessage:', e.message); });
+}
+function handleSlackInput(text, channel) {
+  const t = String(text || '').replace(/^\s*<@[A-Z0-9]+>\s*/i, '').trim();   // strip a leading @bot mention
+  if (!t) return;
+  if (channel) { slk.lastChannel = channel; }
+  const reply = (msg) => sendSlackChannel(channel, msg);
+  const taskCmd = t.match(/^\/task\s+(\S+)\s+([\s\S]+)$/i);
+  if (taskCmd) {
+    const cwd = cwdByProjectName(taskCmd[1]);
+    if (!cwd) { reply(`Unknown project “${taskCmd[1]}”. Known: ${knownProjectNames(15).join(', ')}`); return; }
+    const r = queue.add({ cwd, prompt: taskCmd[2] });
+    reply(r.ok ? `📋 Queued *#${r.item.id}* for *${r.item.project}*: ${String(taskCmd[2]).slice(0, 200)}` : `Failed to queue: ${r.error}`);
+    if (r.ok) setTimeout(queueTick, 400);
+    return;
+  }
+  if (/^\/queue\b/i.test(t)) {
+    const q = queue.list();
+    const lines = (q.items || []).filter((i) => i.status === 'queued' || i.status === 'running').slice(0, 10)
+      .map((i) => `${i.status === 'running' ? '▶' : '⏳'} #${i.id} *${i.project}*: ${i.prompt.slice(0, 60)}`);
+    reply(lines.length ? lines.join('\n') : 'Queue is empty.');
+    return;
+  }
+  let sessionId = null, type = 'message', payload = t;
+  if (/^\/stop\b/i.test(t)) { type = 'stop'; payload = ''; }
+  const tagged = t.match(/^@?([\w.-]+)\s*:\s*([\s\S]+)$/);
+  if (tagged) { const s = sessionByProject(tagged[1]); if (s) { sessionId = s; payload = tagged[2]; } }
+  if (!sessionId) sessionId = lastAwaitingSession || lastActiveSession;
+  if (!sessionId) { reply('No active session to send to. Use “project: your message”.'); return; }
+  queueCommand(sessionId, type, payload);
+  maybeNudge();
+  const root = agents.get('sess:' + sessionId);
+  reply(`→ ${type === 'stop' ? 'STOP' : 'message'} queued for *${root ? root.project : sessionId}*`);
+}
+function startSlackSocket() {
+  if (slackSock) { slackSock.stop(); slackSock = null; }
+  if (!cfg.slackAppToken || !cfg.slackBotToken) return;
+  slackSock = slackMod.startSocket({
+    appToken: cfg.slackAppToken,
+    log: (m) => console.log('[slack]', m),
+    onEvent: (kind, p) => {
+      try {
+        if (kind === 'slash') handleSlackInput(`${p.command || ''} ${p.text || ''}`.trim(), p.channel_id);
+        else handleSlackInput(p.text, p.channel);
+      } catch (e) { console.error('[slack] handler:', e.message); }
+    },
+  });
+  console.log('[slack] Socket Mode starting');
 }
 
 function upsert(ev) {
@@ -1273,6 +1342,25 @@ dispatch.init({
   log: (...a) => console.log(...a),
 });
 
+// Pre-trust a folder in ~/.claude.json so a queue-launched session doesn't sit
+// on Claude Code's "do you trust this folder?" prompt forever. Worktree dirs
+// are freshly created every time, so without this every ⎇ worktree task
+// stalls at the trust dialog (headless dispatch AND terminal launches alike).
+function preTrustFolder(dir) {
+  try {
+    const file = path.join(os.homedir(), '.claude.json');
+    if (!dir || !fs.existsSync(file)) return;
+    const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+    j.projects = j.projects || {};
+    const key = String(dir).replace(/\\/g, '/');
+    const cur = j.projects[key] || {};
+    if (cur.hasTrustDialogAccepted && cur.hasCompletedProjectOnboarding) return;
+    j.projects[key] = { allowedTools: [], ...cur, hasTrustDialogAccepted: true, hasCompletedProjectOnboarding: true };
+    fs.writeFileSync(file, JSON.stringify(j, null, 2));
+    console.log(`[queue] pre-trusted ${key} for Claude Code`);
+  } catch (e) { console.error('[queue] pre-trust failed:', e.message); }
+}
+
 // ── Task queue scheduler ────────────────────────────────────────────────────
 // Every 10s: settle finished queue tasks, then start the next queued goal if a
 // slot is free (see bridge/queue.js for the rules). Uses dispatch when it's on,
@@ -1290,7 +1378,7 @@ function queueTick() {
       // worktree isolation (queue setting): per-task worktree + branch; only the
       // bridge merges back (bridge/git.js)
       wt: {
-        start: (it) => git.worktreeStart(it.cwd, it.id),
+        start: (it) => { const r = git.worktreeStart(it.cwd, it.id); if (r && r.ok) preTrustFolder(r.wtPath); return r; },
         finish: (it) => git.worktreeFinish(it.cwd, it.wtPath, it.branch, `#${it.id} ${String(it.prompt).slice(0, 60)}`),
       },
       stopDispatch: (sid) => dispatch.stop(sid),
@@ -2213,14 +2301,24 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url === '/api/slack-config' && req.method === 'GET') {
-    return sendJson(res, 200, { configured: !!slk.url, url: slk.url ? slk.url.slice(0, 40) + '…' : '' });
+    return sendJson(res, 200, {
+      configured: !!slk.url, url: slk.url ? slk.url.slice(0, 40) + '…' : '',
+      hasAppToken: !!cfg.slackAppToken, hasBotToken: !!cfg.slackBotToken,
+      channel: cfg.slackChannel || '', inbound: !!slackSock,
+    });
   }
   if (url === '/api/slack-config' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { error: 'body required' });
-    if (body.url !== undefined) { cfg.slackWebhook = String(body.url).trim(); slk.url = cfg.slackWebhook; saveConfig(); }
+    let tokensChanged = false;
+    if (body.url !== undefined) { cfg.slackWebhook = String(body.url).trim(); slk.url = cfg.slackWebhook; }
+    if (body.appToken !== undefined) { cfg.slackAppToken = String(body.appToken).trim(); tokensChanged = true; }
+    if (body.botToken !== undefined) { cfg.slackBotToken = String(body.botToken).trim(); tokensChanged = true; }
+    if (body.channel !== undefined) { cfg.slackChannel = String(body.channel).trim(); }
+    saveConfig();
+    if (tokensChanged) startSlackSocket();   // (re)connect Socket Mode with the new tokens — or stop if cleared
     if (body.test) sendSlack('🔔 *Gander* — Slack alerts are wired up. You will get: needs-you, errors, runaway cost, budget warnings, and task done/failed.');
-    return sendJson(res, 200, { ok: true, configured: !!slk.url });
+    return sendJson(res, 200, { ok: true, configured: !!slk.url, hasAppToken: !!cfg.slackAppToken, hasBotToken: !!cfg.slackBotToken, inbound: !!slackSock });
   }
 
   if (url === '/api/telegram-config' && req.method === 'GET') {
@@ -2657,6 +2755,7 @@ server.listen(argPort, BIND_HOST, () => {
   console.log(`Push event: POST http://localhost:${argPort}/api/event`);
   startIngest();
   startTelegramPolling();
+  startSlackSocket();   // Slack inbound (Socket Mode) — no-op without both slack tokens
   setInterval(retireSweep, 12000);
   setInterval(checkBudget, 180000); setTimeout(checkBudget, 8000);
   setInterval(sampleBurn, 30000); setTimeout(sampleBurn, 6000);
