@@ -69,15 +69,32 @@ export function loadGooseSheet() {
           if (y > 0) stack.push(n - W);
           if (y < H - 1) stack.push(n + W);
         }
-        // defringe: an opaque pixel touching transparency that still looks
-        // paper-ish is an anti-aliasing remnant — fade it by how paper-ish it is
+        // Matte-line removal: the 2–3px anti-aliased blend between the dark
+        // character outline and the paper reads as an off-white "bad cutout"
+        // ring on dark floors. Erode it: repeatedly delete edge-touching pixels
+        // that are BRIGHT — the fringe is off-white, the outlines are near
+        // black, so the erosion stops exactly at the true silhouette. (Bright
+        // interiors like faces never border transparency, so they're safe.)
+        for (let pass = 0; pass < 3; pass++) {
+          const kill = [];
+          for (let y = 1; y < H - 1; y++) {
+            for (let x = 1; x < W - 1; x++) {
+              const n = y * W + x, i = n * 4;
+              if (p[i + 3] === 0) continue;
+              if (p[i - 1] !== 0 && p[i + 7] !== 0 && p[(n - W) * 4 + 3] !== 0 && p[(n + W) * 4 + 3] !== 0) continue;
+              if (p[i] + p[i + 1] + p[i + 2] > 3 * 172) kill.push(i);   // bright edge pixel = matte remnant
+            }
+          }
+          if (!kill.length) break;
+          for (const i of kill) p[i + 3] = 0;
+        }
+        // final 1px soft feather so the new hard edge doesn't alias
         for (let y = 1; y < H - 1; y++) {
           for (let x = 1; x < W - 1; x++) {
             const n = y * W + x, i = n * 4;
             if (p[i + 3] === 0) continue;
             if (p[i - 1] === 0 || p[i + 7] === 0 || p[(n - W) * 4 + 3] === 0 || p[(n + W) * 4 + 3] === 0) {
-              const dd = dist(i);
-              if (dd < 160) p[i + 3] = Math.min(p[i + 3], Math.round(255 * (dd / 160)));
+              if (p[i + 3] === 255) p[i + 3] = 210;
             }
           }
         }
