@@ -29,18 +29,24 @@ export const GOOSE = {
     think: [2660, 1080, 175, 195], palm: [2925, 1080, 160, 195],
     idle: [2150, 290, 150, 185],
     walk: [[1655, 1085, 145, 190], [1800, 1085, 145, 190], [1950, 1085, 145, 190], [2100, 1085, 145, 190]],
+    left: [1100, 290, 115, 194], up: [1436, 290, 106, 192], right: [1772, 295, 118, 192],
+    coffee: [2810, 305, 118, 195],
   },
   roy: {
     desk: [780, 1290, 190, 195], type: [2380, 1295, 185, 195],
     think: [2660, 1290, 175, 200], palm: [2925, 1290, 160, 200],
     idle: [2150, 515, 150, 190],
     walk: [[1655, 1285, 145, 205], [1800, 1285, 145, 205], [1950, 1285, 145, 205], [2100, 1285, 145, 205]],
+    left: [1100, 502, 112, 190], up: [1438, 502, 100, 190], right: [1778, 505, 108, 185],
+    coffee: [2810, 520, 118, 185],
   },
   jen: {
     desk: [780, 1515, 190, 200], type: [2380, 1520, 185, 200],
     think: [2660, 1515, 175, 205], palm: [2925, 1515, 160, 205],
     idle: [2150, 705, 150, 190],
     walk: [[1655, 1525, 145, 195], [1800, 1525, 145, 195], [1950, 1525, 145, 195], [2100, 1525, 145, 195]],
+    left: [1098, 698, 118, 188], up: [1433, 700, 102, 188], right: [1780, 700, 102, 190],
+    coffee: [2815, 712, 112, 180],
   },
   shared: { celebrate: [1420, 1895, 165, 200], thumbs: [965, 1900, 145, 195], sleep: [2980, 1895, 200, 200] },
 };
@@ -58,6 +64,23 @@ export const DROIDS = {
   orphan: [2465, 1275, 180, 225],    // Security Droid — red eye, no owner
 };
 export const TICKETBOT = [2955, 1280, 155, 220];   // Ticket Bot — the task queue's front desk
+
+// Big architectural props from the second geese-office sheet.
+const GENERAL2_URL = '/art/general_sprite_2.png';
+export const DECO2 = {
+  elevator: [2600, 1152, 192, 265],     // elevator doors — the building's main entrance
+  serverDoor: [2862, 1152, 280, 250],   // rack-style double doors — server room entrance
+};
+
+export function drawDeco2(ctx, rect, cx, footY, targetH) {
+  if (!general2Keyed || !rect) return false;
+  const w = targetH * (rect[2] / rect[3]);
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(general2Keyed, rect[0], rect[1], rect[2], rect[3], cx - w / 2, footY - targetH, w, targetH);
+  ctx.imageSmoothingEnabled = prev;
+  return true;
+}
 
 // Generic draw from the general (geese & robots) sheet, bottom-anchored.
 export function drawGeneral(ctx, rect, cx, footY, targetH) {
@@ -166,9 +189,11 @@ function loadKeyedSheet(url, opts = {}) {
 let keyed = null;         // goose sheet (kept as a direct ref for the hot draw path)
 let officeKeyed = null;   // office decor sheet
 let generalKeyed = null;  // geese & robots sheet (droids)
+let general2Keyed = null; // second geese-office sheet (elevator, server doors)
 export function loadGooseSheet() { return loadKeyedSheet(SHEET_URL, { flood: 110, erode: true }).then((c) => (keyed = c)); }
 export function loadOfficeSheet() { return loadKeyedSheet(OFFICE_URL, { flood: 28, erode: false }).then((c) => (officeKeyed = c)); }
 export function loadGeneralSheet() { return loadKeyedSheet(GENERAL_URL, { flood: 110, erode: true }).then((c) => (generalKeyed = c)); }
+export function loadGeneral2Sheet() { return loadKeyedSheet(GENERAL2_URL, { flood: 110, erode: true }).then((c) => (general2Keyed = c)); }
 
 // Carpet pattern from the RAW office sheet (textures don't need keying).
 let carpetPat = null, carpetImg = null;
@@ -214,9 +239,14 @@ export function drawItem(ctx, rect, cx, footY, targetH) {
 function hash(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 export function gooseFor(id) { return CHARS[hash(String(id)) % 3]; }
 
-// pose per agent state (walking overrides with the 4-frame cycle)
-export function poseFor(state, walking, t, stalled) {
-  if (walking) return { kind: 'walk', frame: Math.floor(t * 6) % 4 };
+// pose per agent state (walking overrides — the 4-frame cycle faces down;
+// other headings use the directional standing sprite with a step-bob)
+export function poseFor(state, walking, t, stalled, heading, coffee) {
+  if (walking) {
+    if (heading === 'up' || heading === 'left' || heading === 'right') return { kind: heading, bob: true };
+    return { kind: 'walk', frame: Math.floor(t * 6) % 4 };
+  }
+  if (coffee) return { kind: 'coffee' };                 // hanging out at the water cooler
   if (stalled) return { kind: 'sleep', shared: true };   // went quiet mid-goal → napping in the recliner
   if (state === 'coding' || state === 'testing') return { kind: 'type' };
   if (state === 'reading') return { kind: 'desk' };
@@ -227,12 +257,14 @@ export function poseFor(state, walking, t, stalled) {
 }
 
 // Draw a goose bottom-anchored at (cx, footY), targetH tall, aspect preserved.
-export function drawGoose(ctx, agentId, state, walking, t, cx, footY, targetH, stalled) {
+// opts: { heading: 'up'|'down'|'left'|'right', coffee: bool }
+export function drawGoose(ctx, agentId, state, walking, t, cx, footY, targetH, stalled, opts = {}) {
   if (!keyed) return false;
   const ch = GOOSE[gooseFor(agentId)];
-  const pose = poseFor(state, walking, t, stalled);
+  const pose = poseFor(state, walking, t, stalled, opts.heading, opts.coffee);
   const r = pose.shared ? GOOSE.shared[pose.kind] : (pose.kind === 'walk' ? ch.walk[pose.frame] : ch[pose.kind]);
   if (!r) return false;
+  if (pose.bob) footY -= (Math.floor(t * 6) % 2) * 2;    // fake the step on directional sprites
   const w = targetH * (r[2] / r[3]);
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;    // keep the pixel-art crunch

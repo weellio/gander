@@ -4,7 +4,7 @@
   import { paintFigure } from './avatars/desk.js';
   import { buildClusters, fmtUp, TONE_COL } from './procgroups.js';
   import { animations, costAlerts, floorSprites } from './stores.js';
-  import { loadGooseSheet, loadOfficeSheet, loadGeneralSheet, drawGoose, drawItem, drawDroid, drawGeneral, carpetPattern, OFFICE, TICKETBOT } from './sprites.js';
+  import { loadGooseSheet, loadOfficeSheet, loadGeneralSheet, loadGeneral2Sheet, drawGoose, drawItem, drawDroid, drawGeneral, drawDeco2, carpetPattern, OFFICE, TICKETBOT, DECO2 } from './sprites.js';
   import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
@@ -610,6 +610,13 @@
     if (!ds.length || !cssW || !cssH) { zoom = 1; panX = 0; panY = 0; return; }
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const d of ds) { minX = Math.min(minX, d.homeX); maxX = Math.max(maxX, d.homeX); minY = Math.min(minY, d.homeY); maxY = Math.max(maxY, d.homeY); }
+    minY -= 136 + 70;   // the break-room / punch-clock band lives 136 above the topmost desk
+    maxY += 96 + 70;    // rooms extend below their deepest desk, and the envelope + elevator sit below that
+    if (serverRoomRect) {   // the server room hangs below the floor and grows with its bot clusters
+      minX = Math.min(minX, serverRoomRect.x - 20);
+      maxX = Math.max(maxX, serverRoomRect.x + serverRoomRect.w + 20);
+      maxY = Math.max(maxY, serverRoomRect.y + serverRoomRect.h + 96);
+    }
     const pad = 80;
     minX -= pad; minY -= pad; maxX += pad; maxY += pad;
     const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
@@ -687,6 +694,7 @@
       const _topY = _minY === Infinity ? 40 : _minY - 136;   // rugs + furniture fully clear of the rooms' top wall bands
       const cooler = { x: _midX - 122, y: _topY };  // break area, top-centre-left
       const clock = { x: _midX + 122, y: _topY };   // punch clock, top-centre-right (clear of the break rug)
+      if (typeof window !== 'undefined') window.__officeDbg = { cooler, clock, minY: _minY, zoom, panX, panY, desks: desks.size, sheetOK, officeOK, generalOK, floorSprites: $floorSprites };
 
       // command-palette "go to agent" — centre the view on it and flash a ring
       if (_pendingFocus) {
@@ -745,6 +753,14 @@
         if (ex0 !== Infinity) {
           envB = { x: ex0, y: ey0, w: ex1 - ex0, h: ey1 - ey0 };
           drawRoom(ctx, envB.x, envB.y, envB.w, envB.h, { edge: 'bottom', x: envB.x + envB.w / 2 }, 'rgba(110,122,155,', { plain: true, doorW: 46 });
+          // elevator doors in the main-entrance gap — geese "arrive" through it
+          if ($floorSprites && drawDeco2(ctx, DECO2.elevator, envB.x + envB.w / 2, envB.y + envB.h + 14, 60)) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(140,145,160,0.7)';
+            ctx.font = '8px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText('elevator', envB.x + envB.w / 2, envB.y + envB.h + 24);
+            ctx.restore();
+          }
         }
       }
 
@@ -972,7 +988,7 @@
         // Trips: active sub-agents walk to their parent to check in; idle/done
         // agents occasionally wander to the water cooler, hang out a few seconds,
         // then return. Both follow the curved walkways (around other desks).
-        let drawX = d.x, drawY = d.y, walking = false, bubble = false, chat = null;
+        let drawX = d.x, drawY = d.y, walking = false, bubble = false, chat = null, coffee = false;
         if (!d.walk && t > walkStagger) {
           let tx = null, ty = null, kind = null, pause = 0.6, skipB = d.parentDeskId, phrase = null;
           if (agent.state === 'idle' || agent.state === 'done') {
@@ -1015,6 +1031,7 @@
             drawX = q.x; drawY = q.y; walking = true;
           } else if (tt < w.outDur + w.pause) {                  // hang out / chat
             drawX = w.px; drawY = w.py; bubble = true; chat = w.phrase || null;
+            if (w.kind === 'break') coffee = true;               // grab a cup at the cooler
           } else if (tt < w.outDur + w.pause + w.backDur) {      // walk back
             const k = (tt - w.outDur - w.pause) / w.backDur;
             const q = polyPos(w.route, 1 - easeIO(k));
@@ -1094,13 +1111,21 @@
           ctx.restore();
         }
 
+        // heading from the frame-to-frame movement (sticky: tiny deltas keep the
+        // last heading, so the sprite doesn't flicker at waypoint corners)
+        if (walking && d._hx != null) {
+          const mdx = drawX - d._hx, mdy = drawY - d._hy;
+          if (Math.hypot(mdx, mdy) > 0.35) d.heading = Math.abs(mdx) > Math.abs(mdy) ? (mdx > 0 ? 'right' : 'left') : (mdy < 0 ? 'up' : 'down');
+        }
+        d._hx = drawX; d._hy = drawY;
+
         hitTargets.push({ id: agent.id, x: drawX, y: drawY, r: Math.max(30, 55 * fs) });
         ctx.globalAlpha = retireAlpha;
         let drewSprite = false;
         if ($floorSprites && sheetOK) {
           // goose characters from the assets/ sheet — pose follows the state,
           // bottom-anchored where the vector figure's feet were
-          drewSprite = drawGoose(ctx, agent.id, agent.state, walking, t, drawX, drawY + 50 * fs, isRoot ? 66 : 52, !!agent.stalled);
+          drewSprite = drawGoose(ctx, agent.id, agent.state, walking, t, drawX, drawY + 50 * fs, isRoot ? 66 : 52, !!agent.stalled, { heading: d.heading, coffee });
         }
         if (!drewSprite) {
           ctx.save();
@@ -1239,6 +1264,8 @@
           const orx = rx - 52, ory = cy0 - 22, orw = stackW + 52 + 18, orh = stackH + 22 + 20;
           serverRoomRect = { x: orx, y: ory, w: orw, h: orh };
           drawRoom(ctx, orx, ory, orw, orh, { edge: 'top', x: orx + orw / 2 }, 'rgba(120,132,168,');
+          // rack-style double doors straddling the server-room doorway (top wall)
+          if ($floorSprites) drawDeco2(ctx, DECO2.serverDoor, orx + orw / 2, ory + 18, 46);
           ctx.save();
           ctx.fillStyle = 'rgba(140,145,160,0.85)';
           ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left';
@@ -1301,10 +1328,12 @@
         for (const p of [_dbgRoute.pts[0], _dbgRoute.pts[_dbgRoute.pts.length - 1]]) { ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); ctx.fill(); }
         ctx.restore();
       } else if (_dbgRoute) { _dbgRoute = null; }
-    } catch (_) {
-      /* never throw out of rAF */
+    } catch (err) {
+      /* never throw out of rAF — but say why the frame died, once per message */
+      if (err && err.message !== _lastFrameErr) { _lastFrameErr = err.message; console.error('[office] frame aborted:', err); }
     }
   }
+  let _lastFrameErr = null;
 
   function easeIO(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
   // Point on a quadratic bezier at p∈[0,1].
@@ -1320,6 +1349,7 @@
     loadGooseSheet().then(() => (sheetOK = true)).catch(() => {});
     loadOfficeSheet().then(() => (officeOK = true)).catch(() => {});
     loadGeneralSheet().then(() => (generalOK = true)).catch(() => {});
+    loadGeneral2Sheet().catch(() => {});   // elevator + server doors (draws no-op until ready)
     resize();
     poll();
     const pollId = setInterval(poll, 600);
