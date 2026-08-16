@@ -1421,8 +1421,12 @@ function snapshot() {
   }
   // floor robots: serve the cached process list; refresh lazily in the background
   if (process.platform === 'win32' && Date.now() - procsCache.at > 30000 && !procsCache.inflight) refreshProcs();
+  // queue counts for the floor's Ticket Bot station
+  let _qq = 0, _qr = 0;
+  try { for (const it of queue.list().items) { if (it.status === 'queued') _qq++; else if (it.status === 'running') _qr++; } } catch (_) {}
   return {
     agents: all, projects, muted: [...muted], pending, budget: budgetState,
+    queue: { queued: _qq, running: _qr },
     procs: procsMod.compact(procsCache.list),
     fleet: fleet.status(),
     dispatch: { enabled: !!cfg.dispatch, sessions: dispatch.list().length, permissions: perms.length, rateLimit: dispatch.rateLimit() },

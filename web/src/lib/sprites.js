@@ -57,6 +57,18 @@ export const DROIDS = {
   other: [2685, 1295, 215, 205],     // Tea Droid — not Claude's, just having tea
   orphan: [2465, 1275, 180, 225],    // Security Droid — red eye, no owner
 };
+export const TICKETBOT = [2955, 1280, 155, 220];   // Ticket Bot — the task queue's front desk
+
+// Generic draw from the general (geese & robots) sheet, bottom-anchored.
+export function drawGeneral(ctx, rect, cx, footY, targetH) {
+  if (!generalKeyed || !rect) return false;
+  const w = targetH * (rect[2] / rect[3]);
+  const prev = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(generalKeyed, rect[0], rect[1], rect[2], rect[3], cx - w / 2, footY - targetH, w, targetH);
+  ctx.imageSmoothingEnabled = prev;
+  return true;
+}
 
 // One keyed-canvas cache per sheet URL — goose characters and office decor
 // share the same key-flood-erode pipeline.
@@ -203,8 +215,9 @@ function hash(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { 
 export function gooseFor(id) { return CHARS[hash(String(id)) % 3]; }
 
 // pose per agent state (walking overrides with the 4-frame cycle)
-export function poseFor(state, walking, t) {
+export function poseFor(state, walking, t, stalled) {
   if (walking) return { kind: 'walk', frame: Math.floor(t * 6) % 4 };
+  if (stalled) return { kind: 'sleep', shared: true };   // went quiet mid-goal → napping in the recliner
   if (state === 'coding' || state === 'testing') return { kind: 'type' };
   if (state === 'reading') return { kind: 'desk' };
   if (state === 'error') return { kind: 'palm' };
@@ -214,10 +227,10 @@ export function poseFor(state, walking, t) {
 }
 
 // Draw a goose bottom-anchored at (cx, footY), targetH tall, aspect preserved.
-export function drawGoose(ctx, agentId, state, walking, t, cx, footY, targetH) {
+export function drawGoose(ctx, agentId, state, walking, t, cx, footY, targetH, stalled) {
   if (!keyed) return false;
   const ch = GOOSE[gooseFor(agentId)];
-  const pose = poseFor(state, walking, t);
+  const pose = poseFor(state, walking, t, stalled);
   const r = pose.shared ? GOOSE.shared[pose.kind] : (pose.kind === 'walk' ? ch.walk[pose.frame] : ch[pose.kind]);
   if (!r) return false;
   const w = targetH * (r[2] / r[3]);

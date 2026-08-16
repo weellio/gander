@@ -4,11 +4,11 @@
   import { paintFigure } from './avatars/desk.js';
   import { buildClusters, fmtUp, TONE_COL } from './procgroups.js';
   import { animations, costAlerts, floorSprites } from './stores.js';
-  import { loadGooseSheet, loadOfficeSheet, loadGeneralSheet, drawGoose, drawItem, drawDroid, carpetPattern, OFFICE } from './sprites.js';
+  import { loadGooseSheet, loadOfficeSheet, loadGeneralSheet, drawGoose, drawItem, drawDroid, drawGeneral, carpetPattern, OFFICE, TICKETBOT } from './sprites.js';
   import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
-  let { agents: agentsProp = null, focusReq = null, procs: procsProp = null, onDigest = null } = $props();
+  let { agents: agentsProp = null, focusReq = null, procs: procsProp = null, onDigest = null, onQueue = null, queueInfo = null } = $props();
   let _pendingFocus = null;   // {id} to centre on next frame
   let _flash = null;          // {id, until} highlight ring
   $effect(() => { if (focusReq && focusReq.id) _pendingFocus = focusReq; });
@@ -292,19 +292,21 @@
   // band (the wall's "height"), sides/bottom are thin, and one edge carries a
   // doorway gap with a lighter threshold strip. Everything snaps to TILE.
   let carpet = null;   // low-alpha carpet pattern (built once the office sheet image lands)
-  function drawRoom(ctx, bx, by, bw, bh, door /* {edge:'top'|'bottom', x} */, tone) {
-    const TOP = 12, SIDE = 4, DOOR_W = 30;
+  function drawRoom(ctx, bx, by, bw, bh, door /* {edge:'top'|'bottom', x} */, tone, opts = {}) {
+    const TOP = 12, SIDE = 4, DOOR_W = opts.doorW || 30;
     const col = tone || 'rgba(150,162,190,';
     ctx.save();
     // interior floor — slightly lifted from the corridor, with a faint inner tile grid
     ctx.fillStyle = col + '0.07)';
     ctx.fillRect(bx, by, bw, bh);
-    if (carpet) {   // subtle carpet texture inside rooms (corridors stay bare)
+    if (carpet && !opts.plain) {   // subtle carpet texture inside rooms (corridors stay bare)
       ctx.save(); ctx.globalAlpha = 0.09; ctx.fillStyle = carpet; ctx.fillRect(bx, by, bw, bh); ctx.restore();
     }
-    ctx.strokeStyle = col + '0.10)'; ctx.lineWidth = 1;
-    for (let gx = bx + TILE; gx < bx + bw; gx += TILE) { ctx.beginPath(); ctx.moveTo(gx, by); ctx.lineTo(gx, by + bh); ctx.stroke(); }
-    for (let gy = by + TILE; gy < by + bh; gy += TILE) { ctx.beginPath(); ctx.moveTo(bx, gy); ctx.lineTo(bx + bw, gy); ctx.stroke(); }
+    if (!opts.plain) {
+      ctx.strokeStyle = col + '0.10)'; ctx.lineWidth = 1;
+      for (let gx = bx + TILE; gx < bx + bw; gx += TILE) { ctx.beginPath(); ctx.moveTo(gx, by); ctx.lineTo(gx, by + bh); ctx.stroke(); }
+      for (let gy = by + TILE; gy < by + bh; gy += TILE) { ctx.beginPath(); ctx.moveTo(bx, gy); ctx.lineTo(bx + bw, gy); ctx.stroke(); }
+    }
     // wall bands
     const seg = (x, y, w, h) => { ctx.fillRect(x, y, w, h); };
     const dx = door ? Math.max(bx + SIDE + 8, Math.min(bx + bw - SIDE - 8 - DOOR_W, (door.x || bx + bw / 2) - DOOR_W / 2)) : null;
@@ -495,12 +497,9 @@
       ctx.beginPath(); ctx.ellipse(x + dx + sway * (-dy / 23), y + dy, r * 0.82, r, 0, 0, Math.PI * 2); ctx.fill();
     }
   }
-  // A few decorations around the floor edges (away from the desk cluster).
-  function drawDecor(ctx, W, H, t) {
-    drawPlant(ctx, W - 30, 44, t, 0.2);
-    drawPlant(ctx, W - 38, H - 40, t, 0.7);
-    drawPlant(ctx, W * 0.6, H - 34, t, 0.45);
-  }
+  // (Old scattered vector plants removed — the sheet's potted plant made them
+  // read as clip-art, and viewport-pinned decor floats oddly when zoomed out.)
+  function drawDecor() {}
 
   // Small speech bubble with text (for casual peer chats).
   function drawTextBubble(ctx, x, y, text) {
@@ -638,6 +637,7 @@
     if (best && best.proc) { procSel = { p: best.proc, sx: e.clientX - rect.left, sy: e.clientY - rect.top }; }
     else if (best && best.cluster) { procSel = { cluster: best.cluster, sx: e.clientX - rect.left, sy: e.clientY - rect.top }; }
     else if (best && best.board) { onDigest?.(); procSel = null; }
+    else if (best && best.queueSt) { onQueue?.(); procSel = null; }
     else if (best) { selectedId = best.id; procSel = null; }
     else procSel = null;
   }
@@ -684,7 +684,7 @@
       let _minX = Infinity, _maxX = -Infinity, _minY = Infinity;
       for (const d of desks.values()) if (d.homeX != null) { if (d.homeX < _minX) _minX = d.homeX; if (d.homeX > _maxX) _maxX = d.homeX; if (d.homeY < _minY) _minY = d.homeY; }
       const _midX = _minY === Infinity ? W / 2 : (_minX + _maxX) / 2;
-      const _topY = _minY === Infinity ? 40 : _minY - 118;   // rugs + furniture fully clear of the rooms' top wall bands
+      const _topY = _minY === Infinity ? 40 : _minY - 136;   // rugs + furniture fully clear of the rooms' top wall bands
       const cooler = { x: _midX - 122, y: _topY };  // break area, top-centre-left
       const clock = { x: _midX + 122, y: _topY };   // punch clock, top-centre-right (clear of the break rug)
 
@@ -729,6 +729,25 @@
 
       // ── rooms: team rooms enclose the orchestrator + its cubicle floor; solo
       // orchestrators each get their own small private office. ──
+      // ── building envelope: ONE outer wall around the whole floor, with a
+      // main entrance at the bottom — rooms are offices inside a building,
+      // and (someday) outdoor decor lives beyond these walls
+      let envB = null;
+      {
+        let ex0 = Infinity, ey0 = Infinity, ex1 = -Infinity, ey1 = -Infinity;
+        const g2 = (x0, y0, x1, y1) => { ex0 = Math.min(ex0, x0); ey0 = Math.min(ey0, y0); ex1 = Math.max(ex1, x1); ey1 = Math.max(ey1, y1); };
+        for (const root of tree.roots) {
+          const rd = desks.get(root.id);
+          if (rd && rd.teamRect) g2(rd.teamRect.x - 52, rd.teamRect.y - 36, rd.teamRect.x + rd.teamRect.w + 52, rd.teamRect.y + rd.teamRect.h + 96);
+        }
+        if (_minY !== Infinity) g2(cooler.x - 180, _topY - 64, clock.x + 130, _topY + 44);
+        if (serverRoomRect) g2(serverRoomRect.x - 26, serverRoomRect.y - 36, serverRoomRect.x + serverRoomRect.w + 26, serverRoomRect.y + serverRoomRect.h + 28);
+        if (ex0 !== Infinity) {
+          envB = { x: ex0, y: ey0, w: ex1 - ex0, h: ey1 - ey0 };
+          drawRoom(ctx, envB.x, envB.y, envB.w, envB.h, { edge: 'bottom', x: envB.x + envB.w / 2 }, 'rgba(110,122,155,', { plain: true, doorW: 46 });
+        }
+      }
+
       const roomsThisFrame = [];   // [{rd, bx, by, bw, bh, doorPt}] — for door-routed walking
       ctx.save();
       for (const root of tree.roots) {
@@ -762,6 +781,7 @@
         for (const r of roomsThisFrame) grow(r.bx - 40, r.by - 40, r.bx + r.bw + 40, r.by + r.bh + 40);
         grow(cooler.x - 160, cooler.y - 60, clock.x + 160, clock.y + 60);
         if (serverRoomRect) grow(serverRoomRect.x - 40, serverRoomRect.y - 40, serverRoomRect.x + serverRoomRect.w + 40, serverRoomRect.y + serverRoomRect.h + 40);
+        if (envB) grow(envB.x - 40, envB.y - 40, envB.x + envB.w + 40, envB.y + envB.h + 40);
         if (minX === Infinity) return;
         navOX = minX - 60; navOY = minY - 60;
         navW = Math.ceil((maxX - navOX + 120) / NAVCS); navH = Math.ceil((maxY - navOY + 120) / NAVCS);
@@ -781,6 +801,14 @@
           mark(r.doorPt.x - D / 2 - 4, r.by + r.bh - NAVCS, r.doorPt.x + D / 2 + 4, r.by + r.bh + S + NAVCS, 0);   // the doorway
         }
         if (serverRoomRect) mark(serverRoomRect.x - S, serverRoomRect.y - T, serverRoomRect.x + serverRoomRect.w + S, serverRoomRect.y + serverRoomRect.h + S, 1);   // agents never enter the server room
+        if (envB) {   // the building's outer walls (main entrance stays open)
+          const D2 = 46;
+          mark(envB.x - S, envB.y - T, envB.x + envB.w + S, envB.y, 1);
+          mark(envB.x - S, envB.y - T, envB.x, envB.y + envB.h + S, 1);
+          mark(envB.x + envB.w, envB.y - T, envB.x + envB.w + S, envB.y + envB.h + S, 1);
+          mark(envB.x - S, envB.y + envB.h, envB.x + envB.w + S, envB.y + envB.h + S, 1);
+          mark(envB.x + envB.w / 2 - D2 / 2 - 4, envB.y + envB.h - NAVCS, envB.x + envB.w / 2 + D2 / 2 + 4, envB.y + envB.h + S + NAVCS, 0);
+        }
       };
       buildNav();
       const nearestOpen = (c) => {
@@ -895,6 +923,31 @@
         drawCooler(ctx, cooler.x, cooler.y);
       }
       drawClock(ctx, clock.x, clock.y);
+      // Ticket Bot — the task queue's front desk, right of the punch clock;
+      // its badge is the queued count, clicking opens the 📋 queue panel
+      if ($floorSprites && generalOK) {
+        const tbx = clock.x + 82, tby = clock.y + 4;
+        rug(tbx, tby - 22, 74, 82);
+        drawGeneral(ctx, TICKETBOT, tbx, tby, 44);
+        const q = queueInfo || {};
+        if (q.queued > 0 || q.running > 0) {
+          const txt = `${q.running || 0}▶ ${q.queued || 0}⏳`;
+          ctx.font = 'bold 9px ui-sans-serif, system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          const tw = ctx.measureText(txt).width;
+          ctx.fillStyle = 'rgba(99,102,241,0.9)';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(tbx - tw / 2 - 5, tby - 58, tw + 10, 13, 6.5); else ctx.rect(tbx - tw / 2 - 5, tby - 58, tw + 10, 13);
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.fillText(txt, tbx, tby - 48);
+        }
+        ctx.fillStyle = 'rgba(130,135,148,0.75)';
+        ctx.font = '8px ui-sans-serif, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🎫 task queue', tbx, tby + 14);
+        hitTargets.push({ id: 'tickets', x: tbx, y: tby - 22, r: 26, queueSt: true });
+      }
 
       // draw root desks first (under), then subs
       const drawList = [];
@@ -1047,7 +1100,7 @@
         if ($floorSprites && sheetOK) {
           // goose characters from the assets/ sheet — pose follows the state,
           // bottom-anchored where the vector figure's feet were
-          drewSprite = drawGoose(ctx, agent.id, agent.state, walking, t, drawX, drawY + 50 * fs, isRoot ? 66 : 52);
+          drewSprite = drawGoose(ctx, agent.id, agent.state, walking, t, drawX, drawY + 50 * fs, isRoot ? 66 : 52, !!agent.stalled);
         }
         if (!drewSprite) {
           ctx.save();

@@ -52,6 +52,7 @@
   let agents = $state([]);
   let projects = $state([]);
   let procs = $state([]);   // background processes → the Office floor's robots
+  let queueCounts = $state(null);   // { queued, running } → the floor's Ticket Bot badge
   let online = $state(false);
   let selectedProject = $state(localStorage.getItem('aoc-project') || '');
   let fileInput = $state();
@@ -107,6 +108,7 @@
       agents = d.agents || [];
       projects = d.projects || [];
       procs = d.procs || [];
+      queueCounts = d.queue || null;
       const nowAwaiting = new Set(agents.filter((a) => a.state === 'awaiting').map((a) => a.id));
       if (!firstPoll) {
         const fresh = agents.filter((a) => a.state === 'awaiting' && !prevAwaiting.has(a.id));
@@ -566,7 +568,7 @@
   {:else if $layout === 'office'}
     <div class="office-wrap">
       {#if !shown.length}<div class="floatnote">No active sessions — but background processes are still running, below in the server room.</div>{/if}
-      <Office agents={shown} {procs} {focusReq} onDigest={() => (panels.digest = true)} />
+      <Office agents={shown} {procs} {focusReq} queueInfo={queueCounts} onDigest={() => (panels.digest = true)} onQueue={() => (panels.queue = true)} />
     </div>
   {:else}
     {#if !shown.length}<div class="empty">No active sessions right now — background processes below.</div>{:else}

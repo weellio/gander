@@ -37,7 +37,7 @@ A live, animated dashboard of your **Claude Code agents and sub-agents** — an 
 ## Screenshots
 
 <p align="center"><img src="assets/Office_Swarm.jpg" width="840" alt="The Office floor view with multiple live sessions" /></p>
-<p align="center"><em>The Office floor — many live Claude Code sessions at once, each in its own room.</em></p>
+<p align="center"><em>The Office floor — goose agents in walled offices inside one building: doorway-routed walking, a break room, a Ticket Bot queue desk, and process droids in the server room.</em></p>
 
 <p align="center">
   <img src="assets/agentmodal.jpg" width="320" alt="Agent modal" />
