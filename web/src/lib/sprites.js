@@ -68,7 +68,6 @@ export const TICKETBOT = [2955, 1280, 155, 220];   // Ticket Bot — the task qu
 // Big architectural props from the second geese-office sheet.
 const GENERAL2_URL = '/art/general_sprite_2.png';
 export const DECO2 = {
-  elevator: [2600, 1152, 192, 265],     // elevator doors — the building's main entrance
   serverDoor: [2862, 1152, 280, 250],   // rack-style double doors — server room entrance
 };
 

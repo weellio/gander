@@ -611,7 +611,7 @@
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const d of ds) { minX = Math.min(minX, d.homeX); maxX = Math.max(maxX, d.homeX); minY = Math.min(minY, d.homeY); maxY = Math.max(maxY, d.homeY); }
     minY -= 136 + 70;   // the break-room / punch-clock band lives 136 above the topmost desk
-    maxY += 96 + 70;    // rooms extend below their deepest desk, and the envelope + elevator sit below that
+    maxY += 96 + 70;    // rooms extend below their deepest desk, and the envelope wall sits below that
     if (serverRoomRect) {   // the server room hangs below the floor and grows with its bot clusters
       minX = Math.min(minX, serverRoomRect.x - 20);
       maxX = Math.max(maxX, serverRoomRect.x + serverRoomRect.w + 20);
@@ -753,14 +753,6 @@
         if (ex0 !== Infinity) {
           envB = { x: ex0, y: ey0, w: ex1 - ex0, h: ey1 - ey0 };
           drawRoom(ctx, envB.x, envB.y, envB.w, envB.h, { edge: 'bottom', x: envB.x + envB.w / 2 }, 'rgba(110,122,155,', { plain: true, doorW: 46 });
-          // elevator doors in the main-entrance gap — geese "arrive" through it
-          if ($floorSprites && drawDeco2(ctx, DECO2.elevator, envB.x + envB.w / 2, envB.y + envB.h + 14, 60)) {
-            ctx.save();
-            ctx.fillStyle = 'rgba(140,145,160,0.7)';
-            ctx.font = '8px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'center';
-            ctx.fillText('elevator', envB.x + envB.w / 2, envB.y + envB.h + 24);
-            ctx.restore();
-          }
         }
       }
 
@@ -1073,7 +1065,9 @@
         // instead of becoming a pedestal it appears to stand on
         const standsBehindDesk = $floorSprites && sheetOK && officeOK && !hasDeskPose && !walking && !bubble && drawX === d.x && d.homeX != null;
         if ($floorSprites && officeOK && !hasDeskPose && !standsBehindDesk && d.homeX != null) {
-          drawItem(ctx, isRoot ? OFFICE.desk : OFFICE.deskSmall, d.homeX, d.homeY + (isRoot ? 34 : 27), isRoot ? 36 : 27, true);
+          // subs get the same wide desk scaled down — the compact CRT desk is
+          // front-view art and turns to nonsense when spun to face the goose
+          drawItem(ctx, OFFICE.desk, d.homeX, d.homeY + (isRoot ? 34 : 26), isRoot ? 36 : 26, true);
         }
 
         // ── activity highlight ─────────────────────────────────────────────
@@ -1136,7 +1130,7 @@
           // poses tuck in behind the desk instead of on top of it)
           const footY = drawY + 50 * fs - (standsBehindDesk ? 42 * fs : 0);
           drewSprite = drawGoose(ctx, agent.id, agent.state, walking, t, drawX, footY, isRoot ? 66 : 52, !!agent.stalled, { heading: d.heading, coffee });
-          if (standsBehindDesk) drawItem(ctx, isRoot ? OFFICE.desk : OFFICE.deskSmall, d.homeX, d.homeY + (isRoot ? 34 : 27), isRoot ? 36 : 27, true);
+          if (standsBehindDesk) drawItem(ctx, OFFICE.desk, d.homeX, d.homeY + (isRoot ? 34 : 26), isRoot ? 36 : 26, true);
         }
         if (!drewSprite) {
           ctx.save();
