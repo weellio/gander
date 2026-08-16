@@ -17,6 +17,7 @@ export const soundOn = persisted('aoc-sound', true);              // chime when 
 export const autoUsage = persisted('aoc-auto-usage', true);       // auto-reparse ~/.claude transcripts for cost (disk-heavy)
 export const fastPoll = persisted('aoc-fast-poll', true);         // poll agent state at 0.5s (vs 2s) — set false to ease CPU
 export const animations = persisted('aoc-animations', true);      // office micro-animations (wandering, water cooler, chatter)
+export const floorSprites = persisted('aoc-floor-sprites', true); // goose character sprites on the Office floor (assets/ sheet)
 export const desktopNotify = persisted('aoc-desktop-notify', false); // browser Notification when an agent needs input
 export const costAlerts = persisted('aoc-cost-alerts', true);     // show per-agent cost chips + the red "runaway" burn highlight
 export const briefAloud = persisted('aoc-brief-aloud', false);    // read a new briefing aloud (TTS) when it lands

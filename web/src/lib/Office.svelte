@@ -3,7 +3,8 @@
   import { STATE_COLORS, STATE_LABEL } from './states.js';
   import { paintFigure } from './avatars/desk.js';
   import { buildClusters, fmtUp, TONE_COL } from './procgroups.js';
-  import { animations, costAlerts } from './stores.js';
+  import { animations, costAlerts, floorSprites } from './stores.js';
+  import { loadGooseSheet, drawGoose } from './sprites.js';
   import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
@@ -149,9 +150,14 @@
 
   // ── layout: CUBICLES — each orchestrator leads a tidy grid of its sub-agents.
   // Team blocks flow left→right and wrap; everything is framed by Fit.
+  // one floor tile — rooms, walls and the background grid all snap to this,
+  // which is what gives the floor its structured, everything-aligned look
+  const TILE = 46;
+  const snap = (v) => Math.ceil(v / TILE) * TILE;
+
   function layout(tree, W, H) {
     const { roots, children } = tree;
-    const CELLW = 92, CELLH = 84, ROOTH = 94, PADX = 46, PADY = 40, GAP = 38;
+    const CELLW = 92, CELLH = 84, ROOTH = 94, PADX = 46, PADY = 40, GAP = 70;
     const maxCols = Math.max(1, Math.floor((W - 2 * PADX) / CELLW));
     let curX = PADX, curY = PADY, bandH = 0, prevSolo = true;
 
@@ -165,8 +171,8 @@
       // a roughly-square grid, a touch wider than tall, capped to the viewport
       const cols = m ? Math.min(maxCols, Math.max(1, Math.round(Math.sqrt(m) * 1.3))) : 1;
       const rows = m ? Math.ceil(m / cols) : 0;
-      const blockW = Math.max(CELLW, cols * CELLW);
-      const blockH = ROOTH + rows * CELLH;
+      const blockW = snap(Math.max(CELLW, cols * CELLW));
+      const blockH = snap(ROOTH + rows * CELLH);
 
       // new band when leaving the solo cluster, or when this team would overflow the row
       if (((!isSolo && prevSolo) || (curX + blockW > W - PADX)) && curX > PADX) { curX = PADX; curY += bandH + GAP; bandH = 0; }
@@ -272,6 +278,53 @@
     ctx.textAlign = 'center';
     const lbl = name && name.length > 16 ? name.slice(0, 15) + '…' : name || '';
     ctx.fillText(lbl, x, y + 30 * scale);
+  }
+
+  // ── structured room: crisp two-tone walls + a doorway ────────────────────
+  // Top-down wall reading like the office sheet: the top edge is a tall dark
+  // band (the wall's "height"), sides/bottom are thin, and one edge carries a
+  // doorway gap with a lighter threshold strip. Everything snaps to TILE.
+  function drawRoom(ctx, bx, by, bw, bh, door /* {edge:'top'|'bottom', x} */, tone) {
+    const TOP = 12, SIDE = 4, DOOR_W = 30;
+    const col = tone || 'rgba(150,162,190,';
+    ctx.save();
+    // interior floor — slightly lifted from the corridor, with a faint inner tile grid
+    ctx.fillStyle = col + '0.07)';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = col + '0.10)'; ctx.lineWidth = 1;
+    for (let gx = bx + TILE; gx < bx + bw; gx += TILE) { ctx.beginPath(); ctx.moveTo(gx, by); ctx.lineTo(gx, by + bh); ctx.stroke(); }
+    for (let gy = by + TILE; gy < by + bh; gy += TILE) { ctx.beginPath(); ctx.moveTo(bx, gy); ctx.lineTo(bx + bw, gy); ctx.stroke(); }
+    // wall bands
+    const seg = (x, y, w, h) => { ctx.fillRect(x, y, w, h); };
+    const dx = door ? Math.max(bx + SIDE + 8, Math.min(bx + bw - SIDE - 8 - DOOR_W, (door.x || bx + bw / 2) - DOOR_W / 2)) : null;
+    ctx.fillStyle = col + '0.5)';
+    if (door && door.edge === 'top') {   // top band with a gap
+      seg(bx, by - TOP, dx - bx, TOP);
+      seg(dx + DOOR_W, by - TOP, bx + bw - (dx + DOOR_W), TOP);
+    } else {
+      seg(bx, by - TOP, bw, TOP);
+    }
+    ctx.fillStyle = col + '0.42)';
+    seg(bx - SIDE, by - TOP, SIDE, bh + TOP + SIDE);                    // left
+    seg(bx + bw, by - TOP, SIDE, bh + TOP + SIDE);                      // right
+    if (door && door.edge !== 'top') {   // bottom band with a gap
+      seg(bx - SIDE, by + bh, dx - (bx - SIDE), SIDE);
+      seg(dx + DOOR_W, by + bh, bx + bw + SIDE - (dx + DOOR_W), SIDE);
+    } else {
+      seg(bx - SIDE, by + bh, bw + SIDE * 2, SIDE);
+    }
+    // top-edge highlight (the lit rim of the wall)
+    ctx.fillStyle = 'rgba(210,220,240,0.28)';
+    seg(bx - SIDE, by - TOP, bw + SIDE * 2, 1.5);
+    if (door) {
+      const dy = door.edge === 'top' ? by - TOP : by + bh;
+      const dh = door.edge === 'top' ? TOP : SIDE;
+      ctx.fillStyle = col + '0.85)';                                    // door frame caps
+      seg(dx - 2, dy, 2, dh); seg(dx + DOOR_W, dy, 2, dh);
+      ctx.fillStyle = col + '0.16)';                                    // threshold strip
+      seg(dx, door.edge === 'top' ? by - TOP - 3 : by + bh - 3, DOOR_W, dh + 6);
+    }
+    ctx.restore();
   }
 
   // ── background-process robot ─────────────────────────────────────────────
@@ -550,7 +603,7 @@
       // faint floor grid
       ctx.strokeStyle = 'rgba(140,140,150,0.07)';
       ctx.lineWidth = 1;
-      const g = 60;
+      const g = TILE;
       for (let gx = 0; gx < W; gx += g) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
       for (let gy = 0; gy < H; gy += g) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
 
@@ -569,7 +622,7 @@
       let _minX = Infinity, _maxX = -Infinity, _minY = Infinity;
       for (const d of desks.values()) if (d.homeX != null) { if (d.homeX < _minX) _minX = d.homeX; if (d.homeX > _maxX) _maxX = d.homeX; if (d.homeY < _minY) _minY = d.homeY; }
       const _midX = _minY === Infinity ? W / 2 : (_minX + _maxX) / 2;
-      const _topY = _minY === Infinity ? 40 : _minY - 74;
+      const _topY = _minY === Infinity ? 40 : _minY - 100;   // clear of the rooms' top wall bands
       const cooler = { x: _midX - 84, y: _topY };   // break area, top-centre-left
       const clock = { x: _midX + 84, y: _topY };    // punch clock, top-centre-right
 
@@ -614,21 +667,41 @@
 
       // ── rooms: team rooms enclose the orchestrator + its cubicle floor; solo
       // orchestrators each get their own small private office. ──
+      const roomsThisFrame = [];   // [{rd, bx, by, bw, bh, doorPt}] — for door-routed walking
       ctx.save();
       for (const root of tree.roots) {
         const rd = desks.get(root.id);
         if (!rd || !rd.teamRect) continue;
         const r = rd.teamRect, solo = !r.team;
         const pbBase = solo ? 20 : 14;
-        const px = solo ? 9 : 12, pt = solo ? 13 : 16, rad = solo ? 10 : 14;
+        const px = solo ? 34 : 12, pt = solo ? 13 : 16;   // solo rooms wide enough to read as square offices
         const pb = rd.botRows ? Math.max(pbBase, 14 + rd.botRows * 34) : pbBase;   // grow for parked bots
         const bx = r.x - px, by = r.y - pt, bw = r.w + px * 2, bh = r.h + pt + pb;
-        ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(bx, by, bw, bh, rad); else ctx.rect(bx, by, bw, bh);
-        ctx.fillStyle = solo ? 'rgba(150,162,190,0.06)' : 'rgba(140,152,178,0.045)'; ctx.fill();
-        ctx.strokeStyle = solo ? 'rgba(160,172,200,0.34)' : 'rgba(150,162,190,0.28)'; ctx.lineWidth = 1; ctx.setLineDash([]); ctx.stroke();
+        const doorX = Math.max(bx + 24, Math.min(bx + bw - 24, rd.homeX));   // door under the orchestrator's desk
+        drawRoom(ctx, bx, by, bw, bh, { edge: 'bottom', x: doorX }, solo ? 'rgba(150,162,190,' : 'rgba(140,152,178,');
+        rd.doorPt = { x: doorX, y: by + bh };
+        roomsThisFrame.push({ rd, bx, by, bw, bh, doorPt: rd.doorPt });
       }
       ctx.restore();
+      const roomAt = (x, y) => roomsThisFrame.find((r) => x >= r.bx && x <= r.bx + r.bw && y >= r.by && y <= r.by + r.bh) || null;
+      // Route a walk through doorways: leave your room via its door, enter the
+      // target's room via ITS door, octilinear in the corridor between.
+      const routeVia = (sx, sy, tx, ty) => {
+        const from = roomAt(sx, sy), to = roomAt(tx, ty);
+        if (from === to) return octElbow(sx, sy, tx, ty);
+        let pts = [{ x: sx, y: sy }], cx = sx, cy = sy;
+        if (from && from.doorPt) {
+          pts = pts.concat(octElbow(cx, cy, from.doorPt.x, from.doorPt.y - 12).slice(1));
+          pts.push({ x: from.doorPt.x, y: from.doorPt.y + 14 });
+          cx = from.doorPt.x; cy = from.doorPt.y + 14;
+        }
+        if (to && to.doorPt) {
+          pts = pts.concat(octElbow(cx, cy, to.doorPt.x, to.doorPt.y + 14).slice(1));
+          pts.push({ x: to.doorPt.x, y: to.doorPt.y - 12 });
+          cx = to.doorPt.x; cy = to.doorPt.y - 12;
+        }
+        return pts.concat(octElbow(cx, cy, tx, ty).slice(1));
+      };
 
       // ── circuit traces from each orchestrator to its sub-agents ──
       // Octilinear (H/V + 45° corners) routed through a horizontal trunk under the
@@ -713,8 +786,8 @@
             if (parent) { tx = parent.x; ty = parent.y - 24; kind = 'report'; d.nextWalkAt = t + 6 + d.seed * 8; }
           }
           if (kind) {
-            const route = octElbow(d.x, d.y, tx, ty);   // walk straight + 45°, circuit-style
-            const dist = Math.hypot(tx - d.x, ty - d.y);
+            const route = routeVia(d.x, d.y, tx, ty);   // through doorways, straight + 45° in the corridor
+            const dist = route.reduce((s, p, i) => i ? s + Math.hypot(p.x - route[i - 1].x, p.y - route[i - 1].y) : 0, 0);
             const speed = kind === 'report' ? 95 : 46;          // px/s: hurried orders vs casual stroll
             const dur = Math.max(0.6, dist / speed);
             d.walk = { start: t, route, px: tx, py: ty, kind, pause, outDur: dur, backDur: dur, phrase };
@@ -741,7 +814,7 @@
         // ── clocking out: a retiring agent walks to the punch clock and fades ──
         let retireAlpha = 1;
         if (agent.retiring && clock) {
-          if (!d.clockOut) d.clockOut = { start: t, route: octElbow(d.x, d.y, clock.x, clock.y + 6) };
+          if (!d.clockOut) d.clockOut = { start: t, route: routeVia(d.x, d.y, clock.x, clock.y + 6) };
           const co = d.clockOut, el = t - co.start;
           if (co._dur == null) co._dur = Math.max(0.7, Math.min(3, Math.hypot(clock.x - co.route[0].x, clock.y - co.route[0].y) / 120));
           if (el < co._dur) { const q = polyPos(co.route, easeIO(el / co._dur)); drawX = q.x; drawY = q.y; walking = true; bubble = false; chat = null; }
@@ -802,13 +875,21 @@
 
         hitTargets.push({ id: agent.id, x: drawX, y: drawY, r: Math.max(30, 55 * fs) });
         ctx.globalAlpha = retireAlpha;
-        ctx.save();
-        ctx.translate(drawX, drawY);
-        ctx.scale(fs, fs);
-        ctx.translate(-60, -50);
-        ctx.imageSmoothingEnabled = true;
-        paintFigure(ctx, agent, frameN, { desk: false, walking });
-        ctx.restore();
+        let drewSprite = false;
+        if ($floorSprites && sheetOK) {
+          // goose characters from the assets/ sheet — pose follows the state,
+          // bottom-anchored where the vector figure's feet were
+          drewSprite = drawGoose(ctx, agent.id, agent.state, walking, t, drawX, drawY + 50 * fs, isRoot ? 66 : 52);
+        }
+        if (!drewSprite) {
+          ctx.save();
+          ctx.translate(drawX, drawY);
+          ctx.scale(fs, fs);
+          ctx.translate(-60, -50);
+          ctx.imageSmoothingEnabled = true;
+          paintFigure(ctx, agent, frameN, { desk: false, walking });
+          ctx.restore();
+        }
         if (d.celebrate) {
           const cel = t - d.celebrate.start;
           if (cel > 1.5) d.celebrate = null;
@@ -864,12 +945,12 @@
           ctx.restore();
         }
 
-        // small state badge for root desks
+        // small state badge for root desks (higher when the taller goose sprite is on)
         if (isRoot) {
           ctx.fillStyle = color;
           ctx.font = '9px ui-sans-serif, system-ui, sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText(STATE_LABEL[agent.state] || agent.state, drawX, drawY - 24);
+          ctx.fillText(STATE_LABEL[agent.state] || agent.state, drawX, drawY - (drewSprite ? 44 : 24));
         }
         ctx.globalAlpha = 1;
       }
@@ -901,6 +982,9 @@
           // still running; the picture must keep saying so.
           let maxY = -Infinity, minX = Infinity;
           for (const d of desks.values()) if (d.homeY != null) { if (d.homeY > maxY) maxY = d.homeY; if (d.homeX < minX) minX = d.homeX; }
+          // rooms extend below their desks (walls + parked bots) — anchor below
+          // the deepest ROOM bottom, not the deepest desk
+          for (const r of roomsThisFrame) { if (r.by + r.bh > maxY) maxY = r.by + r.bh; if (r.bx < minX) minX = r.bx; }
           if (maxY === -Infinity) {
             if (rackAnchor) { maxY = rackAnchor.maxY; minX = rackAnchor.minX; }
             else { maxY = H * 0.3; minX = W / 2 - 160; }
@@ -909,16 +993,27 @@
           const clusters = buildClusters(rackBots);
 
           // well below the floor so nothing runs into desk/cooler labels
-          const rx = Math.max(60, minX - 14);
-          let cy0 = maxY + 128;
+          const rx = Math.max(80, minX - 14);
+          let cy0 = maxY + 84;   // maxY is already the deepest room bottom
+          // pre-measure the cluster stack so the server room can be WALLED like
+          // a real room (door on the top edge, facing the office)
+          const dims = clusters.map((c) => {
+            const cols = Math.min(7, Math.max(3, c.bots.length));
+            const rows = Math.ceil(c.bots.length / cols);
+            return { cols, boxW: Math.max(280, cols * 40 + 34), boxH: 62 + rows * 40 };
+          });
+          const stackH = dims.reduce((s, d) => s + d.boxH + 18, 0) - 18;
+          const stackW = Math.max(...dims.map((d) => d.boxW));
+          const orx = rx - 52, ory = cy0 - 22, orw = stackW + 52 + 18, orh = stackH + 22 + 20;
+          drawRoom(ctx, orx, ory, orw, orh, { edge: 'top', x: orx + orw / 2 }, 'rgba(120,132,168,');
           ctx.save();
           ctx.fillStyle = 'rgba(140,145,160,0.85)';
           ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left';
-          ctx.fillText('SERVER ROOM', rx, cy0 - 14);
+          ctx.fillText('SERVER ROOM', orx + 6, ory - 18);
           ctx.font = '8px ui-sans-serif, system-ui, sans-serif'; ctx.fillStyle = 'rgba(130,135,148,0.6)';
-          ctx.fillText('background processes · click a bot or a group header', rx + 78, cy0 - 14);
+          ctx.fillText('background processes · click a bot or a group header', orx + 84, ory - 18);
           ctx.restore();
-          drawRack(ctx, rx - 30, cy0 + 30, t);
+          drawRack(ctx, rx - 26, cy0 + 30, t);
           for (const c of clusters) {
             const cols = Math.min(7, Math.max(3, c.bots.length));
             const rows = Math.ceil(c.bots.length / cols);
@@ -969,7 +1064,9 @@
     return { x: u * u * x0 + 2 * u * p * cx + p * p * x1, y: u * u * y0 + 2 * u * p * cy + p * p * y1 };
   }
 
+  let sheetOK = false;   // goose sheet loaded + keyed (falls back to vector figures until then)
   onMount(() => {
+    loadGooseSheet().then(() => (sheetOK = true)).catch(() => {});
     resize();
     poll();
     const pollId = setInterval(poll, 600);

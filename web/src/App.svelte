@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { STATE_COLORS, STATE_LABEL } from './lib/states.js';
-  import { avatarMode, layout, images, soundOn, autoUsage, fastPoll, animations, desktopNotify, costAlerts, briefAloud, ttsVoice, ttsRate } from './lib/stores.js';
+  import { avatarMode, layout, images, soundOn, autoUsage, fastPoll, animations, floorSprites, desktopNotify, costAlerts, briefAloud, ttsVoice, ttsRate } from './lib/stores.js';
   import { speak as ttsSpeak, ttsAvailable, getVoices } from './lib/tts.js';
   import AgentTile from './lib/AgentTile.svelte';
   import AgentModal from './lib/AgentModal.svelte';
@@ -492,6 +492,7 @@
             {/if}
             <label class="opt"><input type="checkbox" bind:checked={$fastPoll} /> Fast agent updates <span class="dim">(0.5s vs 2s)</span></label>
             <label class="opt"><input type="checkbox" bind:checked={$animations} /> Office animations <span class="dim">(CPU)</span></label>
+            <label class="opt"><input type="checkbox" bind:checked={$floorSprites} /> 🪿 Goose characters <span class="dim">(sprite sheet)</span></label>
           </div>
         {/if}
       </div>

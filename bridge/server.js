@@ -1567,10 +1567,28 @@ const MIME = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.png': 'image/png', '.gif': 'image/gif', '.svg': 'image/svg+xml',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
   '.json': 'application/json',
 };
 
+// Repo art assets (sprite sheets for the floor's sprite mode) — read-only,
+// images only, path-confined to the assets/ folder. Served under /art/ because
+// /assets/ belongs to the built dashboard bundle.
+const ASSETS_DIR = path.join(__dirname, '..', 'assets');
+function serveAsset(req, res) {
+  const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/art\//, '');
+  const ext = path.extname(rel).toLowerCase();
+  if (!/^[\w.-]+$/.test(rel) || !['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(ext)) { res.writeHead(404); res.end(); return; }
+  const fp = path.join(ASSETS_DIR, rel);
+  fs.readFile(fp, (err, buf) => {
+    if (err) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'max-age=3600' });
+    res.end(buf);
+  });
+}
+
 function serveStatic(req, res) {
+  if (req.url.startsWith('/art/')) return serveAsset(req, res);
   const base = webRoot();
   let rel = decodeURIComponent(req.url.split('?')[0]);
   if (rel === '/') rel = '/index.html';

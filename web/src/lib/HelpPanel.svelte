@@ -8,7 +8,7 @@
     {
       title: 'Views & layout',
       items: [
-        ['Office (floor)', 'A top-down animated office. Agents sit at desks, route packets to their sub-agents, and wander to the water cooler when idle.'],
+        ['Office (floor)', 'A top-down animated office, structured like the real thing: each session gets a walled room with a doorway, and agents walk THROUGH the doorways to the cooler, to visit peers, or to clock out. Sessions render as pixel-art geese (Moss/Roy/Jen) whose pose acts out the state — typing when coding, facepalm on error, celebration on done. Toggle the geese under Settings → Options → 🪿 Goose characters.'],
         ['Mosaic', 'A compact responsive tile grid. Here you can switch avatar style (pixel / abstract / desk / your images) and import images. Below the grid, a Server-room strip shows the same background-process triage as the Office floor: cluster cards per owning claude.exe with verdict pills, per-process chips (ports + kill), and one-click End session for parked sessions.'],
         ['Activity highlight', 'Working agents get a coloured glow; idle agents get a pulsing amber ring so you can spot who to put back to work.'],
         ['Pan / zoom', 'Drag to pan, use the +/− controls (or scroll) to zoom the Office floor; Fit re-centres.'],
