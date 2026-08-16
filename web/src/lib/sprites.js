@@ -116,8 +116,14 @@ function loadKeyedSheet(url, opts = {}) {
         const d = ox.getImageData(0, 0, off.width, off.height);
         const p = d.data;
         const W = off.width, H = off.height;
+        // A sheet that was ALREADY background-removed (alpha-0 paper) is a trap:
+        // canvas reads transparent pixels as RGB 0,0,0, so colour-keying against
+        // the corner pixel would key BLACK — and flood-eat hair, glasses, and
+        // outlines from the outside in. Detect it and key on alpha instead.
+        const preKeyed = p[3] < 128;
         const br = p[0], bg = p[1], bb = p[2];   // top-left pixel = the paper background
         const dist = (i) => Math.abs(p[i] - br) + Math.abs(p[i + 1] - bg) + Math.abs(p[i + 2] - bb);
+        const isBg = preKeyed ? (i) => p[i + 3] < 40 : (i) => dist(i) < flood;
         // Flood-fill the key from the OUTSIDE (higher threshold is safe this way:
         // cream shirts are close to the paper colour, but they're sealed behind
         // dark outlines the flood can't cross), then defringe the anti-aliased
@@ -130,7 +136,7 @@ function loadKeyedSheet(url, opts = {}) {
           const n = stack.pop();
           if (seen[n]) continue;
           seen[n] = 1;
-          if (dist(n * 4) >= flood) continue;      // hit the artwork — stop
+          if (!isBg(n * 4)) continue;              // hit the artwork — stop
           p[n * 4 + 3] = 0;
           const x = n % W, y = (n / W) | 0;
           if (x > 0) stack.push(n - 1);

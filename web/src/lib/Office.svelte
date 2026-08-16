@@ -1067,28 +1067,35 @@
         // sprite, so the furniture desk is skipped only while one is drawn here;
         // a goose off wandering leaves an empty desk behind (as it should)
         const hasDeskPose = $floorSprites && sheetOK && !walking && !bubble && drawX === d.x && (agent.state === 'coding' || agent.state === 'testing' || agent.state === 'reading');
-        if ($floorSprites && officeOK && !hasDeskPose && d.homeX != null) {
+        // a goose at its seat in a STANDING pose (idle, thinking, awaiting,
+        // celebrating…) stands BEHIND the desk: lift its feet above the desk
+        // and paint the desk after it, so the furniture fronts the character
+        // instead of becoming a pedestal it appears to stand on
+        const standsBehindDesk = $floorSprites && sheetOK && officeOK && !hasDeskPose && !walking && !bubble && drawX === d.x && d.homeX != null;
+        if ($floorSprites && officeOK && !hasDeskPose && !standsBehindDesk && d.homeX != null) {
           drawItem(ctx, isRoot ? OFFICE.desk : OFFICE.deskSmall, d.homeX, d.homeY + (isRoot ? 34 : 27), isRoot ? 36 : 27);
         }
 
         // ── activity highlight ─────────────────────────────────────────────
         // Working agents get a bold pulsing glow in their state colour; idle
         // agents get a pulsing amber "free — put me to work" ring so they pop.
+        // (haloY follows the goose when it's tucked in behind its desk)
         const haloR = Math.max(28, 64 * fs);
+        const haloY = drawY - (standsBehindDesk ? 21 * fs : 0);
         if (agent.state !== 'idle' && agent.state !== 'done') {
           const pulse = 0.5 + 0.5 * Math.sin(t * 3 + (d.seed || 0) * 6.28);
-          const g = ctx.createRadialGradient(drawX, drawY, 2, drawX, drawY, haloR);
+          const g = ctx.createRadialGradient(drawX, haloY, 2, drawX, haloY, haloR);
           g.addColorStop(0, hexA(color, 0.45 + 0.25 * pulse));
           g.addColorStop(0.55, hexA(color, 0.16 + 0.12 * pulse));
           g.addColorStop(1, hexA(color, 0));
           ctx.fillStyle = g;
-          ctx.beginPath(); ctx.arc(drawX, drawY, haloR, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(drawX, haloY, haloR, 0, Math.PI * 2); ctx.fill();
         } else if (agent.state === 'idle' && !agent.retiring) {
           const pulse = 0.5 + 0.5 * Math.sin(t * 2 + (d.seed || 0) * 6.28);
           ctx.save();
           ctx.strokeStyle = hexA('#F59E0B', 0.4 + 0.45 * pulse);
           ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
-          ctx.beginPath(); ctx.arc(drawX, drawY, haloR * 0.7, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(drawX, haloY, haloR * 0.7, 0, Math.PI * 2); ctx.stroke();
           ctx.restore();
         }
         // command-palette flash ring
@@ -1097,7 +1104,7 @@
           ctx.save();
           ctx.strokeStyle = hexA('#6366F1', 0.35 + 0.5 * (0.5 + 0.5 * Math.sin(t * 9)));
           ctx.lineWidth = 3; ctx.setLineDash([]);
-          ctx.beginPath(); ctx.arc(drawX, drawY, haloR * (0.85 + 0.7 * (1 - k)), 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(drawX, haloY, haloR * (0.85 + 0.7 * (1 - k)), 0, Math.PI * 2); ctx.stroke();
           ctx.restore();
         }
 
@@ -1108,7 +1115,7 @@
           ctx.save();
           ctx.strokeStyle = hexA('#EF4444', 0.5 + 0.5 * bp);
           ctx.lineWidth = 3; ctx.setLineDash([]);
-          ctx.beginPath(); ctx.arc(drawX, drawY, haloR * 0.92, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(drawX, haloY, haloR * 0.92, 0, Math.PI * 2); ctx.stroke();
           ctx.restore();
         }
 
@@ -1125,8 +1132,11 @@
         let drewSprite = false;
         if ($floorSprites && sheetOK) {
           // goose characters from the assets/ sheet — pose follows the state,
-          // bottom-anchored where the vector figure's feet were
-          drewSprite = drawGoose(ctx, agent.id, agent.state, walking, t, drawX, drawY + 50 * fs, isRoot ? 66 : 52, !!agent.stalled, { heading: d.heading, coffee });
+          // bottom-anchored where the vector figure's feet were (standing
+          // poses tuck in behind the desk instead of on top of it)
+          const footY = drawY + 50 * fs - (standsBehindDesk ? 42 * fs : 0);
+          drewSprite = drawGoose(ctx, agent.id, agent.state, walking, t, drawX, footY, isRoot ? 66 : 52, !!agent.stalled, { heading: d.heading, coffee });
+          if (standsBehindDesk) drawItem(ctx, isRoot ? OFFICE.desk : OFFICE.deskSmall, d.homeX, d.homeY + (isRoot ? 34 : 27), isRoot ? 36 : 27);
         }
         if (!drewSprite) {
           ctx.save();
