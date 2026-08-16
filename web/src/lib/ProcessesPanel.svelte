@@ -29,6 +29,12 @@
     loading = false;
   }
 
+  async function focusProc(p) {
+    let r = null;
+    try { r = await (await fetch('/api/focus-pid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: p.pid }) })).json(); } catch (_) {}
+    flash = r && r.ok ? `🪟 raised the window for ${p.name}` : `✗ no visible window for ${p.name}`;
+    setTimeout(() => (flash = ''), 3000);
+  }
   async function kill(p) {
     const where = p.ports && p.ports.length ? ` holding port ${p.ports.join(', ')}` : '';
     if (!confirm(`Kill ${p.name} (pid ${p.pid})${where}?\n\nThis force-kills the process and its child tree (taskkill /T /F).`)) return;
@@ -114,6 +120,7 @@
                   <span class="ppid mono">pid {p.pid}</span>
                   {#each (p.ports || []) as port (port)}<a class="port" href="http://localhost:{port}" target="_blank" rel="noopener" title="Open http://localhost:{port} in a new tab — check it before you kill it">:{port} ↗</a>{/each}
                   <span class="age mono">{uptime(p.uptimeMs)}</span>
+                  <button class="nu-focus" onclick={() => focusProc(p)} title="Bring its window forward (falls back to its session / claude.exe window)">🪟</button>
                   <button class="kill" disabled={killing === p.pid} onclick={() => kill(p)} title="Force-kill this process and its children">{killing === p.pid ? '…' : 'Kill'}</button>
                 </div>
                 {#if p.linked}<div class="plink">↳ {p.linked}</div>{/if}
@@ -157,6 +164,9 @@
   .port { font-size: 10px; font-family: var(--font-mono); padding: 1px 6px; border-radius: 999px; background: #10B9811a; color: #10B981; text-decoration: none; cursor: pointer; white-space: nowrap; }
   .port:hover { background: #10B98133; text-decoration: underline; }
   .age { font-size: 10px; color: var(--color-text-tertiary); margin-left: auto; }
+  .nu-focus { flex-shrink: 0; padding: 3px 7px; border-radius: 5px; cursor: pointer; font-size: 11px;
+    border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-primary); }
+  .nu-focus:hover { border-color: var(--accent, #6366F1); }
   .kill { flex-shrink: 0; padding: 3px 10px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600;
     background: #EF44441a; border: 0.5px solid #EF444455; color: #EF4444; }
   .kill:hover:not(:disabled) { background: #EF4444; color: #fff; }

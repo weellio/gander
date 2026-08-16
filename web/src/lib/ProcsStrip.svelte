@@ -28,6 +28,12 @@
     killing = c.claudePid; await killPid(c.claudePid, `claude.exe ${c.claudePid}`); killing = 0;
   }
   const lblOf = (p) => p.plugin || String(p.name || '').replace(/\.exe$/i, '');
+  async function focusProc(p) {
+    let r = null;
+    try { r = await (await fetch('/api/focus-pid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: p.pid }) })).json(); } catch (_) {}
+    flash = r && r.ok ? `🪟 raised the window for ${p.name}` : `no visible window for ${p.name}`;
+    setTimeout(() => (flash = ''), 3200);
+  }
 </script>
 
 {#if clusters.length}
@@ -61,6 +67,7 @@
                 </svg>
                 {lblOf(p)}
                 {#each (p.ports || []) as port (port)}<a class="port" href="http://localhost:{port}" target="_blank" rel="noopener">:{port}</a>{/each}
+                <button class="x" onclick={() => focusProc(p)} title="Bring its window forward (falls back to its session / claude.exe window)">🪟</button>
                 <button class="x" disabled={killing === p.pid} onclick={() => killProc(p)} title="Kill pid {p.pid}">✕</button>
               </span>
             {/each}

@@ -44,6 +44,10 @@ function attribute(all, selfPid, sessions, knownProjects) {
     const chain = ancestry(p, byPid);
     const claudeAnc = chain.find((a) => /^claude(\.exe)?$/i.test(String(a.name || '')));
     if (claudeAnc) claudePid = claudeAnc.pid;
+    // the raisable WINDOW for a claude-child belongs to the VS Code MAIN process —
+    // the chain often hits the windowless extension host first, so keep every
+    // Code.exe ancestor (child→root order; the last one is the main process)
+    const codePids = chain.filter((a) => /^code(\.exe)?$/i.test(String(a.name || ''))).map((a) => a.pid);
     // the plugin path shows in the launcher's cmdline, not its children's —
     // so check the whole ancestor chain, not just the process itself
     let pluginHit = null;
@@ -91,7 +95,7 @@ function attribute(all, selfPid, sessions, knownProjects) {
     out.push({
       pid: p.pid, name, cmd: p.cmd, ports,
       started: p.started, uptimeMs: p.started ? Math.max(0, now - Date.parse(p.started)) : null,
-      attribution, sessionId: sid, project, linked, plugin, claudePid,
+      attribution, sessionId: sid, project, linked, plugin, claudePid, codePids,
     });
   }
   out.sort((a, b) => (b.ports.length - a.ports.length) || ((b.uptimeMs || 0) - (a.uptimeMs || 0)));
@@ -103,7 +107,7 @@ function compact(list) {
   return list.map((p) => ({
     pid: p.pid, name: p.name, ports: p.ports, uptimeMs: p.uptimeMs,
     attribution: p.attribution, sessionId: p.sessionId, project: p.project,
-    linked: p.linked, plugin: p.plugin, claudePid: p.claudePid,
+    linked: p.linked, plugin: p.plugin, claudePid: p.claudePid, codePids: p.codePids,
   }));
 }
 

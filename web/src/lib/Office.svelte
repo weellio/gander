@@ -526,6 +526,18 @@
     if (!confirm(`Kill ${p.name} (pid ${p.pid})${where}?\n\nForce-kills the process and its child tree.`)) return;
     doKill(p.pid, `${p.name} ${p.pid}`);
   }
+  // Raise the process's window — or its owner's: many bots are windowless
+  // (pythonw, bun sidecars), so the bridge falls back to the session's captured
+  // window, then the owning claude.exe's window.
+  async function focusProc() {
+    const p = procSel && procSel.p;
+    if (!p) return;
+    let r = null;
+    try { r = await (await fetch('/api/focus-pid', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pid: p.pid }) })).json(); } catch (_) {}
+    if (r && r.ok) { procSel = null; procToast = `🪟 raised the window for ${p.name}`; }
+    else procToast = `no visible window for ${p.name} — background process (its owner has none either)`;
+    setTimeout(() => (procToast = ''), 3600);
+  }
   // End a whole parked session: kill its claude.exe (tree) — the session stays
   // resumable from History, and all its sidecar robots exit with it.
   function killSession() {
@@ -1136,7 +1148,10 @@
       <div class="pp-hint">
         {#if procSel.p.attribution === 'orphan'}Parent is gone — no session owns it. But orphaned ≠ useless: a long-lived one holding a port may be a service you rely on (a proxy, a local server). Kill it only if you recognize it and don't need it.{:else if procSel.p.attribution === 'plugin'}Plugin runtime — exits with its session; killing it breaks that plugin until it respawns.{:else if procSel.p.attribution === 'claude'}Belongs to a live Claude session — exits with it.{:else if procSel.p.attribution === 'other'}Not Claude-spawned — listed for its port.{:else}Spawned by this session.{/if}
       </div>
-      <button class="pp-kill" disabled={procKilling} onclick={killProc}>{procKilling ? '…' : 'Kill'}</button>
+      <div class="pp-row">
+        <button class="pp-focus" onclick={focusProc} title="Bring this process's window to the front — falls back to its session window or owning claude.exe">🪟 Focus window</button>
+        <button class="pp-kill" disabled={procKilling} onclick={killProc}>{procKilling ? '…' : 'Kill'}</button>
+      </div>
     </div>
   {/if}
 </div>
@@ -1172,8 +1187,13 @@
   .pp-l { color: var(--color-text-secondary); margin-top: 3px; line-height: 1.4; word-break: break-word; }
   .pp-l a { color: #10B981; font-family: var(--font-mono); font-size: 10px; }
   .pp-hint { margin-top: 5px; font-size: 10px; color: var(--color-text-tertiary); line-height: 1.4; }
+  .pp-row { display: flex; gap: 6px; margin-top: 7px; }
+  .pp-focus { padding: 3px 10px; border-radius: 5px; cursor: pointer; font-size: 11px;
+    border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-primary); }
+  .pp-focus:hover { border-color: var(--accent, #6366F1); }
   .pp-kill { margin-top: 7px; padding: 3px 12px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600;
     background: #EF44441a; border: 0.5px solid #EF444455; color: #EF4444; }
+  .pp-row .pp-kill { margin-top: 0; }
   .pp-kill:hover:not(:disabled) { background: #EF4444; color: #fff; }
   canvas {
     display: block;

@@ -11,9 +11,9 @@
   Restores the window if minimised, then raises + activates it. Unlike sendkeys it
   types nothing — it only changes focus.
 #>
-param([int]$WinPid = 0, [string]$Match = '')
+param([int]$WinPid = 0, [string]$Match = '', [string]$Pids = '')
 
-if ($WinPid -le 0 -and -not $Match) { Write-Host "[focus] need -WinPid or -Match"; exit 0 }
+if ($WinPid -le 0 -and -not $Match -and -not $Pids) { Write-Host "[focus] need -WinPid, -Pids or -Match"; exit 0 }
 
 try {
   Add-Type -ErrorAction Stop @"
@@ -63,18 +63,26 @@ public class HmFocus {
 } catch {}
 
 # Find the target window: captured PID first (survives Claude renaming the title to
-# "Claude Code"), then a title substring (works for VS Code-hosted sessions).
+# "Claude Code"), then each pid in -Pids (a process may be windowless — its owner's
+# window is the next best thing), then a title substring (VS Code-hosted sessions).
 $h = [IntPtr]::Zero
-if ($WinPid -gt 0) { $h = [HmFocus]::ByPid([uint32]$WinPid) }
+$winner = $WinPid
+$cands = @()
+if ($WinPid -gt 0) { $cands += $WinPid }
+if ($Pids) { foreach ($s in $Pids -split ',') { $v = 0; if ([int]::TryParse($s.Trim(), [ref]$v) -and $v -gt 0) { $cands += $v } } }
+foreach ($c in $cands) {
+  $h = [HmFocus]::ByPid([uint32]$c)
+  if ($h -ne [IntPtr]::Zero) { $winner = $c; break }
+}
 if ($h -eq [IntPtr]::Zero -and $Match) { $h = [HmFocus]::ByTitle($Match) }
 
 if ($h -eq [IntPtr]::Zero) {
-  Write-Host "[focus] no window for pid $WinPid / '$Match'"
+  Write-Host "[focus] no window for pids '$($cands -join ',')' / '$Match'"
   exit 0
 }
 
 # Restore + raise via user32, then AppActivate for the reliable focus-steal Windows
 # allows from a foreground-granting context (same trick sendkeys/nudge use).
 [void][HmFocus]::Raise($h)
-try { (New-Object -ComObject WScript.Shell).AppActivate([int]$WinPid) | Out-Null } catch {}
-Write-Host "[focus] raised window for pid $WinPid / '$Match'"
+try { (New-Object -ComObject WScript.Shell).AppActivate([int]$winner) | Out-Null } catch {}
+Write-Host "[focus] raised window (pid $winner)"

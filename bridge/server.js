@@ -2339,6 +2339,35 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Bring a background PROCESS's window forward (server-room robots / Processes
+  // panel). Many are windowless (pythonw, bun sidecars) — so we try, in order:
+  // the process itself, its session's captured window, its owning claude.exe.
+  if (url === '/api/focus-pid' && req.method === 'POST') {
+    if (process.platform !== 'win32') return sendJson(res, 200, { ok: false, output: 'window focus is Windows-only for now' });
+    const body = await readBody(req);
+    const pid = Number(body && body.pid);
+    if (!Number.isInteger(pid) || pid <= 4) return sendJson(res, 400, { error: 'invalid pid' });
+    const proc = procsCache.list.find((x) => x.pid === pid);
+    const cands = [pid];
+    if (proc && proc.sessionId) {
+      const ag = [...agents.values()].find((a) => a.sessionId === proc.sessionId && a.cwd);
+      const w = ag && sessionWindows.get(projKeyOf(ag.cwd));
+      if (w) cands.push(w.pid);
+    }
+    if (proc && proc.claudePid) cands.push(proc.claudePid);
+    // VS Code ancestors, deepest-last: the last one is the MAIN process that owns the window
+    if (proc && Array.isArray(proc.codePids)) for (const cp of [...proc.codePids].reverse()) cands.push(cp);
+    const match = (proc && proc.project) || '';           // last resort: window title contains the project folder
+    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(SCRIPTS_DIR, 'focus-window.ps1'), '-Pids', cands.join(','), ...(match ? ['-Match', match] : [])],
+      { timeout: 8000, windowsHide: true }, (err, stdout) => {
+        const out = String(stdout || '').trim();
+        const ok = /raised window/i.test(out);
+        console.log(`[focus-pid] ${cands.join(',')} -> ${ok ? 'ok' : 'no window'}`);
+        sendJson(res, 200, { ok, output: out });
+      });
+    return;
+  }
+
   if (url === '/api/focus-window' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.sessionId) return sendJson(res, 400, { error: 'sessionId required' });
