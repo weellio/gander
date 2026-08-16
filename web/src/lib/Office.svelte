@@ -684,9 +684,9 @@
       let _minX = Infinity, _maxX = -Infinity, _minY = Infinity;
       for (const d of desks.values()) if (d.homeX != null) { if (d.homeX < _minX) _minX = d.homeX; if (d.homeX > _maxX) _maxX = d.homeX; if (d.homeY < _minY) _minY = d.homeY; }
       const _midX = _minY === Infinity ? W / 2 : (_minX + _maxX) / 2;
-      const _topY = _minY === Infinity ? 40 : _minY - 100;   // clear of the rooms' top wall bands
-      const cooler = { x: _midX - 84, y: _topY };   // break area, top-centre-left
-      const clock = { x: _midX + 84, y: _topY };    // punch clock, top-centre-right
+      const _topY = _minY === Infinity ? 40 : _minY - 118;   // rugs + furniture fully clear of the rooms' top wall bands
+      const cooler = { x: _midX - 122, y: _topY };  // break area, top-centre-left
+      const clock = { x: _midX + 122, y: _topY };   // punch clock, top-centre-right (clear of the break rug)
 
       // command-palette "go to agent" — centre the view on it and flash a ring
       if (_pendingFocus) {
@@ -877,7 +877,7 @@
       drawDecor(ctx, W, H, frameN);
       if ($floorSprites && officeOK) {
         // furnished break area from the office sheet: sofa · cooler · plant · bulletin board
-        rug(cooler.x - 16, cooler.y - 16, 320, 96);
+        rug(cooler.x - 8, cooler.y - 16, 306, 96);
         rug(clock.x, clock.y - 12, 92, 86);
         drawItem(ctx, OFFICE.sofa, cooler.x - 118, cooler.y + 6, 44);
         drawItem(ctx, OFFICE.cooler, cooler.x, cooler.y + 6, 56);
@@ -887,7 +887,7 @@
         ctx.fillStyle = 'rgba(120,120,130,0.95)';
         ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('break room', cooler.x - 30, cooler.y + 22);
+        ctx.fillText('break room', cooler.x - 40, cooler.y + 22);
         ctx.font = '8px ui-sans-serif, system-ui, sans-serif';
         ctx.fillStyle = 'rgba(130,135,148,0.75)';
         ctx.fillText('📌 digest', cooler.x + 116, cooler.y + 22);
@@ -1080,7 +1080,7 @@
           ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
           ctx.textAlign = 'center';
           const lbl = agent.name && agent.name.length > 16 ? agent.name.slice(0, 15) + '…' : (agent.name || '');
-          const ly = drawY + 50 * fs + 6;
+          const ly = drawY + 50 * fs + (drewSprite ? 14 : 6);   // sprites are taller — drop the label clear of the feet
           if (lbl) {
             const tw = ctx.measureText(lbl).width;
             ctx.fillStyle = 'rgba(128,133,150,0.14)';
@@ -1092,10 +1092,10 @@
           ctx.fillText(lbl, drawX, ly);
         }
         // the agent's defined model (haiku/sonnet/opus), if any — small + dim under the name
-        if (agent.model && agent.model !== 'inherit') {
+        if (agent.model && agent.model !== 'inherit' && (isRoot || zoom >= 0.7)) {
           ctx.fillStyle = 'rgba(140,140,150,0.85)';
           ctx.font = '8px ui-sans-serif, system-ui, sans-serif';
-          ctx.fillText(agent.model, drawX, drawY + 50 * fs + 16);
+          ctx.fillText(agent.model, drawX, drawY + 50 * fs + (drewSprite ? 24 : 16));
         }
 
         // runaway burn badge — a bold red pill centered over the figure's chest, drawn

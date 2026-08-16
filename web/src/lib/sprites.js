@@ -17,7 +17,7 @@ export const OFFICE = {
   sofa: [2270, 1745, 390, 195],
   desk: [545, 905, 360, 245],        // wide desk with monitor/phone — orchestrators
   deskSmall: [295, 1430, 145, 175],  // compact CRT desk — sub-agents
-  board: [2922, 812, 135, 155],      // bulletin board (opens the Ship digest)
+  board: [2900, 804, 160, 168],      // bulletin board (opens the Ship digest)
   posters: [[2985, 270, 145, 200], [2785, 515, 145, 200], [2625, 515, 145, 200]],   // "turning it off and on" · GO AWAY · IT IS WONDERFUL
 };
 const CARPET_RECT = [50, 290, 190, 180];   // blue carpet floor tile (used as a low-alpha pattern)
@@ -126,13 +126,16 @@ function loadKeyedSheet(url, opts = {}) {
           for (let pass = 0; pass < 4; pass++) if (!erodePass(150)) break;   // matte remnants, incl. darker beige blends
           erodePass(-1);                                                     // final colour-blind 1px shave — kills whatever's left
         }
-        // final 1px soft feather so the new hard edge doesn't alias
-        for (let y = 1; y < H - 1; y++) {
-          for (let x = 1; x < W - 1; x++) {
-            const n = y * W + x, i = n * 4;
-            if (p[i + 3] === 0) continue;
-            if (p[i - 1] === 0 || p[i + 7] === 0 || p[(n - W) * 4 + 3] === 0 || p[(n + W) * 4 + 3] === 0) {
-              if (p[i + 3] === 255) p[i + 3] = 210;
+        // final 1px soft feather so the new hard edge doesn't alias — only where
+        // we eroded (the goose sheet); office decor keeps hard, fully-opaque edges
+        if (erode) {
+          for (let y = 1; y < H - 1; y++) {
+            for (let x = 1; x < W - 1; x++) {
+              const n = y * W + x, i = n * 4;
+              if (p[i + 3] === 0) continue;
+              if (p[i - 1] === 0 || p[i + 7] === 0 || p[(n - W) * 4 + 3] === 0 || p[(n + W) * 4 + 3] === 0) {
+                if (p[i + 3] === 255) p[i + 3] = 210;
+              }
             }
           }
         }
@@ -152,7 +155,7 @@ let keyed = null;         // goose sheet (kept as a direct ref for the hot draw 
 let officeKeyed = null;   // office decor sheet
 let generalKeyed = null;  // geese & robots sheet (droids)
 export function loadGooseSheet() { return loadKeyedSheet(SHEET_URL, { flood: 110, erode: true }).then((c) => (keyed = c)); }
-export function loadOfficeSheet() { return loadKeyedSheet(OFFICE_URL, { flood: 34, erode: false }).then((c) => (officeKeyed = c)); }
+export function loadOfficeSheet() { return loadKeyedSheet(OFFICE_URL, { flood: 28, erode: false }).then((c) => (officeKeyed = c)); }
 export function loadGeneralSheet() { return loadKeyedSheet(GENERAL_URL, { flood: 110, erode: true }).then((c) => (generalKeyed = c)); }
 
 // Carpet pattern from the RAW office sheet (textures don't need keying).
