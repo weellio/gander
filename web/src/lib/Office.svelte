@@ -1073,7 +1073,7 @@
         // instead of becoming a pedestal it appears to stand on
         const standsBehindDesk = $floorSprites && sheetOK && officeOK && !hasDeskPose && !walking && !bubble && drawX === d.x && d.homeX != null;
         if ($floorSprites && officeOK && !hasDeskPose && !standsBehindDesk && d.homeX != null) {
-          drawItem(ctx, isRoot ? OFFICE.desk : OFFICE.deskSmall, d.homeX, d.homeY + (isRoot ? 34 : 27), isRoot ? 36 : 27);
+          drawItem(ctx, isRoot ? OFFICE.desk : OFFICE.deskSmall, d.homeX, d.homeY + (isRoot ? 34 : 27), isRoot ? 36 : 27, true);
         }
 
         // ── activity highlight ─────────────────────────────────────────────
@@ -1136,7 +1136,7 @@
           // poses tuck in behind the desk instead of on top of it)
           const footY = drawY + 50 * fs - (standsBehindDesk ? 42 * fs : 0);
           drewSprite = drawGoose(ctx, agent.id, agent.state, walking, t, drawX, footY, isRoot ? 66 : 52, !!agent.stalled, { heading: d.heading, coffee });
-          if (standsBehindDesk) drawItem(ctx, isRoot ? OFFICE.desk : OFFICE.deskSmall, d.homeX, d.homeY + (isRoot ? 34 : 27), isRoot ? 36 : 27);
+          if (standsBehindDesk) drawItem(ctx, isRoot ? OFFICE.desk : OFFICE.deskSmall, d.homeX, d.homeY + (isRoot ? 34 : 27), isRoot ? 36 : 27, true);
         }
         if (!drewSprite) {
           ctx.save();

@@ -231,12 +231,22 @@ export function drawDroid(ctx, attribution, cx, footY, targetH) {
 }
 
 // Draw a decor item bottom-anchored at (cx, footY), targetH tall.
-export function drawItem(ctx, rect, cx, footY, targetH) {
+// rot180 spins it in place — used for seat desks so the monitor faces the
+// goose sitting BEHIND the desk instead of the viewer.
+export function drawItem(ctx, rect, cx, footY, targetH, rot180) {
   if (!officeKeyed || !rect) return false;
   const w = targetH * (rect[2] / rect[3]);
   const prev = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(officeKeyed, rect[0], rect[1], rect[2], rect[3], cx - w / 2, footY - targetH, w, targetH);
+  if (rot180) {
+    ctx.save();
+    ctx.translate(cx, footY - targetH / 2);
+    ctx.rotate(Math.PI);
+    ctx.drawImage(officeKeyed, rect[0], rect[1], rect[2], rect[3], -w / 2, -targetH / 2, w, targetH);
+    ctx.restore();
+  } else {
+    ctx.drawImage(officeKeyed, rect[0], rect[1], rect[2], rect[3], cx - w / 2, footY - targetH, w, targetH);
+  }
   ctx.imageSmoothingEnabled = prev;
   return true;
 }
