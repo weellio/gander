@@ -4,11 +4,11 @@
   import { paintFigure } from './avatars/desk.js';
   import { buildClusters, fmtUp, TONE_COL } from './procgroups.js';
   import { animations, costAlerts, floorSprites } from './stores.js';
-  import { loadGooseSheet, loadOfficeSheet, loadGeneralSheet, drawGoose, drawItem, drawDroid, OFFICE } from './sprites.js';
+  import { loadGooseSheet, loadOfficeSheet, loadGeneralSheet, drawGoose, drawItem, drawDroid, carpetPattern, OFFICE } from './sprites.js';
   import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
-  let { agents: agentsProp = null, focusReq = null, procs: procsProp = null } = $props();
+  let { agents: agentsProp = null, focusReq = null, procs: procsProp = null, onDigest = null } = $props();
   let _pendingFocus = null;   // {id} to centre on next frame
   let _flash = null;          // {id, until} highlight ring
   $effect(() => { if (focusReq && focusReq.id) _pendingFocus = focusReq; });
@@ -291,6 +291,7 @@
   // Top-down wall reading like the office sheet: the top edge is a tall dark
   // band (the wall's "height"), sides/bottom are thin, and one edge carries a
   // doorway gap with a lighter threshold strip. Everything snaps to TILE.
+  let carpet = null;   // low-alpha carpet pattern (built once the office sheet image lands)
   function drawRoom(ctx, bx, by, bw, bh, door /* {edge:'top'|'bottom', x} */, tone) {
     const TOP = 12, SIDE = 4, DOOR_W = 30;
     const col = tone || 'rgba(150,162,190,';
@@ -298,6 +299,9 @@
     // interior floor — slightly lifted from the corridor, with a faint inner tile grid
     ctx.fillStyle = col + '0.07)';
     ctx.fillRect(bx, by, bw, bh);
+    if (carpet) {   // subtle carpet texture inside rooms (corridors stay bare)
+      ctx.save(); ctx.globalAlpha = 0.09; ctx.fillStyle = carpet; ctx.fillRect(bx, by, bw, bh); ctx.restore();
+    }
     ctx.strokeStyle = col + '0.10)'; ctx.lineWidth = 1;
     for (let gx = bx + TILE; gx < bx + bw; gx += TILE) { ctx.beginPath(); ctx.moveTo(gx, by); ctx.lineTo(gx, by + bh); ctx.stroke(); }
     for (let gy = by + TILE; gy < by + bh; gy += TILE) { ctx.beginPath(); ctx.moveTo(bx, gy); ctx.lineTo(bx + bw, gy); ctx.stroke(); }
@@ -323,6 +327,17 @@
     // top-edge highlight (the lit rim of the wall)
     ctx.fillStyle = 'rgba(210,220,240,0.28)';
     seg(bx - SIDE, by - TOP, bw + SIDE * 2, 1.5);
+    // window insets on the top walls (solo offices are ~160 world px wide —
+    // the threshold only needs to skip genuinely tiny rooms)
+    if (bw >= 130) {
+      for (const fx of bw >= 320 ? [0.38, 0.72] : [0.58]) {
+        const wx = bx + bw * fx - 14;
+        ctx.fillStyle = 'rgba(120,165,215,0.85)'; seg(wx, by - TOP + 2, 28, 8);          // glass
+        ctx.fillStyle = 'rgba(235,245,255,0.65)'; seg(wx + 2, by - TOP + 3, 9, 2);        // sky glint
+        ctx.fillStyle = 'rgba(70,80,105,0.9)';
+        seg(wx - 1.5, by - TOP + 1, 1.5, 10); seg(wx + 28, by - TOP + 1, 1.5, 10); seg(wx + 13, by - TOP + 2, 1, 8);   // frame + mullion
+      }
+    }
     if (door) {
       const dy = door.edge === 'top' ? by - TOP : by + bh;
       const dh = door.edge === 'top' ? TOP : SIDE;
@@ -622,6 +637,7 @@
     for (const h of hitTargets) { const dd = Math.hypot(h.x - wx, h.y - wy); if (dd < h.r && dd < bestD) { best = h; bestD = dd; } }
     if (best && best.proc) { procSel = { p: best.proc, sx: e.clientX - rect.left, sy: e.clientY - rect.top }; }
     else if (best && best.cluster) { procSel = { cluster: best.cluster, sx: e.clientX - rect.left, sy: e.clientY - rect.top }; }
+    else if (best && best.board) { onDigest?.(); procSel = null; }
     else if (best) { selectedId = best.id; procSel = null; }
     else procSel = null;
   }
@@ -847,16 +863,34 @@
       }
       ctx.restore();
 
+      if ($floorSprites && officeOK && !carpet) carpet = carpetPattern(ctx);
+      // zone rugs make the break area and time clock read as PLACES
+      const rug = (cx, cy, w, h) => {
+        ctx.save();
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(cx - w / 2, cy - h / 2, w, h, 10); else ctx.rect(cx - w / 2, cy - h / 2, w, h);
+        ctx.fillStyle = 'rgba(150,162,190,0.09)'; ctx.fill();
+        if (carpet) { ctx.globalAlpha = 0.09; ctx.fillStyle = carpet; ctx.fill(); ctx.globalAlpha = 1; }
+        ctx.strokeStyle = 'rgba(150,162,190,0.28)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.restore();
+      };
       drawDecor(ctx, W, H, frameN);
       if ($floorSprites && officeOK) {
-        // furnished break area from the office sheet: sofa · water cooler · plant
+        // furnished break area from the office sheet: sofa · cooler · plant · bulletin board
+        rug(cooler.x - 16, cooler.y - 16, 320, 96);
+        rug(clock.x, clock.y - 12, 92, 86);
         drawItem(ctx, OFFICE.sofa, cooler.x - 118, cooler.y + 6, 44);
         drawItem(ctx, OFFICE.cooler, cooler.x, cooler.y + 6, 56);
         drawItem(ctx, OFFICE.plant, cooler.x + 54, cooler.y + 6, 46);
+        drawItem(ctx, OFFICE.board, cooler.x + 116, cooler.y + 2, 42);
+        hitTargets.push({ id: 'board', x: cooler.x + 116, y: cooler.y - 18, r: 24, board: true });
         ctx.fillStyle = 'rgba(120,120,130,0.95)';
         ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('break room', cooler.x - 30, cooler.y + 20);
+        ctx.fillText('break room', cooler.x - 30, cooler.y + 22);
+        ctx.font = '8px ui-sans-serif, system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(130,135,148,0.75)';
+        ctx.fillText('📌 digest', cooler.x + 116, cooler.y + 22);
       } else {
         drawCooler(ctx, cooler.x, cooler.y);
       }
@@ -958,6 +992,14 @@
         // Render with the shared top-down vector figure (+ its desk objects).
         const fs = isRoot ? 0.58 : 0.44; // figure scale on the floor
 
+        // every seat keeps its desk — the working poses carry their own desk
+        // sprite, so the furniture desk is skipped only while one is drawn here;
+        // a goose off wandering leaves an empty desk behind (as it should)
+        const hasDeskPose = $floorSprites && sheetOK && !walking && !bubble && drawX === d.x && (agent.state === 'coding' || agent.state === 'testing' || agent.state === 'reading');
+        if ($floorSprites && officeOK && !hasDeskPose && d.homeX != null) {
+          drawItem(ctx, isRoot ? OFFICE.desk : OFFICE.deskSmall, d.homeX, d.homeY + (isRoot ? 34 : 27), isRoot ? 36 : 27);
+        }
+
         // ── activity highlight ─────────────────────────────────────────────
         // Working agents get a bold pulsing glow in their state colour; idle
         // agents get a pulsing amber "free — put me to work" ring so they pop.
@@ -1032,12 +1074,23 @@
           }
         }
         if (bubble) { if (chat) drawTextBubble(ctx, drawX, drawY, chat); else drawBubble(ctx, drawX, drawY, 1); }
-        // name label below the figure
-        ctx.fillStyle = 'rgba(130,130,140,0.95)';
-        ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
-        ctx.textAlign = 'center';
-        const lbl = agent.name && agent.name.length > 16 ? agent.name.slice(0, 15) + '…' : (agent.name || '');
-        ctx.fillText(lbl, drawX, drawY + 50 * fs + 6);
+        // name label below the figure — pill backdrop for legibility over carpet;
+        // sub-agent labels hide when zoomed out (roots always keep theirs)
+        if (isRoot || zoom >= 0.7) {
+          ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          const lbl = agent.name && agent.name.length > 16 ? agent.name.slice(0, 15) + '…' : (agent.name || '');
+          const ly = drawY + 50 * fs + 6;
+          if (lbl) {
+            const tw = ctx.measureText(lbl).width;
+            ctx.fillStyle = 'rgba(128,133,150,0.14)';
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(drawX - tw / 2 - 5, ly - 9, tw + 10, 12.5, 6); else ctx.rect(drawX - tw / 2 - 5, ly - 9, tw + 10, 12.5);
+            ctx.fill();
+          }
+          ctx.fillStyle = 'rgba(130,130,140,0.95)';
+          ctx.fillText(lbl, drawX, ly);
+        }
         // the agent's defined model (haiku/sonnet/opus), if any — small + dim under the name
         if (agent.model && agent.model !== 'inherit') {
           ctx.fillStyle = 'rgba(140,140,150,0.85)';

@@ -15,8 +15,12 @@ export const OFFICE = {
   plant: [2718, 898, 165, 225],
   printer: [2350, 905, 195, 215],
   sofa: [2270, 1745, 390, 195],
+  desk: [545, 905, 360, 245],        // wide desk with monitor/phone — orchestrators
+  deskSmall: [295, 1430, 145, 175],  // compact CRT desk — sub-agents
+  board: [2922, 812, 135, 155],      // bulletin board (opens the Ship digest)
   posters: [[2985, 270, 145, 200], [2785, 515, 145, 200], [2625, 515, 145, 200]],   // "turning it off and on" · GO AWAY · IT IS WONDERFUL
 };
+const CARPET_RECT = [50, 290, 190, 180];   // blue carpet floor tile (used as a low-alpha pattern)
 
 // [sx, sy, sw, sh] in sheet pixels (3200×2133)
 export const GOOSE = {
@@ -150,6 +154,23 @@ let generalKeyed = null;  // geese & robots sheet (droids)
 export function loadGooseSheet() { return loadKeyedSheet(SHEET_URL, { flood: 110, erode: true }).then((c) => (keyed = c)); }
 export function loadOfficeSheet() { return loadKeyedSheet(OFFICE_URL, { flood: 34, erode: false }).then((c) => (officeKeyed = c)); }
 export function loadGeneralSheet() { return loadKeyedSheet(GENERAL_URL, { flood: 110, erode: true }).then((c) => (generalKeyed = c)); }
+
+// Carpet pattern from the RAW office sheet (textures don't need keying).
+let carpetPat = null, carpetImg = null;
+export function carpetPattern(ctx) {
+  if (carpetPat) return carpetPat;
+  if (!carpetImg) {
+    carpetImg = new Image();
+    carpetImg.src = OFFICE_URL;
+    return null;   // pattern builds on a later frame once the image is in
+  }
+  if (!carpetImg.complete || !carpetImg.naturalWidth) return null;
+  const t = document.createElement('canvas');
+  t.width = CARPET_RECT[2]; t.height = CARPET_RECT[3];
+  t.getContext('2d').drawImage(carpetImg, CARPET_RECT[0], CARPET_RECT[1], CARPET_RECT[2], CARPET_RECT[3], 0, 0, t.width, t.height);
+  carpetPat = ctx.createPattern(t, 'repeat');
+  return carpetPat;
+}
 
 // Draw the droid for a process attribution, bottom-anchored. False if not ready.
 export function drawDroid(ctx, attribution, cx, footY, targetH) {

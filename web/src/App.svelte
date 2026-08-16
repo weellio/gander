@@ -566,7 +566,7 @@
   {:else if $layout === 'office'}
     <div class="office-wrap">
       {#if !shown.length}<div class="floatnote">No active sessions — but background processes are still running, below in the server room.</div>{/if}
-      <Office agents={shown} {procs} {focusReq} />
+      <Office agents={shown} {procs} {focusReq} onDigest={() => (panels.digest = true)} />
     </div>
   {:else}
     {#if !shown.length}<div class="empty">No active sessions right now — background processes below.</div>{:else}
