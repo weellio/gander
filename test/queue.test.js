@@ -201,4 +201,118 @@ describe('queue worktrees', () => {
     assert.equal(it.status, 'done');
     assert.equal(it.merge, 'merged');
   });
+
+  // ── test gate ──────────────────────────────────────────────────────────────
+  function gateDeps(gateResult) {
+    const { deps, calls } = mkDeps({
+      dispatchList: () => [{ key: 'k1', sessionId: 'S1' }],
+      dispatchGet: () => ({ busy: false, lastResult: { ok: true } }),
+    });
+    calls.gated = []; calls.finishOpts = [];
+    deps.wt = {
+      start: (it) => ({ ok: true, wtPath: it.cwd + '__wt' + it.id, branch: 'gander/task-' + it.id }),
+      finish: (it, opts) => { calls.finishOpts.push(opts || null); return opts && opts.noMerge ? 'tests failed — branch kept' : 'merged'; },
+    };
+    deps.gate = (it, cb) => { calls.gated.push(it.id); cb(gateResult); };
+    return { deps, calls };
+  }
+
+  test('test gate: green merges', () => {
+    queue.setConfig({ maxSlots: 1, worktrees: true, testGate: true });
+    queue.add({ cwd: 'C:\\p\\alpha', prompt: 'a1' });
+    const { deps, calls } = gateDeps({ passed: true, cmd: 'npm test' });
+    queue.tick(deps);                       // running
+    queue.tick(deps);                       // settle -> gating -> gate cb fires in-tick
+    const it = queue.list().items[0];
+    assert.deepEqual(calls.gated, [1], 'gate ran once');
+    assert.equal(it.status, 'done');
+    assert.equal(it.gate, 'passed');
+    assert.equal(it.merge, 'merged');
+    assert.deepEqual(calls.finishOpts, [null], 'merged without noMerge');
+  });
+
+  test('test gate: red keeps the branch and fails the task with output', () => {
+    queue.setConfig({ maxSlots: 1, worktrees: true, testGate: true });
+    queue.add({ cwd: 'C:\\p\\alpha', prompt: 'a1' });
+    const { deps, calls } = gateDeps({ failed: true, cmd: 'npm test', output: '1 failing\nAssertionError: nope' });
+    queue.tick(deps);
+    queue.tick(deps);
+    const it = queue.list().items[0];
+    assert.equal(it.status, 'failed');
+    assert.equal(it.gate, 'failed');
+    assert.match(it.error, /tests failed/);
+    assert.match(it.testOut, /AssertionError/);
+    assert.equal(calls.finishOpts[0] && calls.finishOpts[0].noMerge, true, 'branch kept unmerged');
+    assert.match(it.merge, /branch kept/);
+  });
+
+  test('test gate: no test command found -> skips and merges', () => {
+    queue.setConfig({ maxSlots: 1, worktrees: true, testGate: true });
+    queue.add({ cwd: 'C:\\p\\alpha', prompt: 'a1' });
+    const { deps } = gateDeps({ skipped: true });
+    queue.tick(deps);
+    queue.tick(deps);
+    const it = queue.list().items[0];
+    assert.equal(it.status, 'done');
+    assert.equal(it.gate, 'skipped');
+    assert.equal(it.merge, 'merged');
+  });
+
+  test('test gate: off -> straight to done, no gate call', () => {
+    queue.setConfig({ maxSlots: 1, worktrees: true, testGate: false });
+    queue.add({ cwd: 'C:\\p\\alpha', prompt: 'a1' });
+    const { deps, calls } = gateDeps({ passed: true });
+    queue.tick(deps);
+    queue.tick(deps);
+    assert.deepEqual(calls.gated, [], 'gate never invoked');
+    assert.equal(queue.list().items[0].status, 'done');
+  });
+
+  // ── chaining ───────────────────────────────────────────────────────────────
+  test('chained task waits for its dependency, then starts', () => {
+    queue.setConfig({ maxSlots: 2 });
+    const a = queue.add({ cwd: 'C:\\p\\alpha', prompt: 'first' });
+    queue.add({ cwd: 'C:\\p\\beta', prompt: 'second', afterId: a.item.id });
+    const { deps, calls } = mkDeps({
+      dispatchList: () => [{ key: 'k1', sessionId: 'S1' }],
+      dispatchGet: () => ({ busy: false, lastResult: { ok: true } }),
+    });
+    queue.tick(deps);
+    assert.deepEqual(calls.dispatch, [1], 'dependent held back while #1 runs');
+    queue.tick(deps);                       // #1 settles done
+    queue.tick(deps);                       // #2 free to start
+    assert.deepEqual(calls.dispatch, [1, 2]);
+  });
+
+  test('chained task fails when its dependency fails', () => {
+    queue.setConfig({ maxSlots: 1 });
+    const a = queue.add({ cwd: 'C:\\p\\alpha', prompt: 'first' });
+    queue.add({ cwd: 'C:\\p\\beta', prompt: 'second', afterId: a.item.id });
+    const { deps, calls } = mkDeps({
+      dispatchList: () => [{ key: 'k1', sessionId: 'S1' }],
+      dispatchGet: () => ({ busy: false, lastResult: { ok: false } }),
+    });
+    queue.tick(deps);                       // #1 running
+    queue.tick(deps);                       // #1 fails
+    queue.tick(deps);                       // #2 sees the dead dependency
+    const st = Object.fromEntries(queue.list().items.map((i) => [i.id, i.status]));
+    assert.equal(st[1], 'failed');
+    assert.equal(st[2], 'failed');
+    assert.match(queue.list().items.find((i) => i.id === 2).error, /dependency #1 failed/);
+    assert.deepEqual(calls.dispatch, [1], '#2 never started');
+  });
+
+  // ── retry with context ─────────────────────────────────────────────────────
+  test('retry-context re-queues with the failure baked into the prompt', () => {
+    queue.add({ cwd: 'C:\\p\\alpha', prompt: 'build the thing' });
+    const it = queue._test.items()[0];
+    it.status = 'failed'; it.error = 'tests failed in the worktree (npm test)'; it.testOut = 'AssertionError: expected 2';
+    const r = queue.action(1, 'retry-context');
+    assert.ok(r.ok);
+    assert.equal(r.item.status, 'queued');
+    assert.match(r.item.prompt, /build the thing/);
+    assert.match(r.item.prompt, /tests failed in the worktree/);
+    assert.match(r.item.prompt, /AssertionError/);
+    assert.notEqual(r.item.id, 1, 'a NEW task, original left as the record');
+  });
 });

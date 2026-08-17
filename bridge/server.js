@@ -432,8 +432,9 @@ function handleTgMessage(m) {
   if (taskCmd) {
     const cwd = cwdByProjectName(taskCmd[1]);
     if (!cwd) { sendTelegram(`Unknown project “${taskCmd[1]}”.\nKnown: ${knownProjectNames(15).join(', ')}`); return; }
-    const r = queue.add({ cwd, prompt: taskCmd[2] });
-    sendTelegram(r.ok ? `📋 Queued <b>#${r.item.id}</b> for <b>${r.item.project}</b>:\n${String(taskCmd[2]).slice(0, 200)}` : `Failed to queue: ${r.error}`);
+    const r = queueChain(cwd, taskCmd[2]);
+    sendTelegram(r.ok ? `📋 Queued <b>#${r.ids.join(', #')}</b> for <b>${r.item.project}</b>${r.ids.length > 1 ? ' (chained)' : ''}:\n${String(taskCmd[2]).slice(0, 200)}` : `Failed to queue: ${r.error}`);
+    if (r.ok) setTimeout(queueTick, 400);
     return;
   }
   if (/^\/queue\b/i.test(text)) {
@@ -514,8 +515,8 @@ function handleSlackInput(text, channel) {
   if (taskCmd) {
     const cwd = cwdByProjectName(taskCmd[1]);
     if (!cwd) { reply(`Unknown project “${taskCmd[1]}”. Known: ${knownProjectNames(15).join(', ')}`); return; }
-    const r = queue.add({ cwd, prompt: taskCmd[2] });
-    reply(r.ok ? `📋 Queued *#${r.item.id}* for *${r.item.project}*: ${String(taskCmd[2]).slice(0, 200)}` : `Failed to queue: ${r.error}`);
+    const r = queueChain(cwd, taskCmd[2]);
+    reply(r.ok ? `📋 Queued *#${r.ids.join(', #')}* for *${r.item.project}*${r.ids.length > 1 ? ' (chained)' : ''}: ${String(taskCmd[2]).slice(0, 200)}` : `Failed to queue: ${r.error}`);
     if (r.ok) setTimeout(queueTick, 400);
     return;
   }
@@ -1115,6 +1116,74 @@ function buildLaunchFlags() {
 
 // ── routines / briefings ─────────────────────────────────────────────────────
 function claudeCliRaw() { return (cfg.claudeCmd && String(cfg.claudeCmd).trim()) || 'claude'; }
+let lastHookAt = 0;   // when the last Claude Code hook event arrived (doctor: "are events flowing?")
+
+// ── Gander Doctor ────────────────────────────────────────────────────────────
+// Live connectivity checks for the Health panel — the things that fail
+// SILENTLY: a session not reporting in, a dead chat token, a vanished project
+// root, claude not on PATH. Each check: { id, label, status, detail, hint? }
+// with status ok | warn | fail | off.
+function doctorChecks() {
+  const withTimeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r({ status: 'warn', detail: 'check timed out' }), ms))]);
+  const checks = [];
+
+  // claude CLI resolvable?
+  checks.push(withTimeout(new Promise((resolve) => {
+    require('child_process').execFile(claudeCliRaw(), ['--version'], { timeout: 6000, windowsHide: true, shell: process.platform === 'win32' }, (err, stdout) => {
+      if (err) resolve({ status: 'fail', detail: `"${claudeCliRaw()}" not runnable`, hint: 'Install Claude Code or set the path under Settings → Claude command.' });
+      else resolve({ status: 'ok', detail: String(stdout || '').trim().split('\n')[0].slice(0, 60) });
+    });
+  }), 7000).then((r) => ({ id: 'cli', label: 'claude CLI', ...r })));
+
+  // events flowing?
+  checks.push(Promise.resolve().then(() => {
+    const liveAgents = Array.from(agents.values()).filter((a) => !a.closed).length;
+    if (!lastHookAt) {
+      return { id: 'events', label: 'Hook events', status: liveAgents ? 'ok' : 'warn', detail: liveAgents ? `no events since boot, but ${liveAgents} agent(s) restored` : 'no hook events since the bridge started', hint: liveAgents ? undefined : 'Open any Claude Code session — its hooks should report here within seconds. If not: node install.js, then /hooks.' };
+    }
+    const ageMin = Math.round((Date.now() - lastHookAt) / 60000);
+    return { id: 'events', label: 'Hook events', status: 'ok', detail: ageMin < 1 ? 'flowing (last <1m ago)' : `last event ${ageMin}m ago` };
+  }));
+
+  // project roots still on disk?
+  checks.push(Promise.resolve().then(() => {
+    const roots = (projects.getConfig().roots || []);
+    const dead = roots.filter((r) => { try { return !fs.existsSync(r); } catch (_) { return true; } });
+    if (!roots.length) return { id: 'roots', label: 'Project roots', status: 'ok', detail: 'none configured (auto-discovery only)' };
+    if (dead.length) return { id: 'roots', label: 'Project roots', status: 'warn', detail: `${dead.length} of ${roots.length} missing on disk: ${dead.join(', ').slice(0, 120)}`, hint: 'Remove dead roots under Manage → Projects.' };
+    return { id: 'roots', label: 'Project roots', status: 'ok', detail: `${roots.length} configured, all present` };
+  }));
+
+  // dispatch (info)
+  checks.push(Promise.resolve({ id: 'dispatch', label: 'Gander Dispatch', status: cfg.dispatch ? 'ok' : 'off', detail: cfg.dispatch ? 'on — queue/replies run bridge-hosted' : 'off — queue tasks open terminal windows', hint: cfg.dispatch ? undefined : 'Optional. Settings → Gander Dispatch for instant replies + real permission buttons.' }));
+
+  // telegram token valid?
+  checks.push(withTimeout(new Promise((resolve) => {
+    if (!tg.token || !tg.chat) return resolve({ status: 'off', detail: 'not configured' });
+    const req = https.request({ host: 'api.telegram.org', path: `/bot${tg.token}/getMe`, method: 'GET', timeout: 5000 }, (res2) => {
+      let b = ''; res2.on('data', (d) => (b += d));
+      res2.on('end', () => {
+        try { const j = JSON.parse(b); resolve(j.ok ? { status: 'ok', detail: '@' + (j.result.username || 'bot') } : { status: 'fail', detail: j.description || 'token rejected', hint: 'Re-check the bot token under Settings → Telegram.' }); }
+        catch (_) { resolve({ status: 'warn', detail: 'unexpected reply from Telegram' }); }
+      });
+    });
+    req.on('error', (e) => resolve({ status: 'warn', detail: 'unreachable: ' + e.message }));
+    req.on('timeout', () => { req.destroy(); resolve({ status: 'warn', detail: 'Telegram API timeout' }); });
+    req.end();
+  }), 6000).then((r) => ({ id: 'telegram', label: 'Telegram', ...r })));
+
+  // slack tokens valid?
+  checks.push(withTimeout(new Promise((resolve) => {
+    if (!cfg.slackBotToken && !slk.url) return resolve({ status: 'off', detail: 'not configured' });
+    if (!cfg.slackBotToken) return resolve({ status: 'ok', detail: 'webhook only (outbound alerts)' });
+    slackMod.api(cfg.slackBotToken, 'auth.test', {}, (err, j) => {
+      if (err) return resolve({ status: 'fail', detail: 'bot token rejected: ' + err.message, hint: 'Re-check the xoxb- token under Settings → Slack.' });
+      resolve({ status: 'ok', detail: `bot ${j.user || ''} in ${j.team || 'workspace'}${slackSock ? ' · Socket Mode on' : ''}` });
+    });
+  }), 6000).then((r) => ({ id: 'slack', label: 'Slack', ...r })));
+
+  return Promise.all(checks);
+}
 function onBriefing(b) {
   pushFeed({ ts: Date.now(), agentId: 'routine', agent: b.name, project: b.project || '', sessionId: '', state: b.ok ? 'done' : 'error', log: b.ok ? `briefing ready (${Math.round(b.ms / 1000)}s)` : ('briefing failed: ' + b.error), error: !b.ok });
   const r = routines.listRoutines().find((x) => x.id === b.routineId);
@@ -1361,6 +1430,50 @@ function preTrustFolder(dir) {
   } catch (e) { console.error('[queue] pre-trust failed:', e.message); }
 }
 
+// Test gate for ⎇ worktree tasks: before the bridge merges a task branch, run
+// the project's tests INSIDE the worktree. Detection: package.json "test"
+// script (unless it's npm's placeholder) → `npm test`; else a test/ dir →
+// `node --test`; else the gate skips. Override per project with
+// { "testCmds": { "<project>": "cmd" } } or globally with { "testCmd": "cmd" }.
+function detectTestCmd(dir) {
+  try {
+    const pj = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const t = pj.scripts && pj.scripts.test;
+    if (t && !/no test specified/i.test(t)) return 'npm test';
+  } catch (_) {}
+  try { if (fs.statSync(path.join(dir, 'test')).isDirectory()) return 'node --test'; } catch (_) {}
+  return null;
+}
+function runTestGate(it, cb) {
+  const dir = it.wtPath || it.cwd;
+  const cmd = (cfg.testCmds && cfg.testCmds[it.project]) || cfg.testCmd || detectTestCmd(dir);
+  if (!cmd || !fs.existsSync(dir)) return cb({ skipped: true });
+  console.log(`[queue] #${it.id} test gate: ${cmd} (${dir})`);
+  require('child_process').exec(cmd, { cwd: dir, timeout: 5 * 60 * 1000, windowsHide: true, maxBuffer: 8 << 20 }, (err, stdout, stderr) => {
+    if (!err) { console.log(`[queue] #${it.id} test gate passed`); return cb({ passed: true, cmd }); }
+    console.log(`[queue] #${it.id} test gate FAILED`);
+    cb({ failed: true, cmd, output: (String(stdout || '') + '\n' + String(stderr || '')).slice(-4000) });
+  });
+}
+
+// Queue a prompt, splitting "… then: …" into a dependency chain — each part
+// starts only after the previous one lands. Shared by the panel, Telegram,
+// and Slack.
+function queueChain(cwd, prompt) {
+  const parts = String(prompt).split(/\s*\bthen:\s*/i).map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) return { error: 'empty prompt' };
+  let prev = null, first = null;
+  const ids = [];
+  for (const p of parts) {
+    const r = queue.add({ cwd, prompt: p, afterId: prev });
+    if (!r.ok) return first ? { ok: true, item: first, ids, error: r.error } : r;
+    ids.push(r.item.id);
+    prev = r.item.id;
+    first = first || r.item;
+  }
+  return { ok: true, item: first, ids };
+}
+
 // ── Task queue scheduler ────────────────────────────────────────────────────
 // Every 10s: settle finished queue tasks, then start the next queued goal if a
 // slot is free (see bridge/queue.js for the rules). Uses dispatch when it's on,
@@ -1379,8 +1492,9 @@ function queueTick() {
       // bridge merges back (bridge/git.js)
       wt: {
         start: (it) => { const r = git.worktreeStart(it.cwd, it.id); if (r && r.ok) preTrustFolder(r.wtPath); return r; },
-        finish: (it) => git.worktreeFinish(it.cwd, it.wtPath, it.branch, `#${it.id} ${String(it.prompt).slice(0, 60)}`),
+        finish: (it, opts) => git.worktreeFinish(it.cwd, it.wtPath, it.branch, `#${it.id} ${String(it.prompt).slice(0, 60)}`, opts),
       },
+      gate: runTestGate,
       stopDispatch: (sid) => dispatch.stop(sid),
       onDone: (it) => {
         const ok = it.status === 'done';
@@ -1801,6 +1915,7 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
     eventsReceived++;
+    lastHookAt = Date.now();
     const project = projectFromCwd(body.cwd);
     if (body.session_id) lastActiveSession = body.session_id;
     if (body.cwd) projects.noteKnown(body.cwd);   // auto-import the project
@@ -2058,9 +2173,9 @@ const server = http.createServer(async (req, res) => {
     if (!body || !body.cwd || !body.prompt) return sendJson(res, 400, { error: 'cwd and prompt required' });
     if (!fs.existsSync(body.cwd)) return sendJson(res, 400, { error: 'path not found' });
     if (!assertCwd(res, body.cwd)) return;
-    const r = queue.add({ cwd: body.cwd, prompt: body.prompt });
-    if (r.ok) { console.log(`[queue] +#${r.item.id} (${r.item.project}) ${r.item.prompt.slice(0, 60)}`); setTimeout(queueTick, 400); }
-    return sendJson(res, r.error ? 400 : 200, r);
+    const r = queueChain(body.cwd, body.prompt);
+    if (r.ok) { console.log(`[queue] +#${r.ids.join(',#')} (${r.item.project}) ${r.item.prompt.slice(0, 60)}`); setTimeout(queueTick, 400); }
+    return sendJson(res, r.error && !r.ok ? 400 : 200, r);
   }
   if (url === '/api/queue/action' && req.method === 'POST') {
     const body = await readBody(req);
@@ -2166,7 +2281,8 @@ const server = http.createServer(async (req, res) => {
       projectsKnown: projects.discover().length,
       version,
     };
-    return sendJson(res, 200, { bridge, ...health.report() });
+    const doctor = await doctorChecks().catch(() => []);
+    return sendJson(res, 200, { bridge, doctor, ...health.report() });
   }
 
   if (url === '/api/editor' && req.method === 'GET') {

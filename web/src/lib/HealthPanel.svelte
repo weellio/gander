@@ -65,6 +65,23 @@
       {:else if !data}
         <div class="muted">Could not reach bridge — is <code>node bridge/server.js</code> running?</div>
       {:else}
+        <!-- ── Doctor: live connectivity checks ── -->
+        {#if data.doctor?.length}
+          <div class="section">
+            <div class="lbl">Doctor — live checks</div>
+            {#each data.doctor as c (c.id)}
+              <div class="doc">
+                <span class="docic {c.status}">{c.status === 'ok' ? '✓' : c.status === 'off' ? '·' : c.status === 'warn' ? '⚠' : '✗'}</span>
+                <div class="docbody">
+                  <span class="field">{c.label}</span>
+                  <span class="docdet">{c.detail}</span>
+                  {#if c.hint && c.status !== 'ok'}<div class="dochint">{c.hint}</div>{/if}
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
         <!-- ── Bridge ── -->
         <div class="section">
           <div class="lbl">Bridge</div>
@@ -167,6 +184,17 @@
   .check-label.dim { color: var(--color-text-tertiary); }
 
   .path { font-size: 10px; color: var(--color-text-tertiary); word-break: break-all; }
+
+  .doc { display: flex; gap: 8px; align-items: flex-start; }
+  .docic { font-size: 11px; font-family: var(--font-mono); width: 14px; flex-shrink: 0; line-height: 1.5; }
+  .docic.ok { color: #10B981; }
+  .docic.warn { color: #F59E0B; }
+  .docic.fail { color: #EF4444; }
+  .docic.off { color: var(--color-text-tertiary); }
+  .docbody { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .docdet { font-size: 10.5px; color: var(--color-text-tertiary); word-break: break-word; }
+  .dochint { font-size: 10px; color: var(--color-text-secondary); background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary); border-radius: 5px; padding: 4px 7px; margin-top: 3px; }
 
   .hint {
     font-size: 11px; color: var(--color-text-secondary);

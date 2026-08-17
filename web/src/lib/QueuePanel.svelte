@@ -49,11 +49,11 @@
     if (r && r.ok) load(); else note('✗ ' + ((r && r.error) || 'failed'));
   }
   async function saveCfg() {
-    const r = await post('/api/queue-config', { enabled: q.enabled, maxSlots: Number(q.maxSlots) || 2, telegramOnDone: tgOnDone, worktrees: !!q.worktrees });
-    if (r) { q.enabled = r.enabled; q.maxSlots = r.maxSlots; q.worktrees = !!r.worktrees; tgOnDone = !!r.telegramOnDone; note('✓ saved'); }
+    const r = await post('/api/queue-config', { enabled: q.enabled, maxSlots: Number(q.maxSlots) || 2, telegramOnDone: tgOnDone, worktrees: !!q.worktrees, testGate: !!q.testGate });
+    if (r) { q.enabled = r.enabled; q.maxSlots = r.maxSlots; q.worktrees = !!r.worktrees; q.testGate = !!r.testGate; tgOnDone = !!r.telegramOnDone; note('✓ saved'); }
   }
   function age(ts) { if (!ts) return ''; const s = Math.max(0, Math.round((Date.now() - ts) / 1000)); if (s < 60) return s + 's'; if (s < 3600) return Math.round(s / 60) + 'm'; return Math.round(s / 3600) + 'h'; }
-  const ICON = { queued: '⏳', running: '▶', done: '✅', failed: '⚠️', cancelled: '✕' };
+  const ICON = { queued: '⏳', running: '▶', gating: '🧪', done: '✅', failed: '⚠️', cancelled: '✕' };
   let counts = $derived.by(() => { const c = { queued: 0, running: 0 }; for (const it of q.items || []) if (c[it.status] !== undefined) c[it.status]++; return c; });
   function onGoalKey(e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); add(); } }
 </script>
@@ -69,7 +69,7 @@
     <div class="body">
       <div class="addbox">
         <div class="lblrow"><span class="lbl">Add a task</span><MicButton onappend={(t) => (goal = (goal ? goal.trim() + ' ' : '') + t)} /></div>
-        <textarea rows="2" bind:value={goal} placeholder="what should Claude do? (Ctrl+Enter adds)" onkeydown={onGoalKey}></textarea>
+        <textarea rows="2" bind:value={goal} placeholder="what should Claude do? (Ctrl+Enter adds · 'then:' chains follow-up tasks)" onkeydown={onGoalKey}></textarea>
         <div class="addrow">
           <select class="in" bind:value={cwd}>
             {#each projects as p (p.path)}<option value={p.path}>{p.name}</option>{/each}
@@ -84,6 +84,7 @@
         <label class="cb">slots <input class="in num" type="number" min="1" max="8" bind:value={q.maxSlots} onchange={saveCfg} /></label>
         <label class="cb"><input type="checkbox" bind:checked={tgOnDone} onchange={saveCfg} /> Telegram on done</label>
         <label class="cb" title="Each task runs in its own git worktree + branch, so several tasks can run in the SAME project in parallel without fighting over the tree. The bridge merges each task's branch back when its session finishes (conflicts keep the branch for manual merge). Non-repo projects fall back to the classic one-per-project rule."><input type="checkbox" bind:checked={q.worktrees} onchange={saveCfg} /> ⎇ Worktree isolation</label>
+        <label class="cb" title="Before merging a worktree task's branch, run the project's tests INSIDE the worktree (auto-detected: npm test / node --test; override with testCmds in aoc-config.json). Green merges as usual; red keeps the branch unmerged and marks the task failed with the test output attached."><input type="checkbox" bind:checked={q.testGate} onchange={saveCfg} /> 🧪 Test gate</label>
         {#if (q.items || []).some((i) => i.status === 'done' || i.status === 'failed' || i.status === 'cancelled')}
           <button class="mini" onclick={() => act(0, 'clear-done')}>clear finished</button>
         {/if}
@@ -99,17 +100,20 @@
           <div class="item {it.status}">
             <span class="ic">{ICON[it.status] || '•'}</span>
             <div class="ibody">
-              <div class="itop"><b>#{it.id}</b> <span class="proj">{it.project}</span> <span class="st">{it.status}{it.runner === 'terminal' ? ' · terminal' : ''}</span>
+              <div class="itop"><b>#{it.id}</b> <span class="proj">{it.project}</span> <span class="st">{it.status === 'gating' ? 'testing before merge' : it.status}{it.runner === 'terminal' ? ' · terminal' : ''}</span>
+                {#if it.afterId}<span class="chain" title="starts only after that task lands">⛓ after #{it.afterId}</span>{/if}
                 <span class="when">{it.status === 'running' ? age(it.startedAt) + ' in' : it.doneAt ? age(it.doneAt) + ' ago' : age(it.createdAt) + ' waiting'}</span>
               </div>
               <div class="prompt">{it.prompt}</div>
-              {#if it.branch}<div class="merge" class:kept={it.merge && it.merge !== 'merged' && it.merge !== 'no changes'}>⎇ {it.merge || it.branch}</div>{/if}
+              {#if it.branch}<div class="merge" class:kept={it.merge && it.merge !== 'merged' && it.merge !== 'no changes'}>⎇ {it.merge || it.branch}{#if it.gate === 'passed'} · 🧪 tests passed{/if}</div>{/if}
               {#if it.error}<div class="err">{it.error}</div>{/if}
+              {#if it.testOut}<details class="tout"><summary>test output</summary><pre>{it.testOut}</pre></details>{/if}
             </div>
             <div class="acts">
               {#if it.status === 'queued'}<button class="mini" onclick={() => act(it.id, 'cancel')}>cancel</button>{/if}
               {#if it.status === 'failed' || it.status === 'cancelled'}<button class="mini" onclick={() => act(it.id, 'retry')}>retry</button>{/if}
-              {#if it.status !== 'running'}<button class="mini ghost" onclick={() => act(it.id, 'remove')}>✕</button>{/if}
+              {#if it.status === 'failed'}<button class="mini" title="re-queue as a new task with the failure details baked into the prompt, so the next attempt starts knowing what went wrong" onclick={() => act(it.id, 'retry-context')}>⟳ retry+ctx</button>{/if}
+              {#if it.status !== 'running' && it.status !== 'gating'}<button class="mini ghost" onclick={() => act(it.id, 'remove')}>✕</button>{/if}
             </div>
           </div>
         {/each}
@@ -138,6 +142,12 @@
   .cfgrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; }
   .merge { font-size: 10px; font-family: var(--font-mono); color: #10B981; margin-top: 2px; }
   .merge.kept { color: #F59E0B; }
+  .chain { font-size: 10px; color: var(--color-text-tertiary); }
+  .tout { margin-top: 3px; }
+  .tout summary { font-size: 10px; color: var(--color-text-tertiary); cursor: pointer; }
+  .tout pre { font-size: 9.5px; font-family: var(--font-mono); max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+    background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: 6px; padding: 6px; margin: 4px 0 0; }
+  .item.gating { border-color: #A855F766; background: #A855F70d; }
   .cb { display: flex; align-items: center; gap: 5px; color: var(--color-text-secondary); cursor: pointer; }
   .mini { font-size: 10px; padding: 2px 8px; border-radius: 5px; cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-secondary); }
   .mini:hover { border-color: var(--accent, #6366F1); color: var(--color-text-primary); }

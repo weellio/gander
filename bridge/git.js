@@ -85,7 +85,9 @@ function worktreeStart(cwd, id) {
 // Finish a worktree task: commit any leftovers the session didn't commit (so
 // nothing is ever lost), merge the branch into the main tree when it's clean,
 // and clean up. Returns a human-readable merge status string.
-function worktreeFinish(cwd, wtPath, branch, label) {
+// opts.noMerge (test gate failed): commit leftovers + clean up the worktree,
+// but KEEP the branch unmerged — nothing broken lands on the main tree.
+function worktreeFinish(cwd, wtPath, branch, label, opts = {}) {
   const removeWt = () => {
     try { gitSync(cwd, ['worktree', 'remove', '--force', wtPath]); } catch (_) {}
     try { gitSync(cwd, ['worktree', 'prune']); } catch (_) {}
@@ -105,6 +107,8 @@ function worktreeFinish(cwd, wtPath, branch, label) {
       const ahead = gitSync(cwd, ['rev-list', '--count', `HEAD..${branch}`]).trim();
       if (ahead === '0') { removeWt(); try { gitSync(cwd, ['branch', '-d', branch]); } catch (_) {} return 'no changes'; }
     } catch (_) {}
+    // 2b) test gate said no — keep the branch, land nothing
+    if (opts.noMerge) { removeWt(); return `tests failed — branch ${branch} kept (fix + merge manually, or Retry with context)`; }
     // 3) only the bridge merges, and only into a CLEAN main tree
     const mainDirty = gitSync(cwd, ['status', '--porcelain']).trim();
     if (mainDirty) { removeWt(); return `branch ${branch} kept — main tree has uncommitted changes, merge when ready`; }

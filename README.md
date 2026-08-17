@@ -26,7 +26,7 @@ A live, animated dashboard of your **Claude Code agents and sub-agents** — an 
 - **💸 Cost guardrails** — live per-session spend, `$/min` runaway alerts, daily/per-session budgets with an optional hard stop, and 5-hour plan-window pacing.
 - **📊 Session analytics + CLAUDE.md audit** — cache-hit %, context-window fill, a one-click `/compact` nudge, and a deterministic CLAUDE.md trimmer that flags secrets, dead paths, and stale prose.
 - **⏪ Session replay** — scrub any session's timeline: what ran when, with cumulative tokens/cost at every moment.
-- **📋 Task queue · 📰 Ship digest · Routines** — line up goals per project (with **⎇ worktree isolation** to run several tasks in one project in parallel, auto-merged back), see what actually got done, schedule headless morning briefings.
+- **📋 Task queue · 📰 Ship digest · Routines** — line up goals per project (with **⎇ worktree isolation** to run several tasks in one project in parallel, a **🧪 test gate** so only green branches merge back, `then:` chaining, and retry-with-context on failures), see what actually got done, schedule headless morning briefings.
 - **Projects control center** — skills, agents, commands, hooks, MCP, `settings.json`, git status/commit/push — for every project, in one place.
 - **Tune + Skills usage** — deterministic mining of your own transcripts: your prompting "turn tax" with copy-paste fixes, and which skills actually get used (never-used = context dead weight).
 - **🖥 Fleet + Claude Desktop** — all your machines' agents on one floor; a view-only tile for the Claude desktop app.
