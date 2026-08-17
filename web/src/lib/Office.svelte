@@ -913,8 +913,10 @@
       drawDecor(ctx, W, H, frameN);
       if ($floorSprites && officeOK) {
         // furnished break area from the office sheet: sofa · cooler · plant · bulletin board
+        // all three station rugs share one height + baseline so the band reads
+        // as a tidy row (break room · time clock · ticket bot)
         rug(cooler.x - 8, cooler.y - 16, 306, 96);
-        rug(clock.x, clock.y - 12, 92, 86);
+        rug(clock.x, clock.y - 16, 84, 96);
         drawItem(ctx, OFFICE.sofa, cooler.x - 118, cooler.y + 6, 44);
         drawItem(ctx, OFFICE.cooler, cooler.x, cooler.y + 6, 56);
         drawItem(ctx, OFFICE.plant, cooler.x + 54, cooler.y + 6, 46);
@@ -934,8 +936,8 @@
       // Ticket Bot — the task queue's front desk, right of the punch clock;
       // its badge is the queued count, clicking opens the 📋 queue panel
       if ($floorSprites && generalOK) {
-        const tbx = clock.x + 82, tby = clock.y + 4;
-        rug(tbx, tby - 22, 74, 82);
+        const tbx = clock.x + 88, tby = clock.y + 4;
+        rug(tbx, clock.y - 16, 84, 96);
         drawGeneral(ctx, TICKETBOT, tbx, tby, 44);
         const q = queueInfo || {};
         if (q.queued > 0 || q.running > 0) {
@@ -1128,7 +1130,9 @@
           // goose characters from the assets/ sheet — pose follows the state,
           // bottom-anchored where the vector figure's feet were (standing
           // poses tuck in behind the desk instead of on top of it)
-          const footY = drawY + 50 * fs - (standsBehindDesk ? 42 * fs : 0);
+          // roots sit higher behind their big desk; subs tuck in deeper so the
+          // small desk covers their feet and lower legs
+          const footY = drawY + 50 * fs - (standsBehindDesk ? (isRoot ? 42 : 22) * fs : 0);
           drewSprite = drawGoose(ctx, agent.id, agent.state, walking, t, drawX, footY, isRoot ? 66 : 52, !!agent.stalled, { heading: d.heading, coffee });
           if (standsBehindDesk) drawItem(ctx, OFFICE.desk, d.homeX, d.homeY + (isRoot ? 34 : 26), isRoot ? 36 : 26, true);
         }
