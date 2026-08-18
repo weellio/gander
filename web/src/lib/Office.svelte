@@ -634,9 +634,17 @@
     const z = Math.min(cssW / bw, cssH / bh, 1.5);
     zoom = z; panX = (cssW - bw * z) / 2 - minX * z; panY = (cssH - bh * z) / 2 - minY * z;
   }
-  function onWheel(e) { e.preventDefault(); const r = canvas.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, zoom * (e.deltaY < 0 ? 1.12 : 0.89)); }
+  function onWheel(e) {
+    if (e.target.closest && e.target.closest('.procpop')) return;   // scrolling over a popover shouldn't zoom the floor
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    zoomAt(e.clientX - r.left, e.clientY - r.top, zoom * (e.deltaY < 0 ? 1.12 : 0.89));
+  }
   function onPointerDown(e) {
-    if (e.target.closest && e.target.closest('.zoomctl')) return;
+    // the robot/cluster popover is a child of this element: without this guard a
+    // press on its buttons starts a canvas drag with POINTER CAPTURE — the
+    // button's click never fires and the retargeted pointerup closes the popover
+    if (e.target.closest && e.target.closest('.zoomctl, .procpop')) return;
     dragging = true; down = { x: e.clientX, y: e.clientY };
     drag = { x: e.clientX, y: e.clientY, px: panX, py: panY };
     e.currentTarget.setPointerCapture?.(e.pointerId);
