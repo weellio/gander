@@ -4,7 +4,7 @@
   import { paintFigure } from './avatars/desk.js';
   import { buildClusters, fmtUp, TONE_COL } from './procgroups.js';
   import { animations, costAlerts, floorSprites } from './stores.js';
-  import { loadGooseSheet, loadOfficeSheet, loadGeneralSheet, loadGeneral2Sheet, drawGoose, drawItem, drawDroid, drawGeneral, drawDeco2, carpetPattern, OFFICE, TICKETBOT, DECO2 } from './sprites.js';
+  import { loadGooseSheet, loadOfficeSheet, loadGeneralSheet, drawGoose, drawItem, drawDroid, drawGeneral, carpetPattern, OFFICE, TICKETBOT } from './sprites.js';
   import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
@@ -1265,7 +1265,7 @@
           const dims = clusters.map((c) => {
             const cols = Math.min(7, Math.max(3, c.bots.length));
             const rows = Math.ceil(c.bots.length / cols);
-            return { cols, boxW: Math.max(280, cols * 40 + 34), boxH: 62 + rows * 40 };
+            return { cols, boxW: Math.max(200, cols * 40 + 34), boxH: 62 + rows * 40 };
           });
           const totalH = dims.reduce((s, d) => s + d.boxH + 18, 0) - 18;
           const nCols = Math.min(3, Math.max(1, Math.ceil(totalH / 620)));
@@ -1279,19 +1279,14 @@
           const colW = Array.from({ length: usedCols }, (_, i) => Math.max(...dims.filter((d, j) => colOf[j] === i).map((d) => d.boxW)));
           const colH = Array.from({ length: usedCols }, (_, i) => dims.filter((d, j) => colOf[j] === i).reduce((s, d) => s + d.boxH + 18, 0) - 18);
           // per-cluster positions, room-relative
-          const colX = []; let xRun = 52;
+          const colX = []; let xRun = 20;
           for (let i = 0; i < usedCols; i++) { colX.push(xRun); xRun += colW[i] + 18; }
           const yRun = Array.from({ length: usedCols }, () => 22);
           const pos = dims.map((d, j) => { const ci = colOf[j]; const p = { x: colX[ci], y: yRun[ci] }; yRun[ci] += d.boxH + 18; return p; });
           const orw = xRun + 2, orh = Math.max(...colH) + 22 + 20;
           const orx = minX - orw - 64, ory = topY;   // 64px corridor between it and the floor
-          const rx = orx + 52;
-          const cy0 = ory + 22;
           serverRoomRect = { x: orx, y: ory, w: orw, h: orh };
           drawRoom(ctx, orx, ory, orw, orh, { edge: 'top', x: orx + orw - 64 }, 'rgba(120,132,168,');
-          // rack-style double doors straddling the server-room doorway (top wall,
-          // toward the floor corridor)
-          if ($floorSprites) drawDeco2(ctx, DECO2.serverDoor, orx + orw - 64, ory + 18, 46);
           ctx.save();
           ctx.fillStyle = 'rgba(140,145,160,0.85)';
           ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left';
@@ -1299,9 +1294,7 @@
           ctx.font = '8px ui-sans-serif, system-ui, sans-serif'; ctx.fillStyle = 'rgba(130,135,148,0.6)';
           ctx.fillText('background processes · click a bot or a group header', orx + 84, ory - 18);
           ctx.restore();
-          drawRack(ctx, rx - 26, cy0 + 30, t);
           if ($floorSprites && officeOK) {
-            drawItem(ctx, OFFICE.printer, orx + orw - 36, ory + 58, 42);        // copier in the corner
             drawItem(ctx, OFFICE.posters[1], orx + 26, ory + 12, 20);           // "GO AWAY" on the server-room wall
           }
           clusters.forEach((c, j) => {
@@ -1373,7 +1366,6 @@
     loadGooseSheet().then(() => (sheetOK = true)).catch(() => {});
     loadOfficeSheet().then(() => (officeOK = true)).catch(() => {});
     loadGeneralSheet().then(() => (generalOK = true)).catch(() => {});
-    loadGeneral2Sheet().catch(() => {});   // elevator + server doors (draws no-op until ready)
     resize();
     poll();
     const pollId = setInterval(poll, 600);

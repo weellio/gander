@@ -38,22 +38,22 @@ export function buildClusters(procs) {
       const proj = bots.map((b) => b.project).find(Boolean);
       clusters.push({
         key, claudePid: pid, bots,
-        title: `claude.exe ${pid}`, sub: `Claude session${proj ? ' in ' + proj : ''} · up ~${fmtUp(up)}`,
+        title: `claude.exe ${pid}`, sub: `${proj ? proj + ' · ' : ''}up ~${fmtUp(up)}`,
         verdict: work.length
           ? 'has live work: ' + work.map((b) => b.name.replace(/\.exe$/i, '') + (b.ports?.[0] ? ' :' + b.ports[0] : '')).join(', ')
-          : (up > 86400e3 ? `parked ~${days}d — only plugin sidecars · safe to close` : 'only plugin sidecars — exits with its window'),
+          : (up > 86400e3 ? `parked ~${days}d · safe to close` : 'sidecars only — exits with its window'),
         tone: work.length ? 'work' : (up > 86400e3 ? 'close' : 'dim'),
       });
     } else if (key.startsWith('proj:')) {
       clusters.push({
-        key, bots, title: key.slice(5), sub: 'left running by a Claude session',
+        key, bots, title: key.slice(5), sub: 'left running',
         verdict: bots.map((b) => b.name.replace(/\.exe$/i, '') + (b.ports?.[0] ? ' :' + b.ports[0] : '')).join(', '),
         tone: 'work',
       });
     } else if (key === 'other') {
       clusters.push({ key, bots, title: 'NOT CLAUDE-SPAWNED', sub: '', verdict: 'listed for their ports only', tone: 'dim' });
     } else {
-      clusters.push({ key, bots, title: 'ORPHANED', sub: 'no owning session', verdict: 'may still be a service you rely on — kill only what you recognize', tone: 'warn' });
+      clusters.push({ key, bots, title: 'ORPHANED', sub: 'no owning session', verdict: 'validate before closing', tone: 'warn' });
     }
   }
   clusters.sort((a, b) => (TONE_ORD[a.tone] ?? 9) - (TONE_ORD[b.tone] ?? 9) || (a.claudePid || 0) - (b.claudePid || 0));
