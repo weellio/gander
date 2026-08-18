@@ -1242,39 +1242,56 @@
         //   claude.exe cluster with real children     → "has live work: …"
         //   no owner at all                           → "kill only what you recognize"
         if (rackBots.length) {
-          // Anchor below the desks — and REMEMBER the anchor, so when every tile
-          // clocks out (idle sessions retire after ~25 min) the server room stays
-          // exactly where it was instead of jumping off-camera. The processes are
-          // still running; the picture must keep saying so.
-          let maxY = -Infinity, minX = Infinity;
-          for (const d of desks.values()) if (d.homeY != null) { if (d.homeY > maxY) maxY = d.homeY; if (d.homeX < minX) minX = d.homeX; }
-          // rooms extend below their desks (walls + parked bots) — anchor below
-          // the deepest ROOM bottom, not the deepest desk
-          for (const r of roomsThisFrame) { if (r.by + r.bh > maxY) maxY = r.by + r.bh; if (r.bx < minX) minX = r.bx; }
-          if (maxY === -Infinity) {
-            if (rackAnchor) { maxY = rackAnchor.maxY; minX = rackAnchor.minX; }
-            else { maxY = H * 0.3; minX = W / 2 - 160; }
-          } else { rackAnchor = { maxY, minX }; }
+          // Park the server room to the LEFT of the floor, top-aligned with the
+          // break-room band: screens are wider than tall, so growing sideways
+          // (instead of stacking below) lets Fit zoom the whole floor larger.
+          // REMEMBER the anchor, so when every tile clocks out (idle sessions
+          // retire after ~25 min) the room stays put instead of jumping.
+          let minX = Infinity;
+          for (const d of desks.values()) if (d.homeY != null && d.homeX < minX) minX = d.homeX;
+          for (const r of roomsThisFrame) if (r.bx < minX) minX = r.bx;
+          if (_minY !== Infinity) minX = Math.min(minX, cooler.x - 190);   // the break band can stick out left of the rooms
+          let topY = _minY === Infinity ? 60 : _topY - 64;   // wall top level with the station rugs
+          if (minX === Infinity) {
+            if (rackAnchor) { minX = rackAnchor.minX; topY = rackAnchor.topY; }
+            else { minX = W / 2 - 160; topY = 60; }
+          } else { rackAnchor = { minX, topY }; }
           // shared grouping + verdicts (procgroups.js) — same truth as the Mosaic strip
           const clusters = buildClusters(rackBots);
 
-          // well below the floor so nothing runs into desk/cooler labels
-          const rx = Math.max(80, minX - 14);
-          let cy0 = maxY + 84;   // maxY is already the deepest room bottom
-          // pre-measure the cluster stack so the server room can be WALLED like
-          // a real room (door on the top edge, facing the office)
+          // pre-measure the clusters, then flow them into COLUMNS: screens are
+          // wide, so a long list becomes 2–3 columns side by side instead of a
+          // strip taller than the whole floor
           const dims = clusters.map((c) => {
             const cols = Math.min(7, Math.max(3, c.bots.length));
             const rows = Math.ceil(c.bots.length / cols);
             return { cols, boxW: Math.max(280, cols * 40 + 34), boxH: 62 + rows * 40 };
           });
-          const stackH = dims.reduce((s, d) => s + d.boxH + 18, 0) - 18;
-          const stackW = Math.max(...dims.map((d) => d.boxW));
-          const orx = rx - 52, ory = cy0 - 22, orw = stackW + 52 + 18, orh = stackH + 22 + 20;
+          const totalH = dims.reduce((s, d) => s + d.boxH + 18, 0) - 18;
+          const nCols = Math.min(3, Math.max(1, Math.ceil(totalH / 620)));
+          const targetH = totalH / nCols;
+          const colOf = []; let colI = 0, colRun = 0;   // greedy sequential fill
+          for (const d of dims) {
+            if (colRun > 0 && colRun + d.boxH / 2 > targetH && colI < nCols - 1) { colI++; colRun = 0; }
+            colOf.push(colI); colRun += d.boxH + 18;
+          }
+          const usedCols = colI + 1;
+          const colW = Array.from({ length: usedCols }, (_, i) => Math.max(...dims.filter((d, j) => colOf[j] === i).map((d) => d.boxW)));
+          const colH = Array.from({ length: usedCols }, (_, i) => dims.filter((d, j) => colOf[j] === i).reduce((s, d) => s + d.boxH + 18, 0) - 18);
+          // per-cluster positions, room-relative
+          const colX = []; let xRun = 52;
+          for (let i = 0; i < usedCols; i++) { colX.push(xRun); xRun += colW[i] + 18; }
+          const yRun = Array.from({ length: usedCols }, () => 22);
+          const pos = dims.map((d, j) => { const ci = colOf[j]; const p = { x: colX[ci], y: yRun[ci] }; yRun[ci] += d.boxH + 18; return p; });
+          const orw = xRun + 2, orh = Math.max(...colH) + 22 + 20;
+          const orx = minX - orw - 64, ory = topY;   // 64px corridor between it and the floor
+          const rx = orx + 52;
+          const cy0 = ory + 22;
           serverRoomRect = { x: orx, y: ory, w: orw, h: orh };
-          drawRoom(ctx, orx, ory, orw, orh, { edge: 'top', x: orx + orw / 2 }, 'rgba(120,132,168,');
-          // rack-style double doors straddling the server-room doorway (top wall)
-          if ($floorSprites) drawDeco2(ctx, DECO2.serverDoor, orx + orw / 2, ory + 18, 46);
+          drawRoom(ctx, orx, ory, orw, orh, { edge: 'top', x: orx + orw - 64 }, 'rgba(120,132,168,');
+          // rack-style double doors straddling the server-room doorway (top wall,
+          // toward the floor corridor)
+          if ($floorSprites) drawDeco2(ctx, DECO2.serverDoor, orx + orw - 64, ory + 18, 46);
           ctx.save();
           ctx.fillStyle = 'rgba(140,145,160,0.85)';
           ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'left';
@@ -1287,42 +1304,40 @@
             drawItem(ctx, OFFICE.printer, orx + orw - 36, ory + 58, 42);        // copier in the corner
             drawItem(ctx, OFFICE.posters[1], orx + 26, ory + 12, 20);           // "GO AWAY" on the server-room wall
           }
-          for (const c of clusters) {
-            const cols = Math.min(7, Math.max(3, c.bots.length));
-            const rows = Math.ceil(c.bots.length / cols);
-            const boxW = Math.max(280, cols * 40 + 34), boxH = 62 + rows * 40;
+          clusters.forEach((c, j) => {
+            const { cols, boxW, boxH } = dims[j];
+            const px = orx + pos[j].x, py = ory + pos[j].y;
             const col = TONE_COL[c.tone];
             ctx.save();                                        // group box, tinted by verdict
             ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(rx, cy0, boxW, boxH, 9); else ctx.rect(rx, cy0, boxW, boxH);
+            if (ctx.roundRect) ctx.roundRect(px, py, boxW, boxH, 9); else ctx.rect(px, py, boxW, boxH);
             ctx.fillStyle = hexA(col, 0.045); ctx.fill();
             ctx.strokeStyle = hexA(col, c.tone === 'dim' ? 0.25 : 0.45); ctx.lineWidth = 1; ctx.stroke();
             ctx.textAlign = 'left';
             ctx.font = '600 9px ui-sans-serif, system-ui, sans-serif';
             ctx.fillStyle = 'rgba(200,204,214,0.9)';
-            ctx.fillText(c.title, rx + 12, cy0 + 15);
-            if (c.sub) { ctx.font = '8px ui-sans-serif, system-ui, sans-serif'; ctx.fillStyle = 'rgba(140,145,158,0.75)'; ctx.fillText(c.sub, rx + 14 + ctx.measureText(c.title).width + 26, cy0 + 15); }
+            ctx.fillText(c.title, px + 12, py + 15);
+            if (c.sub) { ctx.font = '8px ui-sans-serif, system-ui, sans-serif'; ctx.fillStyle = 'rgba(140,145,158,0.75)'; ctx.fillText(c.sub, px + 14 + ctx.measureText(c.title).width + 26, py + 15); }
             ctx.font = '600 8px ui-sans-serif, system-ui, sans-serif';   // the verdict pill
             const vw = ctx.measureText(c.verdict).width + 12;
             ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(rx + 10, cy0 + 22, vw, 13, 6.5); else ctx.rect(rx + 10, cy0 + 22, vw, 13);
+            if (ctx.roundRect) ctx.roundRect(px + 10, py + 22, vw, 13, 6.5); else ctx.rect(px + 10, py + 22, vw, 13);
             ctx.fillStyle = hexA(col, 0.14); ctx.fill();
             ctx.fillStyle = col;
-            ctx.fillText(c.verdict, rx + 16, cy0 + 31.5);
+            ctx.fillText(c.verdict, px + 16, py + 31.5);
             ctx.restore();
             // clickable header/verdict area → cluster popover (End-session action)
-            hitTargets.push({ id: 'cluster:' + c.key, x: rx + Math.min(boxW, vw + 30) / 2, y: cy0 + 24, r: 28, cluster: c });
+            hitTargets.push({ id: 'cluster:' + c.key, x: px + Math.min(boxW, vw + 30) / 2, y: py + 24, r: 28, cluster: c });
             // one label per RUN of identical bots in a row (six "telegram"s → one),
             // so the words stop running together
             const lblOf = (p) => p.plugin || String(p.name || '').replace(/\.exe$/i, '');
             c.bots.forEach((p, i) => {
-              const bx = rx + 28 + (i % cols) * 40, by = cy0 + 54 + Math.floor(i / cols) * 40;
+              const bx = px + 28 + (i % cols) * 40, by = py + 54 + Math.floor(i / cols) * 40;
               const first = i % cols === 0 || lblOf(p) !== lblOf(c.bots[i - 1]);
               drawRobot(ctx, bx, by, t, p, first || !!(p.ports && p.ports.length));
               hitTargets.push({ id: 'proc:' + p.pid, x: bx, y: by, r: 14, proc: p });
             });
-            cy0 += boxH + 18;
-          }
+          });
         }
       }
       // debug route overlay (window.__ganderRoute) — dev aid for pathfinding
