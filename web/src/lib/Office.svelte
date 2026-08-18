@@ -606,17 +606,28 @@
   }
   function zoomBy(f) { if (canvas) { const r = canvas.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, zoom * f); } }
   function fitView() {
+    if (!cssW || !cssH) { zoom = 1; panX = 0; panY = 0; return; }
     const ds = Array.from(desks.values()).filter((d) => d.homeX != null);
-    if (!ds.length || !cssW || !cssH) { zoom = 1; panX = 0; panY = 0; return; }
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const d of ds) { minX = Math.min(minX, d.homeX); maxX = Math.max(maxX, d.homeX); minY = Math.min(minY, d.homeY); maxY = Math.max(maxY, d.homeY); }
-    minY -= 136 + 70;   // the break-room / punch-clock band lives 136 above the topmost desk
-    maxY += 96 + 70;    // rooms extend below their deepest desk, and the envelope wall sits below that
-    if (serverRoomRect) {   // the server room hangs below the floor and grows with its bot clusters
+    if (ds.length) {
+      minY -= 136 + 70;   // the break-room / punch-clock band lives 136 above the topmost desk
+      maxY += 96 + 70;    // rooms extend below their deepest desk, and the envelope wall sits below that
+    }
+    if (serverRoomRect) {   // the server room sits beside the floor and grows with its bot clusters
       minX = Math.min(minX, serverRoomRect.x - 20);
       maxX = Math.max(maxX, serverRoomRect.x + serverRoomRect.w + 20);
+      minY = Math.min(minY, serverRoomRect.y - 60);
       maxY = Math.max(maxY, serverRoomRect.y + serverRoomRect.h + 96);
     }
+    if (!ds.length && rackAnchor) {
+      // no desks left — the break band is parked at its remembered spot; frame
+      // it too instead of resetting to origin (the scene can live at negative
+      // world coords, which a zoom-1/pan-0 reset would show none of)
+      maxX = Math.max(maxX, (rackAnchor.midX || 0) + 330);
+      minY = Math.min(minY, (rackAnchor.topY ?? 40) - 30);
+    }
+    if (minX === Infinity) { zoom = 1; panX = 0; panY = 0; return; }
     const pad = 80;
     minX -= pad; minY -= pad; maxX += pad; maxY += pad;
     const bw = Math.max(1, maxX - minX), bh = Math.max(1, maxY - minY);
@@ -681,6 +692,7 @@
       layout(tree, W, H);
       // frame everything once on first population so a big team isn't off-screen
       if (!autoFitted && desks.size && Array.from(desks.values()).some((d) => d.homeX != null)) { fitView(); autoFitted = true; }
+      else if (!autoFitted && serverRoomRect && rackAnchor) { fitView(); autoFitted = true; }   // opened onto an empty floor — frame the server room + parked band
 
       // prune desks for agents that vanished
       const live = new Set(list.map((a) => a.id));
@@ -690,11 +702,14 @@
       // is sparse (just orchestrators) while workers pile up below, so it stays clear.
       let _minX = Infinity, _maxX = -Infinity, _minY = Infinity;
       for (const d of desks.values()) if (d.homeX != null) { if (d.homeX < _minX) _minX = d.homeX; if (d.homeX > _maxX) _maxX = d.homeX; if (d.homeY < _minY) _minY = d.homeY; }
-      const _midX = _minY === Infinity ? W / 2 : (_minX + _maxX) / 2;
-      const _topY = _minY === Infinity ? 40 : _minY - 136;   // rugs + furniture fully clear of the rooms' top wall bands
+      // with no desks on the floor, keep the break band where it LAST was (the
+      // server-room anchor remembers it) — otherwise the fallback position can
+      // land on top of the still-anchored server room
+      const _midX = _minY === Infinity ? (rackAnchor ? rackAnchor.midX : W / 2) : (_minX + _maxX) / 2;
+      const _topY = _minY === Infinity ? (rackAnchor ? rackAnchor.topY + 64 : 40) : _minY - 136;   // rugs + furniture fully clear of the rooms' top wall bands
       const cooler = { x: _midX - 122, y: _topY };  // break area, top-centre-left
       const clock = { x: _midX + 122, y: _topY };   // punch clock, top-centre-right (clear of the break rug)
-      if (typeof window !== 'undefined') window.__officeDbg = { cooler, clock, minY: _minY, zoom, panX, panY, desks: desks.size, sheetOK, officeOK, generalOK, floorSprites: $floorSprites };
+      if (typeof window !== 'undefined') window.__officeDbg = { cooler, clock, minY: _minY, zoom, panX, panY, desks: desks.size, procs: (procs || []).length, rack: serverRoomRect, anchor: rackAnchor, sheetOK, officeOK, generalOK, floorSprites: $floorSprites };
 
       // command-palette "go to agent" — centre the view on it and flash a ring
       if (_pendingFocus) {
@@ -1255,7 +1270,7 @@
           if (minX === Infinity) {
             if (rackAnchor) { minX = rackAnchor.minX; topY = rackAnchor.topY; }
             else { minX = W / 2 - 160; topY = 60; }
-          } else { rackAnchor = { minX, topY }; }
+          } else { rackAnchor = { minX, topY, midX: _midX }; }
           // shared grouping + verdicts (procgroups.js) — same truth as the Mosaic strip
           const clusters = buildClusters(rackBots);
 
