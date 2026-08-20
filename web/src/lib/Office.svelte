@@ -620,12 +620,15 @@
       minY = Math.min(minY, serverRoomRect.y - 60);
       maxY = Math.max(maxY, serverRoomRect.y + serverRoomRect.h + 96);
     }
-    if (!ds.length && rackAnchor) {
-      // no desks left — the break band is parked at its remembered spot; frame
-      // it too instead of resetting to origin (the scene can live at negative
-      // world coords, which a zoom-1/pan-0 reset would show none of)
-      maxX = Math.max(maxX, (rackAnchor.midX || 0) + 330);
-      minY = Math.min(minY, (rackAnchor.topY ?? 40) - 30);
+    if (!ds.length) {
+      // no desks left — frame the break band too (parked at its remembered spot,
+      // or at the fresh-load fallback position) instead of clipping it
+      const mid = (rackAnchor && rackAnchor.midX) || cssW / 2;
+      const ty = rackAnchor ? rackAnchor.topY + 64 : 40;
+      minX = Math.min(minX, mid - 320);
+      maxX = Math.max(maxX, mid + 330);
+      minY = Math.min(minY, ty - 94);
+      maxY = Math.max(maxY, ty + 60);
     }
     if (minX === Infinity) { zoom = 1; panX = 0; panY = 0; return; }
     const pad = 80;
@@ -771,7 +774,9 @@
           const rd = desks.get(root.id);
           if (rd && rd.teamRect) g2(rd.teamRect.x - 52, rd.teamRect.y - 36, rd.teamRect.x + rd.teamRect.w + 52, rd.teamRect.y + rd.teamRect.h + 96);
         }
-        if (_minY !== Infinity) g2(cooler.x - 180, _topY - 64, clock.x + 130, _topY + 44);
+        // the break band is always on the floor (parked/fallback position when
+        // no desks are left) — keep the building wrapped around it either way
+        g2(cooler.x - 180, _topY - 64, clock.x + 130, _topY + 44);
         if (serverRoomRect) g2(serverRoomRect.x - 26, serverRoomRect.y - 36, serverRoomRect.x + serverRoomRect.w + 26, serverRoomRect.y + serverRoomRect.h + 28);
         if (ex0 !== Infinity) {
           envB = { x: ex0, y: ey0, w: ex1 - ex0, h: ey1 - ey0 };
@@ -1273,12 +1278,13 @@
           let minX = Infinity;
           for (const d of desks.values()) if (d.homeY != null && d.homeX < minX) minX = d.homeX;
           for (const r of roomsThisFrame) if (r.bx < minX) minX = r.bx;
-          if (_minY !== Infinity) minX = Math.min(minX, cooler.x - 190);   // the break band can stick out left of the rooms
-          let topY = _minY === Infinity ? 60 : _topY - 64;   // wall top level with the station rugs
-          if (minX === Infinity) {
-            if (rackAnchor) { minX = rackAnchor.minX; topY = rackAnchor.topY; }
-            else { minX = W / 2 - 160; topY = 60; }
-          } else { rackAnchor = { minX, topY, midX: _midX }; }
+          minX = Math.min(minX, cooler.x - 190);   // the break band can stick out left of the rooms
+          let topY = _topY - 64;                   // wall top level with the station rugs
+          // (with no desks at all, cooler/_topY already fell back — deriving from
+          // them keeps the server room CLEAR of the break band on a fresh empty
+          // load, instead of both picking centre-screen and overlapping)
+          if (minX !== Infinity && _minY !== Infinity) rackAnchor = { minX, topY, midX: _midX };
+          else if (rackAnchor) { minX = rackAnchor.minX; topY = rackAnchor.topY; }
           // shared grouping + verdicts (procgroups.js) — same truth as the Mosaic strip
           const clusters = buildClusters(rackBots);
 
