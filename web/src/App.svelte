@@ -101,6 +101,20 @@
     $desktopNotify = want;
   }
 
+  // A NOC tab stays open for days — and keeps running the bundle it loaded,
+  // even after the dashboard on disk is rebuilt (buttons "stop working" because
+  // the tab is old, not because the bridge is). Latch the served build id on
+  // the first poll; when it changes, reload once to pick up the new code.
+  let _buildSeen = null, _reloading = $state(false);
+  function checkBuild(b) {
+    if (!b || b === 'unknown' || _reloading) return;
+    if (_buildSeen === null) { _buildSeen = b; return; }
+    if (b === _buildSeen) return;
+    _reloading = true;
+    if (document.hidden) { location.reload(); return; }   // background tab: refresh silently
+    setTimeout(() => location.reload(), 1800);            // visible: flash the notice below first
+  }
+
   async function poll() {
     try {
       const r = await fetch('/api/state', { cache: 'no-store' });
@@ -109,6 +123,7 @@
       projects = d.projects || [];
       procs = d.procs || [];
       queueCounts = d.queue || null;
+      checkBuild(d.build);
       const nowAwaiting = new Set(agents.filter((a) => a.state === 'awaiting').map((a) => a.id));
       if (!firstPoll) {
         const fresh = agents.filter((a) => a.state === 'awaiting' && !prevAwaiting.has(a.id));
@@ -508,6 +523,7 @@
   {#if menuOpen || optsOpen}<div class="menu-backdrop" onclick={() => { menuOpen = false; optsOpen = false; }} role="presentation"></div>{/if}
 
   {#if exportMsg}<div class="toast">{exportMsg}</div>{/if}
+  {#if _reloading}<div class="toast">✨ Gander was updated — refreshing…</div>{/if}
 
   <!-- always-mounted panels, opened from the Manage menu (drawers are position:fixed) -->
   <ProjectsSidebar bind:open={panels.projects} onMemory={openMemory} />

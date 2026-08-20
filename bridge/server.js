@@ -1632,7 +1632,25 @@ function snapshot() {
     procs: procsMod.compact(procsCache.list),
     fleet: fleet.status(),
     dispatch: { enabled: !!cfg.dispatch, sessions: dispatch.list().length, permissions: perms.length, rateLimit: dispatch.rateLimit() },
+    build: distBuild(),   // long-open tabs watch this and reload themselves when the dashboard is rebuilt
   };
+}
+
+// Identity of the SERVED dashboard bundle — a hash of dist/index.html (its
+// hashed asset names change every build). A dashboard tab left open for days
+// keeps running old code no matter what the service worker does; comparing
+// this id on every poll lets the app reload itself the moment the bundle on
+// disk is newer than the one it's running.
+let _distBuild = { id: null, at: 0 };
+function distBuild() {
+  // re-hash at most every 30s: `npm run build` without a bridge restart still
+  // propagates to open tabs within a poll or two
+  if (_distBuild.id && Date.now() - _distBuild.at < 30000) return _distBuild.id;
+  try {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'dashboard', 'dist', 'index.html'));
+    _distBuild = { id: require('crypto').createHash('sha1').update(html).digest('hex').slice(0, 12), at: Date.now() };
+  } catch (_) { _distBuild = { id: 'unknown', at: Date.now() }; }
+  return _distBuild.id;
 }
 
 // ── Claude Code hook payload → registry events ───────────────────────────────
