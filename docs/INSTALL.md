@@ -87,6 +87,8 @@ It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — 
 
 ## Using other models (claude-code-router)
 
+> Running a different agent CLI entirely (Codex, Gemini CLI, Grok, aider…)? See **[OTHER-MODELS.md](OTHER-MODELS.md)** — this section is for other models *inside* Claude Code, which keeps every feature working.
+
 Gander watches **Claude Code**, not a specific model — so it works unchanged when you route Claude Code to other backends (DeepSeek, Gemini, OpenRouter, a local Ollama model…) with [claude-code-router](https://github.com/musistudio/claude-code-router). The router only changes *where* Claude Code sends requests (`ANTHROPIC_BASE_URL`); the hooks still fire and the transcript is still written, so every session and sub-agent shows up the same.
 
 - **Watch routed sessions** — nothing to do. Run `ccr code` (or set `ANTHROPIC_BASE_URL` and use `claude`) and they appear on the dashboard.

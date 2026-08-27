@@ -70,7 +70,8 @@ Full setup — scoped installs, ⚡ Dispatch, Telegram, budgets, smart lights, t
 | Doc | What's in it |
 |---|---|
 | [docs/FEATURES.md](docs/FEATURES.md) | The full feature reference — floor, robots, Dispatch, rail, analytics, control-center panels |
-| [docs/INSTALL.md](docs/INSTALL.md) | Setup, optional features, VS Code extension, plugin install, configuration reference, other models |
+| [docs/INSTALL.md](docs/INSTALL.md) | Setup, optional features, VS Code extension, plugin install, configuration reference |
+| [docs/OTHER-MODELS.md](docs/OTHER-MODELS.md) | Other models (router = full experience) + other agent CLIs (Codex, Gemini, Grok, aider…) via `gander-wrap`, with the works-anywhere vs Claude-only matrix |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the hooks wire up, file layout, event API, manual/headless control, contributing |
 | [docs/FAQ.md](docs/FAQ.md) | Common questions — also in-app under the **?** button |
 | [docs/REMOTE.md](docs/REMOTE.md) | Phone (PWA), Tailscale/cloudflared, multi-machine fleet, access tokens |
