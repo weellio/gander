@@ -2,11 +2,11 @@
 
 # Gander
 
-> *Take a gander at your agents.* The ambient control room for Claude Code — see every agent, get pinged anywhere the moment one needs you, and keep your whole setup lean.
+> *Take a gander at your agents.* The ambient control room for AI coding agents — see every agent, get pinged anywhere the moment one needs you, and keep your whole setup lean. **Designed for Claude Code; other agent CLIs (Codex, Gemini, Grok, aider…) join the floor too** — [see how](docs/OTHER-MODELS.md).
 
 <p align="center"><img src="web/public/logo.png" width="600" alt="The Gander NOC — a goose manager overseeing a floor of AI agents" /></p>
 
-A live, animated dashboard of your **Claude Code agents and sub-agents** — an office floor where each session is a pixel-art avatar that physically acts out what it's doing: thinking, coding, spawning sub-agents, testing, erroring, idling. It attaches to any project automatically via Claude Code **hooks** — no manual wiring once installed.
+A live, animated dashboard of your **Claude Code agents and sub-agents** — an office floor where each session is a pixel-art avatar that physically acts out what it's doing: thinking, coding, spawning sub-agents, testing, erroring, idling. It attaches to any project automatically via Claude Code **hooks** — no manual wiring once installed. Teammates on other stacks? Any agent CLI can appear on the floor via [`gander-wrap` or the open event API](docs/OTHER-MODELS.md).
 
 > **Claude Code ships a built-in agent list (`claude agents`).** Gander is the layer around it: it **reaches you when you've stepped away** — desktop toast, phone, even a smart light across the room — and it's a **control center for your whole Claude Code setup**: CLAUDE.md health, cost and runaway burn, stuck processes, every project's skills / MCP / hooks.
 

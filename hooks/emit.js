@@ -50,6 +50,23 @@ function subAgentTranscript(mainPath, agentId) {
   return path.join(mainPath.replace(/\.jsonl$/i, ''), 'subagents', 'agent-' + agentId + '.jsonl');
 }
 
+// Find the claude.exe this hook runs under (Windows). One PowerShell walk per
+// SESSION (marker-cached in tmp) — every later event reads the cache. A failed
+// walk writes 0 so a broken environment never pays the cost per event.
+function findClaudePid(sessionId) {
+  try {
+    if (process.platform !== 'win32' || !sessionId) return 0;
+    const os = require('os');
+    const marker = path.join(os.tmpdir(), 'gander-cpid-' + String(sessionId).replace(/[^\w-]/g, '').slice(0, 60));
+    try { return parseInt(fs.readFileSync(marker, 'utf8'), 10) || 0; } catch (_) {}
+    const ps = '$p=' + process.ppid + "; for($i=0;$i -lt 4;$i++){ $w=Get-CimInstance Win32_Process -Filter ('ProcessId='+$p) -ErrorAction SilentlyContinue; if(-not $w){break}; if($w.Name -match '^claude'){ Write-Output $w.ProcessId; break }; $p=$w.ParentProcessId }";
+    const out = require('child_process').execFileSync('powershell', ['-NoProfile', '-Command', ps], { timeout: 6000, windowsHide: true }).toString().trim();
+    const pid = parseInt(out, 10) || 0;
+    try { fs.writeFileSync(marker, String(pid)); } catch (_) {}
+    return pid;
+  } catch (_) { return 0; }
+}
+
 let data = '';
 process.stdin.on('data', (c) => { data += c; if (data.length > 1e6) process.stdin.destroy(); });
 process.stdin.on('error', () => process.exit(0));
@@ -57,6 +74,13 @@ process.stdin.on('end', () => {
   let payload = data || '{}';
   try {
     const obj = JSON.parse(payload);
+    // Link the session to its claude.exe: the hook's ancestor chain is ALIVE
+    // right now (the parent is waiting on us), so walk it here — once per
+    // session, cached in a tmp marker — and report the claude.exe pid. The
+    // bridge can then label "claude.exe 8900" with this session's project.
+    const cp = findClaudePid(obj.session_id);
+    if (cp) obj._claudePid = cp;
+    payload = JSON.stringify(obj);
     const ev = obj && obj.hook_event_name;
     const isSub = obj && obj.agent_id && obj.agent_id !== obj.session_id;
     if (ev === 'Stop' && obj.transcript_path) {

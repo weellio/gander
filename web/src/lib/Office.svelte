@@ -1440,6 +1440,7 @@
         <button class="pp-x" onclick={() => (procSel = null)} aria-label="Close">✕</button>
       </div>
       {#if procSel.cluster.sub}<div class="pp-l">{procSel.cluster.sub}</div>{/if}
+      {#if procSel.cluster.goal}<div class="pp-l">↳ {procSel.cluster.goal}</div>{/if}
       <div class="pp-l" style="color:{procSel.cluster.tone === 'close' ? '#10B981' : procSel.cluster.tone === 'warn' ? '#F59E0B' : 'inherit'}">{procSel.cluster.verdict}</div>
       {#if procSel.cluster.claudePid}
         <div class="pp-hint">

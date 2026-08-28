@@ -35,9 +35,10 @@ export function buildClusters(procs) {
       const work = bots.filter((b) => b.attribution !== 'plugin');
       const up = Math.max(...bots.map((b) => b.uptimeMs || 0));
       const days = Math.floor(up / 86400e3);
-      const proj = bots.map((b) => b.project).find(Boolean);
+      const proj = bots.map((b) => b.sessProject).find(Boolean) || bots.map((b) => b.project).find(Boolean);
+      const goal = bots.map((b) => b.sessGoal).find(Boolean) || '';
       clusters.push({
-        key, claudePid: pid, bots,
+        key, claudePid: pid, bots, goal,
         title: `claude.exe ${pid}`, sub: `${proj ? proj + ' · ' : ''}up ~${fmtUp(up)}`,
         verdict: work.length
           ? 'has live work: ' + work.map((b) => b.name.replace(/\.exe$/i, '') + (b.ports?.[0] ? ' :' + b.ports[0] : '')).join(', ')

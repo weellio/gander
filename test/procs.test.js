@@ -89,3 +89,19 @@ describe('attribute', () => {
     for (const r of c) { assert.ok(!('cmd' in r)); assert.ok('claudePid' in r && 'attribution' in r); }
   });
 });
+
+test('decorate: claude.exe clusters get their session label', () => {
+  const list = [
+    { pid: 1, name: 'bun.exe', claudePid: 8900, linked: 'plugin of claude.exe 8900' },
+    { pid: 2, name: 'node.exe', claudePid: 111, linked: 'child of claude.exe 111' },
+    { pid: 3, name: 'python.exe' },
+  ];
+  const by = new Map([[8900, { project: 'volt', goal: 'fix the drift bug' }]]);
+  const out = procs.decorate(list, by);
+  assert.equal(out[0].sessProject, 'volt');
+  assert.equal(out[0].sessGoal, 'fix the drift bug');
+  assert.match(out[0].linked, /plugin of claude\.exe 8900 · volt/);
+  assert.equal(out[1].sessProject, undefined, 'unmapped claude stays unlabeled');
+  assert.equal(out[2].sessProject, undefined);
+  assert.equal(procs.decorate(list, new Map()), list, 'empty map is a no-op');
+});

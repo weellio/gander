@@ -1118,6 +1118,44 @@ function buildLaunchFlags() {
 function claudeCliRaw() { return (cfg.claudeCmd && String(cfg.claudeCmd).trim()) || 'claude'; }
 let lastHookAt = 0;   // when the last Claude Code hook event arrived (doctor: "are events flowing?")
 
+// ── claude.exe ↔ session linking ──────────────────────────────────────────────
+// Every hook event carries the emitter's parent pid (hooks run under their
+// session's claude.exe, directly or via one shell hop). Walking that chain
+// ONCE per session tells us which claude.exe belongs to which session — so
+// the server room can label "claude.exe 8900" with the session's project and
+// goal, the way the user's window title bars do. Persisted (with the pid's
+// start snapshot implicitly guarded: entries drop when the pid stops being a
+// live claude.exe) so parked sessions stay labeled across bridge restarts.
+const CLAUDEPIDS_FILE = path.join(__dirname, 'aoc-claudepids.json');
+const sessClaude = new Map();   // sessionId -> { claudePid, project, cwd, goal, at }
+try { for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(CLAUDEPIDS_FILE, 'utf8')))) sessClaude.set(k, v); } catch (_) {}
+function saveClaudePids() { try { fs.writeFileSync(CLAUDEPIDS_FILE, JSON.stringify(Object.fromEntries(sessClaude), null, 1)); } catch (_) {} }
+function linkClaudePid(sessionId, claudePid, cwd) {
+  if (!sessionId || !claudePid || sessClaude.has(sessionId)) return;
+  sessClaude.set(sessionId, { claudePid: Number(claudePid), project: projectFromCwd(cwd), cwd: cwd || '', at: Date.now() });
+  saveClaudePids();
+  console.log(`[link] session ${String(sessionId).slice(0, 8)}… ↔ claude.exe ${claudePid} (${projectFromCwd(cwd)})`);
+}
+// Map for decoration; entries whose pid is no longer a live claude.exe are
+// dropped here (scan-verified — also our PID-reuse guard).
+function claudeSessionMap() {
+  const by = new Map();
+  // claude.exe itself is never a scan ROW — it's referenced by its children's
+  // claudePid. An entry is stale (dead session / reused pid) when nothing has
+  // referenced it for a while; a 1h grace covers sidecar-less sessions.
+  const referenced = new Set((procsCache.list || []).map((x) => x.claudePid).filter(Boolean));
+  const liveGoal = new Map();
+  for (const a of agents.values()) if (a.sessionId && (a.goal || a.name)) liveGoal.set(a.sessionId, a.goal || a.name);
+  let dropped = false;
+  for (const [sid, v] of sessClaude) {
+    if (procsCache.list && procsCache.list.length && !referenced.has(v.claudePid) && Date.now() - (v.at || 0) > 3600e3) { sessClaude.delete(sid); dropped = true; continue; }
+    if (referenced.has(v.claudePid)) v.at = Date.now();   // still alive — refresh the lease
+    by.set(v.claudePid, { project: v.project, goal: liveGoal.get(sid) || v.goal || '' });
+  }
+  if (dropped) saveClaudePids();
+  return by;
+}
+
 // ── Gander Doctor ────────────────────────────────────────────────────────────
 // Live connectivity checks for the Health panel — the things that fail
 // SILENTLY: a session not reporting in, a dead chat token, a vanished project
@@ -1629,7 +1667,7 @@ function snapshot() {
   return {
     agents: all, projects, muted: [...muted], pending, budget: budgetState,
     queue: { queued: _qq, running: _qr },
-    procs: procsMod.compact(procsCache.list),
+    procs: procsMod.decorate(procsMod.compact(procsCache.list), claudeSessionMap()),
     fleet: fleet.status(),
     dispatch: { enabled: !!cfg.dispatch, sessions: dispatch.list().length, permissions: perms.length, rateLimit: dispatch.rateLimit() },
     build: distBuild(),   // long-open tabs watch this and reload themselves when the dashboard is rebuilt
@@ -1934,6 +1972,7 @@ const server = http.createServer(async (req, res) => {
     if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
     eventsReceived++;
     lastHookAt = Date.now();
+    if (body._claudePid && body.session_id) { try { linkClaudePid(body.session_id, body._claudePid, body.cwd); } catch (_) {} }
     const project = projectFromCwd(body.cwd);
     if (body.session_id) lastActiveSession = body.session_id;
     if (body.cwd) projects.noteKnown(body.cwd);   // auto-import the project

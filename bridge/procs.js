@@ -111,4 +111,21 @@ function compact(list) {
   }));
 }
 
-module.exports = { attribute, compact, ancestry, INTERESTING, PLUGIN_RE };
+// Decorate compacted procs with the SESSION each claude.exe belongs to —
+// byClaudePid: Map<pid, {project, goal?}> built from hook-reported parent pids.
+// The label lands both as fields (sessProject/sessGoal) and appended to the
+// human-readable `linked` line, so every popover and panel row says which
+// session a "claude.exe 8900" actually is.
+function decorate(list, byClaudePid) {
+  if (!byClaudePid || !byClaudePid.size) return list;
+  for (const p of list) {
+    const s = p.claudePid && byClaudePid.get(p.claudePid);
+    if (!s) continue;
+    p.sessProject = s.project || undefined;
+    if (s.goal) p.sessGoal = String(s.goal).slice(0, 120);
+    if (p.linked && /claude\.exe \d+/.test(p.linked) && s.project && !p.linked.includes(s.project)) p.linked += ` · ${s.project}`;
+  }
+  return list;
+}
+
+module.exports = { attribute, compact, decorate, ancestry, INTERESTING, PLUGIN_RE };
