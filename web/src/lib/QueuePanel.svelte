@@ -67,6 +67,10 @@
     </div>
 
     <div class="body">
+      <div class="explainer">
+        <span class="ex-ic">ℹ️</span>
+        <div>Runs goals as <b>separate, unattended sessions</b> — each auto-starts when a slot frees, so you can line up work and walk away. This is <b>not</b> tied to chatting with Claude in a window; add work here explicitly (below, the <b>＋ New task</b> button, or <code>/task</code> from Telegram / Slack).</div>
+      </div>
       <div class="addbox">
         <div class="lblrow"><span class="lbl">Add a task</span><MicButton onappend={(t) => (goal = (goal ? goal.trim() + ' ' : '') + t)} /></div>
         <textarea rows="2" bind:value={goal} placeholder="what should Claude do? (Ctrl+Enter adds · 'then:' chains follow-up tasks)" onkeydown={onGoalKey}></textarea>
@@ -127,6 +131,12 @@
 <style>
   .drawer { --drawer-w: 430px; }
   .hdsub { font-size: 10px; color: var(--color-text-tertiary); margin-left: 8px; flex: 1; }
+  .explainer { display: flex; gap: 9px; align-items: flex-start; padding: 10px 11px; border-radius: 8px;
+    background: color-mix(in srgb, var(--accent, #6366F1) 8%, transparent); border: 0.5px solid color-mix(in srgb, var(--accent, #6366F1) 25%, transparent);
+    font-size: 11.5px; line-height: 1.5; color: var(--color-text-secondary); }
+  .explainer .ex-ic { flex-shrink: 0; font-size: 13px; line-height: 1.4; }
+  .explainer b { color: var(--color-text-primary); font-weight: 600; }
+  .explainer code { font-size: 10.5px; }
   .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 10px; }
   .addbox { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 0.5px solid var(--color-border-tertiary); border-radius: 8px; background: var(--color-background-secondary); }
   .lblrow { display: flex; align-items: center; justify-content: space-between; }
