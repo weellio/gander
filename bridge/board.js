@@ -191,6 +191,14 @@ function pendingPlans() {
     .map((e) => ({ id: e.id, project: e.project, agent: e.agent, text: e.text, createdAt: e.createdAt }));
 }
 
+// Posts created since a timestamp — the floor watches these to walk a goose
+// over to the bulletin board and pin a note when its agent posts.
+function recent(sinceMs) {
+  return entries.filter((e) => e.createdAt >= sinceMs)
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((e) => ({ id: e.id, project: e.project, agent: e.agent, type: e.type, createdAt: e.createdAt }));
+}
+
 // Open (unresolved) escalations across all projects — fed into the Needs-you rail.
 function openEscalations() {
   return entries.filter((e) => e.type === 'escalation' && !e.resolved)
@@ -199,7 +207,7 @@ function openEscalations() {
 }
 
 module.exports = {
-  add, list, get, action, clear, summary, openEscalations, lineage, activeClaims, pendingPlans, gems, setClock,
+  add, list, get, action, clear, summary, openEscalations, lineage, activeClaims, pendingPlans, gems, recent, setClock,
   TYPES, TEXT_MAX, MAX_PER_PROJECT,
   _test: { reset: () => { entries = []; seq = 1; }, entries: () => entries, load, save },
 };

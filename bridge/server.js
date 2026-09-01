@@ -1741,6 +1741,7 @@ function snapshot() {
     board: board.summary(),
     escalations: board.openEscalations(),
     plans: board.pendingPlans(),
+    boardPosts: board.recent(Date.now() - 20000),   // last 20s — the floor animates a goose pinning a note
     procs: procsMod.decorate(procsMod.compact(procsCache.list), claudeSessionMap()),
     fleet: fleet.status(),
     dispatch: { enabled: !!cfg.dispatch, sessions: dispatch.list().length, permissions: perms.length, rateLimit: dispatch.rateLimit() },

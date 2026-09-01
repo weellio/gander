@@ -8,7 +8,12 @@
   import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
-  let { agents: agentsProp = null, focusReq = null, procs: procsProp = null, onDigest = null, onQueue = null, onBoard = null, queueInfo = null } = $props();
+  let { agents: agentsProp = null, focusReq = null, procs: procsProp = null, onDigest = null, onQueue = null, onBoard = null, queueInfo = null, boardPosts: boardPostsProp = null } = $props();
+  // Board activity → a goose walks to the bulletin board and pins a note.
+  let _seenPosts = new Set();        // post ids already animated
+  let pendingBoard = new Map();      // agentId -> { type } waiting to make the trip
+  let boardNotes = [];               // pinned post-its on the board: { color, born }
+  const POST_COLOR = { note: '#F5C147', finding: '#6366F1', escalation: '#F59E0B', plan: '#A855F7', claim: '#8b93a2', assignment: '#10B981' };
   let _pendingFocus = null;   // {id} to centre on next frame
   let _flash = null;          // {id, until} highlight ring
   $effect(() => { if (focusReq && focusReq.id) _pendingFocus = focusReq; });
@@ -699,6 +704,20 @@
       for (let gy = 0; gy < H; gy += g) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
 
       const list = agents || [];
+
+      // New board posts → queue a "walk to the board and pin a note" trip for
+      // the goose that posted (matched by project + agent name, else the room's
+      // orchestrator). A human posting from the panel matches nobody — no trip.
+      if (boardPostsProp && boardPostsProp.length) {
+        for (const post of boardPostsProp) {
+          if (_seenPosts.has(post.id)) continue;
+          _seenPosts.add(post.id);
+          let m = post.agent ? list.find((a) => a.project === post.project && a.name && String(a.name).toLowerCase() === String(post.agent).toLowerCase()) : null;
+          if (!m) m = list.find((a) => a.root && a.project === post.project);
+          if (m) pendingBoard.set(m.id, { type: post.type });
+        }
+        if (_seenPosts.size > 500) _seenPosts = new Set(boardPostsProp.map((p) => p.id));
+      }
       const tree = buildTree(list);
       layout(tree, W, H);
       // frame everything once on first population so a big team isn't off-screen
@@ -949,6 +968,25 @@
         drawItem(ctx, OFFICE.cooler, cooler.x, cooler.y + 6, 56);
         drawItem(ctx, OFFICE.plant, cooler.x + 54, cooler.y + 6, 46);
         drawItem(ctx, OFFICE.board, cooler.x + 116, cooler.y + 2, 42);
+        // post-its pinned to the board — one per recent post, fading over ~9s,
+        // tinted by type (finding indigo · escalation amber · gem/etc.)
+        if (boardNotes.length) {
+          const _t = t;
+          boardNotes = boardNotes.filter((n) => _t - n.born < 9);
+          const bx0 = cooler.x + 116 - 13, by0 = cooler.y - 30;
+          for (let i = 0; i < boardNotes.length; i++) {
+            const n = boardNotes[i];
+            const age = _t - n.born;
+            const a = age < 0.4 ? age / 0.4 : age > 7 ? Math.max(0, (9 - age) / 2) : 1;   // pop in, fade out
+            const px = bx0 + (i % 4) * 9, py = by0 + Math.floor(i / 4) * 9 + (age < 0.4 ? (0.4 - age) * 20 : 0);
+            ctx.save();
+            ctx.globalAlpha = a * 0.95;
+            ctx.fillStyle = n.color;
+            ctx.fillRect(px, py, 7, 7);
+            ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(px + 3, py - 1, 1.5, 2);   // pin
+            ctx.restore();
+          }
+        }
         hitTargets.push({ id: 'board', x: cooler.x + 116, y: cooler.y - 18, r: 24, board: true });
         ctx.fillStyle = 'rgba(120,120,130,0.95)';
         ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
@@ -1013,7 +1051,13 @@
         let drawX = d.x, drawY = d.y, walking = false, bubble = false, chat = null, coffee = false;
         if (!d.walk && t > walkStagger) {
           let tx = null, ty = null, kind = null, pause = 0.6, skipB = d.parentDeskId, phrase = null;
-          if (agent.state === 'idle' || agent.state === 'done') {
+          // board trip takes priority — the agent just posted, walk over and pin it
+          if (pendingBoard.has(agent.id) && $animations && d.homeX != null) {
+            const bt = pendingBoard.get(agent.id); pendingBoard.delete(agent.id);
+            tx = cooler.x + 116 + (d.seed < 0.5 ? -12 : 12); ty = cooler.y + 26;
+            kind = 'board'; pause = 1.6 + Math.random() * 0.8; phrase = '📝'; d._postType = bt.type;
+            walkStagger = t + 0.5;
+          } else if (agent.state === 'idle' || agent.state === 'done') {
             if (d.nextBreakAt == null) d.nextBreakAt = t + 90 + Math.random() * 240; // first wander: 1.5–5.5 min in
             if (t > d.nextBreakAt && $animations) {
               // casually visit a random idle peer (chat) OR the water cooler
@@ -1055,6 +1099,7 @@
           } else if (tt < w.outDur + w.pause) {                  // hang out / chat
             drawX = w.px; drawY = w.py; bubble = true; chat = w.phrase || null;
             if (w.kind === 'break') coffee = true;               // grab a cup at the cooler
+            if (w.kind === 'board' && !w._pinned) { w._pinned = true; boardNotes.push({ color: POST_COLOR[d._postType] || POST_COLOR.note, born: t }); if (boardNotes.length > 10) boardNotes.shift(); }
           } else if (tt < w.outDur + w.pause + w.backDur) {      // walk back
             const k = (tt - w.outDur - w.pause) / w.backDur;
             const q = polyPos(w.route, 1 - easeIO(k));
