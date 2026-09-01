@@ -44,6 +44,7 @@ const replay = require('./replay.js');
 const fleet = require('./fleet.js');
 const desktop = require('./desktop.js');
 const patterns = require('./patterns.js');
+const forensics = require('./forensics.js');
 const procsMod = require('./procs.js');
 const STARTED = Date.now();
 let eventsReceived = 0;
@@ -2367,6 +2368,33 @@ const server = http.createServer(async (req, res) => {
       if (url.startsWith('/api/skill-usage')) return sendJson(res, 200, { skillUsage: d.skillUsage, generatedAt: d.generatedAt, days: d.days });
       const { skillUsage, ...rest } = d;
       return sendJson(res, 200, rest);
+    } catch (e) { return sendJson(res, 500, { error: e.message }); }
+  }
+
+  // Spend forensics (deterministic): SF3 waste scan (re-read churn + dead MCP)
+  // + SF1 productive-vs-abandoned spend (session cost joined with git commits).
+  if (url === '/api/forensics' && req.method === 'GET') {
+    const days = Math.max(1, Math.min(90, parseInt((req.url.split('days=')[1] || ''), 10) || 30));
+    try {
+      const s = await usage.summaryAsync();
+      const byProject = s.byProject || [];
+      const projectPaths = byProject.map((p) => p.path).filter(Boolean);
+      // commit times per project (basename-keyed, matching bySession.project)
+      const commitsByProject = {};
+      await Promise.all(byProject.map(async (p) => {
+        if (!p.path) return;
+        commitsByProject[p.project] = await forensics.commitTimes(p.path, days).catch(() => []);
+      }));
+      // only sessions active within the window (commits are fetched for the same
+      // window, so older sessions can't be fairly judged productive/abandoned)
+      const sinceMs = Date.now() - days * 86400e3;
+      const sessions = Object.values(s.bySession || {}).filter((x) => {
+        const la = typeof x.lastActive === 'number' ? x.lastActive : Date.parse(x.lastActive);
+        return la && la >= sinceMs;
+      });
+      const productivity = forensics.computeProductivity(sessions, commitsByProject);   // default 90-min window
+      const waste = await forensics.scanWaste({ days, projectPaths });
+      return sendJson(res, 200, { days, waste, productivity, generatedAt: Date.now() });
     } catch (e) { return sendJson(res, 500, { error: e.message }); }
   }
 

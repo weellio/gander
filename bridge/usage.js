@@ -380,6 +380,8 @@ async function build() {
     const inputSide = s.input + s.cacheWrite + s.cacheRead;
     const ctxMax = contextMaxFor(s.ctxModel, s.ctxTokens);
     bySession[s.sessionId] = {
+      project: basenameOf(s.project),
+      lastActive: s.lastActive,
       costUSD: s.costUSD,
       tokens: s.tokens,
       input: s.input,

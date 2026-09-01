@@ -8,8 +8,14 @@
   let loading = $state(false);
   let data = $state(null);
 
+  let forensics = $state(null);
   async function load() {
     loading = true;
+    // spend forensics (deterministic): where tokens went + whether it shipped.
+    // Fired in PARALLEL with usage — both are slow transcript/git passes, so
+    // don't gate one behind the other.
+    forensics = null;
+    fetch('/api/forensics?days=14').then((r) => r.json()).then((f) => { if (!f.error) forensics = f; }).catch(() => {});
     try {
       const r = await fetch('/api/usage');
       data = await r.json();
@@ -166,6 +172,37 @@
           </table>
         </div>
 
+        <!-- Spend forensics -->
+        {#if forensics}
+          <div class="section">
+            <div class="lbl">🔎 Spend forensics <span class="fdim">· last {forensics.days}d · where it went, and whether it shipped</span></div>
+
+            {#if forensics.productivity.shippedPct != null}
+              <div class="frow"><span class="fk">Shipped vs. exploratory</span><span class="fv mono">{forensics.productivity.shippedPct}% shipped</span></div>
+              <div class="bar" title="{money(forensics.productivity.productiveCost)} landed a commit · {money(forensics.productivity.abandonedCost)} did not">
+                <div class="bar-ship" style="width:{forensics.productivity.shippedPct}%"></div>
+              </div>
+              <div class="fsub">{money(forensics.productivity.productiveCost)} landed a commit within ~90 min · {money(forensics.productivity.abandonedCost)} was exploration or abandoned ({forensics.productivity.abandoned} sessions)</div>
+              {#if forensics.productivity.abandonedTop?.length}
+                <div class="fsub2">Priciest exploratory: {forensics.productivity.abandonedTop.slice(0, 3).map((a) => `${a.project} ${money(a.costUSD)}`).join(' · ')}</div>
+              {/if}
+            {/if}
+
+            {#if forensics.waste.reReads?.length}
+              <div class="fhead">Re-read churn <span class="fdim">· same file read ≥3× in one session</span></div>
+              {#each forensics.waste.reReads.slice(0, 5) as r (r.session + r.file)}
+                <div class="frow"><span class="fk mono" title={r.file}>{r.file.split(/[\\/]/).pop()}<span class="dim"> · {r.project}</span></span><span class="fv mono warn">×{r.reads}</span></div>
+              {/each}
+              {#if forensics.waste.reReadTotal > 5}<div class="fsub2">+{forensics.waste.reReadTotal - 5} more re-read hotspots</div>{/if}
+            {/if}
+
+            {#if forensics.waste.deadMcp?.length}
+              <div class="fhead">Unused MCP servers <span class="fdim">· declared, never called — context you pay for every turn</span></div>
+              <div class="fchips">{#each forensics.waste.deadMcp as m (m)}<span class="fchip">{m}</span>{/each}</div>
+            {/if}
+          </div>
+        {/if}
+
         <div class="genat">updated {data.generatedAt}</div>
       {/if}
     </div>
@@ -174,6 +211,19 @@
 
 <style>
   .drawer { --drawer-w: 420px; }   /* shell (.ov/.drawer/.hd/.x) is shared in app.css */
+  .fdim { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--color-text-tertiary); font-size: 10px; }
+  .frow { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; font-size: 12px; }
+  .fk { flex: 1 1 auto; min-width: 0; color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fv { flex-shrink: 0; color: var(--color-text-primary); font-weight: 600; }
+  .fv.warn { color: #C9820A; }
+  .bar { height: 8px; border-radius: 5px; background: color-mix(in srgb, #C9820A 22%, transparent); overflow: hidden; margin: 4px 0; }
+  .bar-ship { height: 100%; background: #0f9e6e; border-radius: 5px; }
+  .fsub { font-size: 10.5px; color: var(--color-text-tertiary); line-height: 1.5; margin-top: 2px; }
+  .fsub2 { font-size: 10px; color: var(--color-text-tertiary); margin-top: 3px; }
+  .fhead { font-size: 11px; font-weight: 600; color: var(--color-text-secondary); margin-top: 12px; margin-bottom: 2px; }
+  .fchips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .fchip { font-size: 10.5px; font-family: var(--font-mono); padding: 2px 8px; border-radius: 999px; color: #C9820A;
+    background: color-mix(in srgb, #C9820A 12%, transparent); border: 0.5px solid color-mix(in srgb, #C9820A 30%, transparent); }
   .hdr { display: flex; align-items: center; gap: 8px; }
   .body { flex: 1 1 auto; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 16px; }
   .muted { font-size: 11px; color: var(--color-text-tertiary); padding: 6px 0; }
