@@ -38,6 +38,7 @@ const transcript = require('./transcript.js');
 const search = require('./search.js');
 const dispatch = require('./dispatch.js');
 const queue = require('./queue.js');
+const board = require('./board.js');
 const digest = require('./digest.js');
 const replay = require('./replay.js');
 const fleet = require('./fleet.js');
@@ -1667,6 +1668,8 @@ function snapshot() {
   return {
     agents: all, projects, muted: [...muted], pending, budget: budgetState,
     queue: { queued: _qq, running: _qr },
+    board: board.summary(),
+    escalations: board.openEscalations(),
     procs: procsMod.decorate(procsMod.compact(procsCache.list), claudeSessionMap()),
     fleet: fleet.status(),
     dispatch: { enabled: !!cfg.dispatch, sessions: dispatch.list().length, permissions: perms.length, rateLimit: dispatch.rateLimit() },
@@ -1892,8 +1895,15 @@ function readBodyLarge(req, maxBytes = 14e6) {
 }
 
 // ── Server ──────────────────────────────────────────────────────────────────
+// A single throwing route must never take the whole bridge down (a dead bridge
+// is why "everything stops working"). Keep the long-lived local server alive and
+// log the fault instead of exiting on an unhandled error from any one request.
+process.on('uncaughtException', (e) => console.error('[bridge] uncaught:', e && e.stack || e));
+process.on('unhandledRejection', (e) => console.error('[bridge] unhandled rejection:', e && e.stack || e));
+
 const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
+  try {
 
   // Localhost-only guard (unless remote access is explicitly enabled): reject a
   // non-loopback Host header (defeats DNS-rebinding) and any cross-origin request
@@ -2221,6 +2231,42 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/permissions' && req.method === 'GET') {
     return sendJson(res, 200, { pending: dispatch.pendingList() });
   }
+  // ── Coordination board ───────────────────────────────────────────────────────
+  // A per-project shared store agents post to (notes, findings, escalations) so a
+  // swarm builds on each other's work instead of re-deriving it. Human-visible by
+  // default: read/inject/pin/clear from the Board panel; escalations ping you.
+  if (url === '/api/board' && req.method === 'GET') {
+    const bu = new URL(req.url, 'http://localhost');
+    const project = bu.searchParams.get('project') || '';
+    if (!project) return sendJson(res, 200, { summary: board.summary(), types: board.TYPES });
+    return sendJson(res, 200, {
+      project,
+      entries: board.list(project, { type: bu.searchParams.get('type') || undefined, limit: Number(bu.searchParams.get('limit')) || 100, includeResolved: bu.searchParams.get('all') === '1' }),
+      types: board.TYPES,
+    });
+  }
+  if (url === '/api/board' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.project || !body.text) return sendJson(res, 400, { error: 'project and text required' });
+    const r = board.add(body);
+    if (r.ok) {
+      console.log(`[board] +#${r.entry.id} ${r.entry.type} (${r.entry.project})${r.entry.agent ? ' by ' + r.entry.agent : ''}: ${r.entry.text.slice(0, 60)}`);
+      // an escalation is the agent-push half of oversight — surface it loudly
+      if (r.entry.type === 'escalation') {
+        pushFeed({ ts: Date.now(), agentId: 'board', agent: r.entry.agent || 'agent', project: r.entry.project, sessionId: '', state: 'awaiting', log: `🙋 escalation: ${r.entry.text.slice(0, 140)}`, error: false });
+        sendTelegram(`🔔 <b>${r.entry.project}</b> — an agent asked for a human:\n${r.entry.text.slice(0, 500)}`);
+        osNotify('Gander — an agent needs a human', `${r.entry.project}: ${r.entry.text.slice(0, 120)}`);
+      }
+    }
+    return sendJson(res, r.error ? 400 : 200, r);
+  }
+  if (url === '/api/board/action' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.action) return sendJson(res, 400, { error: 'action required' });
+    const r = body.action === 'clear' ? board.clear(body.project) : board.action(body.id, body.action);
+    return sendJson(res, r.error ? 400 : 200, r);
+  }
+
   // ── Task queue ──────────────────────────────────────────────────────────────
   if (url === '/api/queue' && req.method === 'GET') {
     return sendJson(res, 200, queue.list());
@@ -2902,6 +2948,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   return serveStatic(req, res);
+  } catch (e) {
+    console.error('[bridge] route error on', url, '—', e && e.stack || e);
+    try { if (!res.headersSent) sendJson(res, 500, { error: 'internal error' }); } catch (_) {}
+  }
 });
 
 // Security: bind to loopback only by default so the bridge (which can spawn
