@@ -8,7 +8,7 @@
   import AgentModal from './AgentModal.svelte';
 
   // Optional agents prop — if provided, we prefer it over self-polling.
-  let { agents: agentsProp = null, focusReq = null, procs: procsProp = null, onDigest = null, onQueue = null, queueInfo = null } = $props();
+  let { agents: agentsProp = null, focusReq = null, procs: procsProp = null, onDigest = null, onQueue = null, onBoard = null, queueInfo = null } = $props();
   let _pendingFocus = null;   // {id} to centre on next frame
   let _flash = null;          // {id, until} highlight ring
   $effect(() => { if (focusReq && focusReq.id) _pendingFocus = focusReq; });
@@ -665,7 +665,7 @@
     for (const h of hitTargets) { const dd = Math.hypot(h.x - wx, h.y - wy); if (dd < h.r && dd < bestD) { best = h; bestD = dd; } }
     if (best && best.proc) { procSel = { p: best.proc, sx: e.clientX - rect.left, sy: e.clientY - rect.top }; }
     else if (best && best.cluster) { procSel = { cluster: best.cluster, sx: e.clientX - rect.left, sy: e.clientY - rect.top }; }
-    else if (best && best.board) { onDigest?.(); procSel = null; }
+    else if (best && best.board) { onBoard?.(); procSel = null; }
     else if (best && best.queueSt) { onQueue?.(); procSel = null; }
     else if (best) { selectedId = best.id; procSel = null; }
     else procSel = null;
@@ -956,7 +956,7 @@
         ctx.fillText('break room', cooler.x - 40, cooler.y + 22);
         ctx.font = '8px ui-sans-serif, system-ui, sans-serif';
         ctx.fillStyle = 'rgba(130,135,148,0.75)';
-        ctx.fillText('📌 digest', cooler.x + 116, cooler.y + 22);
+        ctx.fillText('🪧 board', cooler.x + 116, cooler.y + 22);
       } else {
         drawCooler(ctx, cooler.x, cooler.y);
       }

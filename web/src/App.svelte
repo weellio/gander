@@ -6,6 +6,7 @@
   import AgentTile from './lib/AgentTile.svelte';
   import AgentModal from './lib/AgentModal.svelte';
   import NeedsYou from './lib/NeedsYou.svelte';
+  import BoardPanel from './lib/BoardPanel.svelte';
   import NewTask from './lib/NewTask.svelte';
   import Tour from './lib/Tour.svelte';
   import RoutinesPanel from './lib/RoutinesPanel.svelte';
@@ -53,6 +54,8 @@
   let projects = $state([]);
   let procs = $state([]);   // background processes → the Office floor's robots
   let queueCounts = $state(null);   // { queued, running } → the floor's Ticket Bot badge
+  let escalations = $state([]);     // agents that asked for a human, via the coordination board
+  let boardProject = $state('');    // which project the Board panel opens on
   let online = $state(false);
   let selectedProject = $state(localStorage.getItem('aoc-project') || '');
   let fileInput = $state();
@@ -123,6 +126,7 @@
       projects = d.projects || [];
       procs = d.procs || [];
       queueCounts = d.queue || null;
+      escalations = d.escalations || [];
       checkBuild(d.build);
       const nowAwaiting = new Set(agents.filter((a) => a.state === 'awaiting').map((a) => a.id));
       if (!firstPoll) {
@@ -171,7 +175,7 @@
   // Manage / Options menus + the panels they control
   let menuOpen = $state(false);
   let optsOpen = $state(false);
-  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false, skills: false, queue: false, digest: false });
+  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false, skills: false, queue: false, digest: false, board: false });
   function openP(k) { panels[k] = true; menuOpen = false; }
   // Settings/Config is one drawer with two scopes: 'app' (global: Telegram, budget,
   // sessions, nudge, editor) opened from Settings ▾, and 'project' (this project's
@@ -179,6 +183,7 @@
   // Settings drawer is app-wide only now (Telegram, budget, sessions, nudge, editor).
   // Per-project config (hooks/MCP/settings.json) lives inline in the Projects panel.
   function openAppSettings() { panels.config = true; menuOpen = false; optsOpen = false; }
+  function openBoard(proj) { if (proj) boardProject = proj; panels.board = true; menuOpen = false; }
   // Memory: CLAUDE.md + .claude/memory facts. Global from the Manage menu, or
   // targeted to a project from the Projects panel's 📝 Memory button.
   let memScope = $state('global');
@@ -448,6 +453,7 @@
             <button class="select" onclick={() => openP('github')}>GitHub</button>
             <button class="select" onclick={() => openMemory()}>Memory (CLAUDE.md · facts)</button>
             <button class="select" onclick={() => openP('queue')}>📋 Task queue</button>
+            <button class="select" onclick={() => openP('board')}>🪧 Coordination board</button>
             <button class="select" onclick={() => openP('routines')}>Routines &amp; briefings</button>
             <button class="select" onclick={() => openP('history')}>Session history</button>
             <button class="select" onclick={() => openP('search')}>Search</button>
@@ -514,7 +520,7 @@
         {/if}
       </div>
 
-      <NeedsYou {agents} {budget} onOpen={(id) => (tileModalId = id)} onFly={flyTo} onConfig={() => openP('config')} />
+      <NeedsYou {agents} {budget} {escalations} onOpen={(id) => (tileModalId = id)} onFly={flyTo} onConfig={() => openP('config')} onBoard={openBoard} />
 
       <HelpPanel />
     </div>
@@ -533,6 +539,7 @@
   <HistoryPanel bind:open={panels.history} onView={(sid) => (transcriptId = sid)} onReplay={(sid) => (replayId = sid)} />
   <RoutinesPanel bind:open={panels.routines} />
   <QueuePanel bind:open={panels.queue} />
+  <BoardPanel bind:open={panels.board} bind:project={boardProject} />
   <DigestPanel bind:open={panels.digest} />
   <HealthPanel bind:open={panels.health} />
   <ProcessesPanel bind:open={panels.procs} />
@@ -584,7 +591,7 @@
   {:else if $layout === 'office'}
     <div class="office-wrap">
       {#if !shown.length}<div class="floatnote">No active sessions — but background processes are still running, below in the server room.</div>{/if}
-      <Office agents={shown} {procs} {focusReq} queueInfo={queueCounts} onDigest={() => (panels.digest = true)} onQueue={() => (panels.queue = true)} />
+      <Office agents={shown} {procs} {focusReq} queueInfo={queueCounts} onDigest={() => (panels.digest = true)} onQueue={() => (panels.queue = true)} onBoard={openBoard} />
     </div>
   {:else}
     {#if !shown.length}<div class="empty">No active sessions right now — background processes below.</div>{:else}
