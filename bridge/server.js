@@ -2402,8 +2402,14 @@ const server = http.createServer(async (req, res) => {
         return la && la >= sinceMs;
       });
       const productivity = forensics.computeProductivity(sessions, commitsByProject);   // default 90-min window
-      const waste = await forensics.scanWaste({ days, projectPaths });
-      return sendJson(res, 200, { days, waste, productivity, generatedAt: Date.now() });
+      const windowCost = sessions.reduce((sum, x) => sum + (Number(x.costUSD) || 0), 0);
+      const waste = await forensics.scanWaste({ days, projectPaths, totalCostUSD: windowCost });
+      // SF4: join the scan's per-session tool mix with per-session cost, classify
+      const costBySession = s.bySession || {};
+      const sessionsWithCost = (waste._perSession || []).map((ps) => ({ ...ps, costUSD: (costBySession[ps.session] || {}).costUSD || 0 }));
+      const taskTypes = forensics.computeTaskTypes(sessionsWithCost);
+      delete waste._perSession;   // don't ship the raw per-session detail to the client
+      return sendJson(res, 200, { days, waste, productivity, taskTypes, generatedAt: Date.now() });
     } catch (e) { return sendJson(res, 500, { error: e.message }); }
   }
 

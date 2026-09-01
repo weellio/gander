@@ -35,9 +35,10 @@ function transcriptFiles(root, sinceMs, cap) {
   return files.slice(0, cap);
 }
 
-// Parse ONE transcript: per-file Read counts + MCP servers called. Day-independent.
+// Parse ONE transcript: per-file Read/Edit counts + MCP servers called.
+// Day-independent, so a cached entry stays valid as the window slides.
 async function parseFile(p) {
-  const r = { proj: '', reads: {}, mcp: {} };
+  const r = { proj: '', reads: {}, mcp: {}, edits: {}, bashN: 0, searchN: 0, taskN: 0 };
   const rl = readline.createInterface({ input: fs.createReadStream(p), crlfDelay: Infinity });
   for await (const line of rl) {
     if (!line.includes('"type":"assistant"')) { if (!r.proj && line.includes('"cwd"')) { const m = line.match(/"cwd":"([^"]+)"/); if (m) r.proj = path.basename(m[1].replace(/\\\\/g, '/')); } continue; }
@@ -50,13 +51,13 @@ async function parseFile(p) {
     for (const b of content) {
       if (!b || b.type !== 'tool_use') continue;
       const name = b.name || '';
-      if (name === 'Read' && b.input && b.input.file_path) {
-        const fp = String(b.input.file_path);
-        r.reads[fp] = (r.reads[fp] || 0) + 1;
-      } else if (name.startsWith('mcp__')) {
-        const server = name.split('__')[1] || name;
-        r.mcp[server] = (r.mcp[server] || 0) + 1;
-      }
+      const fp = b.input && b.input.file_path ? String(b.input.file_path) : '';
+      if (name === 'Read' && fp) r.reads[fp] = (r.reads[fp] || 0) + 1;
+      else if ((name === 'Edit' || name === 'Write' || name === 'MultiEdit' || name === 'NotebookEdit') && fp) r.edits[fp] = (r.edits[fp] || 0) + 1;
+      else if (name === 'Bash') r.bashN++;
+      else if (name === 'Grep' || name === 'Glob' || name === 'WebSearch' || name === 'WebFetch') r.searchN++;
+      else if (name === 'Task' || name === 'Agent') r.taskN++;
+      else if (name.startsWith('mcp__')) { const server = name.split('__')[1] || name; r.mcp[server] = (r.mcp[server] || 0) + 1; }
     }
   }
   return r;
@@ -82,6 +83,59 @@ function computeWaste(perSession, declaredMcp) {
     deadMcp,
     usedMcp: [...usedServers].sort(),
   };
+}
+
+// SF2 edit quality — how often an edit lands first try. A file edited exactly
+// once in a session = one-shot; edited multiple times = reworked (iterating,
+// or fixing a bad edit). oneShotRate is the share of edited files that stuck.
+// cost-per-edit needs the window's total spend, passed in.
+function computeEditQuality(perSession, totalCostUSD) {
+  let oneShot = 0, reworked = 0, edits = 0;
+  const reworkedTop = [];
+  for (const s of perSession) {
+    for (const [file, n] of Object.entries(s.edits || {})) {
+      edits += n;
+      if (n === 1) oneShot++;
+      else { reworked++; reworkedTop.push({ project: s.proj || '', session: s.session, file, edits: n }); }
+    }
+  }
+  reworkedTop.sort((a, b) => b.edits - a.edits);
+  const editedFiles = oneShot + reworked;
+  return {
+    edits, editedFiles, oneShot, reworked,
+    oneShotRate: editedFiles > 0 ? Math.round((oneShot / editedFiles) * 100) : null,
+    costPerEdit: edits > 0 && totalCostUSD > 0 ? totalCostUSD / edits : null,
+    reworkedTop: reworkedTop.slice(0, 8),
+  };
+}
+
+// SF4 task-type breakdown — classify each session by its dominant tool
+// activity and attribute its cost there, so you can see whether the money
+// went to writing code, exploring, running things, searching, or delegating.
+// sessionsWithCost: [{ session, costUSD, edits:{},reads:{}, bashN,searchN,taskN }]
+const TASK_TYPES = { coding: 'edited files', exploring: 'reading files', running: 'running commands', searching: 'searching', orchestrating: 'delegating to sub-agents' };
+function classifySession(s) {
+  const code = Object.values(s.edits || {}).reduce((a, b) => a + b, 0);
+  const read = Object.values(s.reads || {}).reduce((a, b) => a + b, 0);
+  const scores = { coding: code * 2, exploring: read, running: s.bashN || 0, searching: (s.searchN || 0) * 1.5, orchestrating: (s.taskN || 0) * 3 };
+  let best = null, top = 0;
+  for (const [k, v] of Object.entries(scores)) if (v > top) { top = v; best = k; }
+  return top > 0 ? best : null;
+}
+function computeTaskTypes(sessionsWithCost) {
+  const by = {};
+  let total = 0;
+  for (const s of sessionsWithCost || []) {
+    const cost = Number(s.costUSD) || 0;
+    const t = classifySession(s);
+    if (!t || cost <= 0) continue;
+    (by[t] || (by[t] = { type: t, label: TASK_TYPES[t], costUSD: 0, sessions: 0 })).costUSD += cost;
+    by[t].sessions++;
+    total += cost;
+  }
+  const list = Object.values(by).sort((a, b) => b.costUSD - a.costUSD)
+    .map((x) => ({ ...x, pct: total > 0 ? Math.round((x.costUSD / total) * 100) : 0 }));
+  return { byType: list, total };
 }
 
 // Join sessions (cost + lastActive + project) with commits (project + time).
@@ -136,11 +190,16 @@ async function scanWaste(opts = {}) {
       ent = { mtime: f.mtime, size: f.size, ...(await parseFile(f.p)) };
       _cache.set(f.p, ent);
     }
-    perSession.push({ session: path.basename(f.p).replace(/\.jsonl$/i, ''), proj: ent.proj, reads: ent.reads, mcp: ent.mcp });
+    perSession.push({ session: path.basename(f.p).replace(/\.jsonl$/i, ''), proj: ent.proj, reads: ent.reads, mcp: ent.mcp, edits: ent.edits });
   }
   for (const k of [..._cache.keys()]) if (!live.has(k)) _cache.delete(k);
   const declared = declaredMcpServers(opts.projectPaths);
-  return { ...computeWaste(perSession, declared), days, scanMs: Date.now() - t0 };
+  return {
+    ...computeWaste(perSession, declared),
+    editQuality: computeEditQuality(perSession, Number(opts.totalCostUSD) || 0),
+    _perSession: perSession,   // raw, for the endpoint's task-type join; stripped before sending
+    days, scanMs: Date.now() - t0,
+  };
 }
 
 // Commit timestamps (ms epochs) for a repo over the last N days — precise time
@@ -155,4 +214,4 @@ function commitTimes(cwd, days) {
   });
 }
 
-module.exports = { scanWaste, computeWaste, computeProductivity, declaredMcpServers, commitTimes, RE_READ_THRESHOLD, COMMIT_WINDOW_MIN };
+module.exports = { scanWaste, computeWaste, computeEditQuality, computeTaskTypes, computeProductivity, declaredMcpServers, commitTimes, RE_READ_THRESHOLD, COMMIT_WINDOW_MIN };

@@ -188,6 +188,22 @@
               {/if}
             {/if}
 
+            {#if forensics.taskTypes?.byType?.length}
+              <div class="fhead">Spend by activity <span class="fdim">· what the tokens did</span></div>
+              {#each forensics.taskTypes.byType as t (t.type)}
+                <div class="frow"><span class="fk">{t.type} <span class="dim">· {t.label}</span></span><span class="fv mono">{money(t.costUSD)} <span class="dim">{t.pct}%</span></span></div>
+              {/each}
+            {/if}
+
+            {#if forensics.waste.editQuality?.oneShotRate != null}
+              <div class="fhead">Edit quality <span class="fdim">· did edits land first try?</span></div>
+              <div class="frow"><span class="fk">One-shot rate</span><span class="fv mono">{forensics.waste.editQuality.oneShotRate}%</span></div>
+              <div class="fsub">{forensics.waste.editQuality.oneShot} of {forensics.waste.editQuality.editedFiles} edited files stuck first try · {forensics.waste.editQuality.reworked} needed rework{#if forensics.waste.editQuality.costPerEdit} · {money(forensics.waste.editQuality.costPerEdit)}/edit avg{/if}</div>
+              {#if forensics.waste.editQuality.reworkedTop?.length}
+                <div class="fsub2">Most reworked: {forensics.waste.editQuality.reworkedTop.slice(0, 3).map((r) => `${r.file.split(/[\\/]/).pop()} ×${r.edits}`).join(' · ')}</div>
+              {/if}
+            {/if}
+
             {#if forensics.waste.reReads?.length}
               <div class="fhead">Re-read churn <span class="fdim">· same file read ≥3× in one session</span></div>
               {#each forensics.waste.reReads.slice(0, 5) as r (r.session + r.file)}
