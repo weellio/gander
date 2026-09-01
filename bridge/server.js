@@ -1549,6 +1549,8 @@ function queueTick() {
         finish: (it, opts) => git.worktreeFinish(it.cwd, it.wtPath, it.branch, `#${it.id} ${String(it.prompt).slice(0, 60)}`, opts),
       },
       gate: runTestGate,
+      // KC4: hold new queue starts while the plan window is rejected/exhausted
+      paused: () => { const rl = dispatch.rateLimit(); return !!(rl && /reject|exhaust/i.test(String(rl.status || ''))); },
       stopDispatch: (sid) => dispatch.stop(sid),
       onDone: (it) => {
         const ok = it.status === 'done';

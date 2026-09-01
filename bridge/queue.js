@@ -97,7 +97,8 @@ function action(id, what) {
   return { error: 'unknown action' };
 }
 
-function list() { return { enabled: cfgState.enabled, maxSlots: cfgState.maxSlots, worktrees: cfgState.worktrees, testGate: cfgState.testGate, items: items.slice().sort((a, b) => b.id - a.id) }; }
+let lastPaused = false;   // set by tick — plan rate-limited, holding new starts
+function list() { return { enabled: cfgState.enabled, maxSlots: cfgState.maxSlots, worktrees: cfgState.worktrees, testGate: cfgState.testGate, paused: lastPaused, items: items.slice().sort((a, b) => b.id - a.id) }; }
 function setConfig(c) {
   if (c && c.enabled !== undefined) cfgState.enabled = !!c.enabled;
   if (c && c.maxSlots !== undefined) cfgState.maxSlots = Math.max(1, Math.min(8, Number(c.maxSlots) || 2));
@@ -210,10 +211,14 @@ function tick(deps) {
     }
   }
 
-  // 2) fill free slots
+  // 2) fill free slots — but hold if the plan is rate-limited (KC4 adaptive
+  // scheduling): don't start new work into a rejected window, just wait it out.
+  // Running tasks still settle above; this only gates NEW starts.
+  const paused = deps.paused ? !!deps.paused() : false;
+  lastPaused = paused;
   const running = items.filter((it) => it.status === 'running');
-  let free = cfgState.maxSlots - running.length;
-  if (free <= 0) return { started, finished };
+  let free = paused ? 0 : cfgState.maxSlots - running.length;
+  if (free <= 0) return { started, finished, paused };
   const busyProjects = new Set(running.map((it) => keyOf(it.cwd)));
   // any busy session in a project blocks queue starts there (don't fight a human's session)
   for (const a of (deps.agents() || [])) {

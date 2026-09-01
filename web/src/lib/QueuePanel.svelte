@@ -98,6 +98,9 @@
       {#if q.worktrees}
         <div class="hint">⎇ Parallel mode: tasks in the same project each get their own worktree + branch (<code>gander/task-N</code>); the bridge merges back on completion — conflicts keep the branch for you to merge manually.</div>
       {/if}
+      {#if q.paused}
+        <div class="paused">⏸ Holding — your plan is rate-limited. Queued tasks wait and auto-resume when the window clears (running tasks finish normally).</div>
+      {/if}
 
       {#if !(q.items || []).length}
         <div class="empty">Nothing queued. Add a goal above — the bridge starts it as soon as a slot is free, and lines the rest up behind it (one at a time per project).</div>
@@ -155,6 +158,7 @@
   .cfgrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; }
   .in.dod { width: 100%; }
   .dodrow { font-size: 10.5px; color: #0f9e6e; margin-top: 3px; }
+  .paused { font-size: 11px; color: #C9820A; background: #C9820A18; border: 0.5px solid #C9820A44; border-radius: 8px; padding: 8px 10px; line-height: 1.5; }
   .merge { font-size: 10px; font-family: var(--font-mono); color: #10B981; margin-top: 2px; }
   .merge.kept { color: #F59E0B; }
   .chain { font-size: 10px; color: var(--color-text-tertiary); }
