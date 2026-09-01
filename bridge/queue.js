@@ -62,6 +62,7 @@ function add({ cwd, prompt, afterId, doneWhen }) {
   };
   if (afterId) it.afterId = Number(afterId);   // chain: don't start until #afterId lands
   if (doneWhen && String(doneWhen).trim()) it.doneWhen = String(doneWhen).trim().slice(0, 500);   // KC2: preregistered success
+  if (arguments[0].group) { it.group = String(arguments[0].group); it.candK = Number(arguments[0].candK) || 1; it.candN = Number(arguments[0].candN) || 1; it.candidate = true; }   // KC3: one of N competing attempts
   items.push(it);
   save();
   return { ok: true, item: it };
@@ -127,7 +128,10 @@ function tick(deps) {
   // worktree tasks: on any completion, the BRIDGE merges the task branch back
   // into the main tree (single-committer) and records the human-readable result
   const finishWt = (it, opts) => {
-    if (it.wtPath && deps.wt) { try { it.merge = deps.wt.finish(it, opts); } catch (e) { it.merge = 'merge error: ' + (e.message || e); } }
+    // KC3 candidates NEVER auto-merge — each competing attempt keeps its branch
+    // so you can compare the ones whose tests passed and merge the winner.
+    const o = it.candidate ? { ...opts, noMerge: true } : opts;
+    if (it.wtPath && deps.wt) { try { it.merge = deps.wt.finish(it, o); } catch (e) { it.merge = 'merge error: ' + (e.message || e); } }
   };
   // Settle a task. A SUCCESSFUL worktree task first passes through the test
   // gate ('gating'): the bridge runs the project's tests inside the worktree
@@ -241,7 +245,7 @@ function tick(deps) {
     // worktree mode: each task gets its own tree, so the one-per-project rule
     // (and the don't-fight-a-human rule) don't apply — the trees can't collide.
     let usedWt = false;
-    if (cfgState.worktrees && deps.wt) {
+    if ((cfgState.worktrees || it.candidate) && deps.wt) {   // candidates always run isolated
       const w = deps.wt.start(it);
       if (w && w.ok) { it.wtPath = w.wtPath; it.branch = w.branch; usedWt = true; }
       else { it.merge = null; it.wtNote = (w && w.error) || 'worktree unavailable'; }   // not a repo etc. → shared-tree rules below

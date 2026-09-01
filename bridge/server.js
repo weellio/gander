@@ -2302,8 +2302,23 @@ const server = http.createServer(async (req, res) => {
     if (!body || !body.cwd || !body.prompt) return sendJson(res, 400, { error: 'cwd and prompt required' });
     if (!fs.existsSync(body.cwd)) return sendJson(res, 400, { error: 'path not found' });
     if (!assertCwd(res, body.cwd)) return;
-    const r = queueChain(body.cwd, body.prompt, body.doneWhen);
-    if (r.ok) { console.log(`[queue] +#${r.ids.join(',#')} (${r.item.project}) ${r.item.prompt.slice(0, 60)}`); setTimeout(queueTick, 400); }
+    // KC3: N competing candidates — fan the goal into N isolated worktree
+    // attempts (each keeps its branch; the winner is picked by you after the gate)
+    const nCand = Math.max(0, Math.min(6, Number(body.candidates) || 0));
+    let r;
+    if (nCand >= 2) {
+      const gid = 'g' + Date.now().toString(36);
+      const ids = []; let first = null;
+      for (let k = 1; k <= nCand; k++) {
+        const p = `${String(body.prompt).trim()}\n\n(Candidate ${k} of ${nCand} — try a distinct approach from the others; your branch is kept for comparison.)`;
+        const a = queue.add({ cwd: body.cwd, prompt: p, doneWhen: body.doneWhen, group: gid, candK: k, candN: nCand });
+        if (a.ok) { ids.push(a.item.id); first = first || a.item; }
+      }
+      r = first ? { ok: true, item: first, ids, candidates: nCand } : { error: 'could not queue candidates' };
+    } else {
+      r = queueChain(body.cwd, body.prompt, body.doneWhen);
+    }
+    if (r.ok) { console.log(`[queue] +#${r.ids.join(',#')} (${r.item.project})${r.candidates ? ' ×' + r.candidates + ' candidates' : ''} ${r.item.prompt.slice(0, 60)}`); setTimeout(queueTick, 400); }
     return sendJson(res, r.error && !r.ok ? 400 : 200, r);
   }
   if (url === '/api/queue/action' && req.method === 'POST') {

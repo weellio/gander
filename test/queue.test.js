@@ -302,6 +302,26 @@ describe('queue worktrees', () => {
     assert.deepEqual(calls.dispatch, [1], '#2 never started');
   });
 
+  // ── KC3: competing candidates ───────────────────────────────────────────────
+  test('candidates run isolated and never auto-merge (branch kept)', () => {
+    queue.setConfig({ maxSlots: 3, worktrees: false });   // worktrees OFF globally
+    queue.add({ cwd: 'C:\\p\\alpha', prompt: 'approach 1', group: 'g1', candK: 1, candN: 2 });
+    queue.add({ cwd: 'C:\\p\\alpha', prompt: 'approach 2', group: 'g1', candK: 2, candN: 2 });
+    const { deps, calls } = mkDeps({
+      dispatchList: () => [{ key: 'k1', sessionId: 'S1' }, { key: 'k2', sessionId: 'S2' }],
+      dispatchGet: () => ({ busy: false, lastResult: { ok: true } }),
+    });
+    const w = mkWt(); deps.wt = w.wt;
+    let finishOpts = null;
+    deps.wt = { start: w.wt.start, finish: (it, opts) => { finishOpts = opts; return 'tests passed — branch kept'; } };
+    queue.tick(deps);                        // both start — candidates force worktrees despite global OFF
+    assert.equal(calls.dispatch.length, 2, 'both candidates start in the same project (isolated trees)');
+    queue.tick(deps);                        // settle
+    assert.equal(finishOpts && finishOpts.noMerge, true, 'candidate kept its branch, did not merge');
+    const it = queue.list().items.find((x) => x.candidate);
+    assert.equal(it.candN, 2);
+  });
+
   // ── retry with context ─────────────────────────────────────────────────────
   test('retry-context re-queues with the failure baked into the prompt', () => {
     queue.add({ cwd: 'C:\\p\\alpha', prompt: 'build the thing' });

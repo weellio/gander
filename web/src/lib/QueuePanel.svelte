@@ -8,6 +8,7 @@
   let cwd = $state('');
   let goal = $state('');
   let doneWhen = $state('');   // KC2: definition of done
+  let candN = $state(1);        // KC3: competing candidates
   let flash = $state('');
   let tgOnDone = $state(false);
   let dispatchOn = $state(false);
@@ -41,8 +42,8 @@
   function note(t) { flash = t; setTimeout(() => (flash = ''), 2200); }
   async function add() {
     if (!cwd || !goal.trim()) { note('⚠ pick a project and type a goal'); return; }
-    const r = await post('/api/queue', { cwd, prompt: goal.trim(), doneWhen: doneWhen.trim() || undefined });
-    if (r && r.ok) { note('✓ queued #' + r.item.id); goal = ''; doneWhen = ''; load(); }
+    const r = await post('/api/queue', { cwd, prompt: goal.trim(), doneWhen: doneWhen.trim() || undefined, candidates: candN > 1 ? candN : undefined });
+    if (r && r.ok) { note(candN > 1 ? '✓ queued ' + candN + ' candidates' : '✓ queued #' + r.item.id); goal = ''; doneWhen = ''; candN = 1; load(); }
     else note('✗ ' + ((r && r.error) || 'failed'));
   }
   async function act(id, action) {
@@ -76,6 +77,7 @@
         <div class="lblrow"><span class="lbl">Add a task</span><MicButton onappend={(t) => (goal = (goal ? goal.trim() + ' ' : '') + t)} /></div>
         <textarea rows="2" bind:value={goal} placeholder="what should Claude do? (Ctrl+Enter adds · 'then:' chains follow-up tasks)" onkeydown={onGoalKey}></textarea>
         <input class="in dod" bind:value={doneWhen} placeholder="✓ definition of done (optional) — what 'finished' means, so it stops when true" />
+        <label class="candrow" title="Fan this goal into N parallel attempts in separate worktrees; each keeps its branch and runs the test gate, so you pick the winner. For hard goals.">⊘ candidates <input class="in num" type="number" min="1" max="6" bind:value={candN} /> {#if candN > 1}<span class="canddim">— {candN} isolated attempts, you pick the winner</span>{/if}</label>
         <div class="addrow">
           <select class="in" bind:value={cwd}>
             {#each projects as p (p.path)}<option value={p.path}>{p.name}</option>{/each}
@@ -110,7 +112,7 @@
             <span class="ic">{ICON[it.status] || '•'}</span>
             <div class="ibody">
               <div class="itop"><b>#{it.id}</b> <span class="proj">{it.project}</span> <span class="st">{it.status === 'gating' ? 'testing before merge' : it.status}{it.runner === 'terminal' ? ' · terminal' : ''}</span>
-                {#if it.afterId}<span class="chain" title="starts only after that task lands">⛓ after #{it.afterId}</span>{/if}
+                {#if it.afterId}<span class="chain" title="starts only after that task lands">⛓ after #{it.afterId}</span>{/if}{#if it.candidate}<span class="chain" title="one of {it.candN} competing attempts — branch kept for you to compare">⊘ cand {it.candK}/{it.candN}</span>{/if}
                 <span class="when">{it.status === 'running' ? age(it.startedAt) + ' in' : it.doneAt ? age(it.doneAt) + ' ago' : age(it.createdAt) + ' waiting'}</span>
               </div>
               <div class="prompt">{it.prompt}</div>
@@ -158,6 +160,8 @@
   .cfgrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; }
   .in.dod { width: 100%; }
   .dodrow { font-size: 10.5px; color: #0f9e6e; margin-top: 3px; }
+  .candrow { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--color-text-secondary); }
+  .canddim { color: var(--color-text-tertiary); font-size: 10px; }
   .paused { font-size: 11px; color: #C9820A; background: #C9820A18; border: 0.5px solid #C9820A44; border-radius: 8px; padding: 8px 10px; line-height: 1.5; }
   .merge { font-size: 10px; font-family: var(--font-mono); color: #10B981; margin-top: 2px; }
   .merge.kept { color: #F59E0B; }
