@@ -1505,11 +1505,59 @@ function runTestGate(it, cb) {
 // Queue a prompt, splitting "… then: …" into a dependency chain — each part
 // starts only after the previous one lands. Shared by the panel, Telegram,
 // and Slack.
+// The board is a capability, not a reflex — an agent uses it only if told to.
+// For work Gander itself launches (queue tasks, candidates, dispatched sessions)
+// we append a short briefing so the swarm actually coordinates. Opt-out via
+// cfg.boardInject=false. Zero always-on cost: it rides only launched prompts,
+// never every turn (that's what the optional CLAUDE.md snippet is for).
+function boardCli() { return `node "${path.join(__dirname, '..', 'scripts', 'board.js').replace(/\\/g, '/')}"`; }
+
+// The optional CLAUDE.md snippet — for INTERACTIVE sessions (which Gander
+// doesn't launch, so it can't brief them). Marker-fenced so it's idempotent
+// and cleanly removable. This is the only surface that costs always-on tokens,
+// which is why it's opt-in and off by default.
+const BOARD_MD_START = '<!-- gander:coordination-board -->';
+const BOARD_MD_END = '<!-- /gander:coordination-board -->';
+function boardSnippet() {
+  const cli = boardCli();
+  return `${BOARD_MD_START}\n## Coordination board (Gander)\n`
+    + `A shared, per-project board lets the agents on a project build on each other's work. Use \`<project>\` = this project's folder name.\n`
+    + `- Read first: \`${cli} gems --project <project>\` (durable findings) then \`${cli} read --project <project>\`.\n`
+    + `- Post reusable findings: \`${cli} find --project <project> --agent <name> --text "…"\` (\`--refs N,M\` links what it builds on).\n`
+    + `- Escalate for a human decision: \`${cli} escalate --project <project> --text "…"\`.\n`
+    + `Keep it terse — save real re-derivation, not chatter.\n${BOARD_MD_END}`;
+}
+function globalClaudeMdPath() { return path.join(os.homedir(), '.claude', 'CLAUDE.md'); }
+function boardSnippetPresent() { try { return fs.readFileSync(globalClaudeMdPath(), 'utf8').includes(BOARD_MD_START); } catch (_) { return false; } }
+function writeBoardSnippet(add) {
+  const p = globalClaudeMdPath();
+  let cur = ''; try { cur = fs.readFileSync(p, 'utf8'); } catch (_) {}
+  // strip any existing block first (idempotent)
+  const stripped = cur.replace(new RegExp(`\\n?${BOARD_MD_START}[\\s\\S]*?${BOARD_MD_END}\\n?`, 'g'), '').trimEnd();
+  const next = add ? (stripped ? stripped + '\n\n' : '') + boardSnippet() + '\n' : stripped + '\n';
+  try { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, next); } catch (e) { console.error('[board] CLAUDE.md write failed:', e.message); return boardSnippetPresent(); }
+  console.log(`[board] ${add ? 'added' : 'removed'} board guidance in ${p}`);
+  return add;
+}
+function boardBrief(cwd) {
+  if (cfg.boardInject === false) return '';
+  const proj = projectFromCwd(cwd);
+  const cli = boardCli();
+  return `\n\n--- Coordination board (shared with other agents on "${proj}") ---\n`
+    + `Before you start, read what others already found: ${cli} gems --project ${proj} (durable findings) and ${cli} read --project ${proj}.\n`
+    + `When you learn something the next agent would otherwise re-derive, post it: ${cli} find --project ${proj} --agent <your-name> --text "…" (add --refs N,M to link what it builds on).\n`
+    + `If something needs a human decision (risky/destructive/ambiguous), escalate: ${cli} escalate --project ${proj} --text "…".\n`
+    + `Keep it terse — a note that saves real re-derivation, not chatter.`;
+}
+
 // KC2: a queue task can carry a definition of done — success stated up front,
 // so the session knows when to stop (the antidote to re-solving a solved
 // problem). It rides the prompt; with the test gate on, tests are the check.
 function withDoneWhen(it) {
-  return it.doneWhen ? `${it.prompt}\n\nDefinition of done (stop when this is true; don't over-work): ${it.doneWhen}` : it.prompt;
+  let p = it.prompt;
+  if (it.doneWhen) p += `\n\nDefinition of done (stop when this is true; don't over-work): ${it.doneWhen}`;
+  p += boardBrief(it.wtPath || it.cwd);
+  return p;
 }
 function queueChain(cwd, prompt, doneWhen) {
   const parts = String(prompt).split(/\s*\bthen:\s*/i).map((s) => s.trim()).filter(Boolean);
@@ -2232,12 +2280,15 @@ const server = http.createServer(async (req, res) => {
     // dashboard-native permission prompts. A goal-less launch always opens a terminal
     // (an interactive session with nobody typing into it has nothing to do headless).
     const wantDispatch = !!cfg.dispatch && body.mode !== 'terminal' && String(body.prompt || '').trim();
+    // a ＋ New task launch WITH a goal gets the board briefing too (not a bare
+    // interactive start, which has no prompt to append to)
+    const launchPrompt = String(body.prompt || '').trim() ? body.prompt + boardBrief(body.cwd) : body.prompt;
     if (wantDispatch) {
       if (!assertCwd(res, body.cwd)) return;
-      const r = dispatch.start({ cwd: body.cwd, prompt: body.prompt, resume: body.resume, permMode: cfg.launchPermMode || '', cli: claudeCliRaw(), extraFlags: cfg.launchFlags });
+      const r = dispatch.start({ cwd: body.cwd, prompt: launchPrompt, resume: body.resume, permMode: cfg.launchPermMode || '', cli: claudeCliRaw(), extraFlags: cfg.launchFlags });
       return sendJson(res, r.error ? 400 : 200, r.error ? r : { ...r, dispatched: true });
     }
-    const r = launchSession(body.cwd, body.resume, body.prompt);
+    const r = launchSession(body.cwd, body.resume, launchPrompt);
     if (r.ok) captureWin(body.cwd);   // remember the window's PID so quick-keys/nudge can reach it
     return sendJson(res, r.error ? 400 : 200, r);
   }
@@ -2254,6 +2305,22 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/permissions' && req.method === 'GET') {
     return sendJson(res, 200, { pending: dispatch.pendingList() });
   }
+  // Board adoption config: the inject toggle + the optional CLAUDE.md snippet
+  // (for interactive sessions, which Gander doesn't launch and so can't brief).
+  if (url === '/api/board-config' && req.method === 'GET') {
+    return sendJson(res, 200, { inject: cfg.boardInject !== false, claudeMd: boardSnippetPresent() });
+  }
+  if (url === '/api/board-config' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { error: 'body required' });
+    if (body.inject !== undefined) { cfg.boardInject = !!body.inject; saveConfig(); }
+    let claudeMd;
+    if (body.claudeMd === true) claudeMd = writeBoardSnippet(true);
+    else if (body.claudeMd === false) claudeMd = writeBoardSnippet(false);
+    else claudeMd = boardSnippetPresent();
+    return sendJson(res, 200, { ok: true, inject: cfg.boardInject !== false, claudeMd });
+  }
+
   // ── Coordination board ───────────────────────────────────────────────────────
   // A per-project shared store agents post to (notes, findings, escalations) so a
   // swarm builds on each other's work instead of re-deriving it. Human-visible by

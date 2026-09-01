@@ -131,6 +131,16 @@
 
   // ── Slack (outbound webhook + Socket Mode inbound) ──
   let slkCfg = $state(null); let slkUrl = $state(''); let slkStatus = $state(''); let slkOpen = $state(false);
+
+  // ── Coordination board adoption ──
+  let bdCfg = $state(null); let bdOpen = $state(false); let bdStatus = $state('');
+  async function loadBoard() { try { bdCfg = await (await fetch('/api/board-config')).json(); } catch (_) {} }
+  async function saveBoard(patch) {
+    bdStatus = 'Saving…';
+    const r = await post('/api/board-config', patch);
+    if (r && r.ok) { bdCfg = { inject: r.inject, claudeMd: r.claudeMd }; bdStatus = '✓ Saved.'; setTimeout(() => (bdStatus = ''), 1600); }
+    else bdStatus = 'Error';
+  }
   let slkApp = $state(''); let slkBot = $state(''); let slkChan = $state('');
   async function loadSlk() { try { const r = await fetch('/api/slack-config'); slkCfg = await r.json(); } catch (_) {} }
   async function saveSlk(test) {
@@ -288,6 +298,22 @@
           </div>
           {#if slkStatus}<div class="tg-status">{slkStatus}</div>{/if}
           <div class="tg-hint">Webhook alone = <b>outbound alerts</b> (needs-you, errors, runaway cost, budget warnings, task done/failed) mirrored to a channel — make one at api.slack.com/apps → Incoming Webhooks. Add an <b>app-level token</b> (Basic Information → App-Level Tokens, scope <code>connections:write</code>, with Socket Mode ON) plus a <b>bot token</b> (OAuth scope <code>chat:write</code>, subscribe to <code>message.im</code> / <code>message.channels</code>) and Slack becomes <b>two-way like Telegram</b>: DM the bot <code>/task &lt;project&gt; &lt;goal&gt;</code>, <code>/queue</code>, <code>/stop</code>, or <code>project: your message</code>. With both tokens the webhook is optional — alerts post to the alert channel (or wherever you last messaged the bot).</div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="tg">
+      <button class="collapser" onclick={() => { bdOpen = !bdOpen; if (bdOpen) loadBoard(); }}>
+        <span class="caret">{bdOpen ? '▾' : '▸'}</span> 🪧 Coordination board
+        {#if bdCfg}<span class="tg-state">{bdCfg.inject ? '· briefing on' : '· briefing off'}</span>{/if}
+      </button>
+      {#if bdOpen}
+        <div class="tg-form">
+          <label class="cbrow"><input type="checkbox" checked={bdCfg?.inject} onchange={(e) => saveBoard({ inject: e.currentTarget.checked })} /> Tell queued / dispatched agents about the board</label>
+          <div class="tg-hint">When Gander launches work (task queue, ⊘ candidates, ＋ New task, dispatched replies), it appends a short briefing so the agent reads the board first and posts what it learns. <b>Zero always-on cost</b> — it rides only launched prompts, never every turn.</div>
+          <label class="cbrow"><input type="checkbox" checked={bdCfg?.claudeMd} onchange={(e) => saveBoard({ claudeMd: e.currentTarget.checked })} /> Add board guidance to my global CLAUDE.md</label>
+          <div class="tg-hint">For your <b>interactive</b> sessions (which Gander doesn't launch, so it can't brief them). This is the one option that costs a little context <b>every session</b>, so it's off by default. Non-destructive — it adds a fenced block and removes cleanly.</div>
+          {#if bdStatus}<div class="tg-status">{bdStatus}</div>{/if}
         </div>
       {/if}
     </div>
