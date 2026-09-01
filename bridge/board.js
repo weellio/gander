@@ -90,14 +90,20 @@ function list(project, opts = {}) {
 
 function get(id) { return entries.find((e) => e.id === Number(id)) || null; }
 
-function action(id, what) {
+function action(id, what, opts = {}) {
   if (what === 'clear') return { error: 'clear needs a project, not an id' };
   const e = get(id);
   if (!e) return { error: 'no such entry' };
+  const meta = () => (e.meta || (e.meta = {}));
   if (what === 'pin') e.pinned = true;
   else if (what === 'unpin') e.pinned = false;
   else if (what === 'resolve') e.resolved = true;      // for escalations: acknowledged
   else if (what === 'reopen') e.resolved = false;
+  else if (what === 'approve') { meta().status = 'approved'; e.resolved = true; }   // plan: go
+  else if (what === 'veto') { meta().status = 'vetoed'; e.resolved = true; }         // plan: stop
+  else if (what === 'release') { meta().released = true; e.resolved = true; }         // claim: let go
+  else if (what === 'claim-task') { meta().status = 'claimed'; if (opts.agent) meta().assignee = String(opts.agent).slice(0, 80); }
+  else if (what === 'complete') { meta().status = 'done'; e.resolved = true; }        // assignment: reported done
   else if (what === 'remove') { entries = entries.filter((x) => x.id !== e.id); save(); return { ok: true, removed: e.id }; }
   else return { error: 'unknown action' };
   save();
@@ -127,6 +133,50 @@ function summary() {
   return Object.values(by);
 }
 
+// Lineage: findings as a build-on forest. A finding's `refs` point at the
+// entries it built on; this returns root findings (refs point nowhere in the
+// set) with their descendants nested, so the R&D arc reads at a glance — the
+// exact cross-reference that let investigators understand the incident swarm.
+function lineage(project) {
+  const p = cleanProject(project);
+  const mine = entries.filter((e) => e.project === p && (e.type === 'finding' || e.type === 'note'));
+  const byId = new Map(mine.map((e) => [e.id, e]));
+  const childrenOf = new Map();   // parentId -> [entry]
+  const hasParent = new Set();
+  for (const e of mine) {
+    for (const r of e.refs || []) {
+      if (byId.has(r)) { (childrenOf.get(r) || childrenOf.set(r, []).get(r)).push(e); hasParent.add(e.id); }
+    }
+  }
+  const node = (e, seen) => {
+    if (seen.has(e.id)) return null;            // cycle guard
+    seen.add(e.id);
+    const kids = (childrenOf.get(e.id) || []).sort((a, b) => a.createdAt - b.createdAt)
+      .map((c) => node(c, seen)).filter(Boolean);
+    return { id: e.id, type: e.type, agent: e.agent, text: e.text, createdAt: e.createdAt, pinned: e.pinned, children: kids };
+  };
+  const seen = new Set();
+  return mine.filter((e) => !hasParent.has(e.id)).sort((a, b) => b.createdAt - a.createdAt)
+    .map((e) => node(e, seen)).filter(Boolean);
+}
+
+// Active (unreleased, unexpired) claims for a project — advisory holds so
+// parallel agents don't step on the same file. meta.expiresAt is a ms epoch.
+function activeClaims(project) {
+  const p = cleanProject(project), t = now();
+  return entries.filter((e) => e.project === p && e.type === 'claim' && !e.resolved && !(e.meta && e.meta.released)
+    && !(e.meta && e.meta.expiresAt && e.meta.expiresAt < t))
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((e) => ({ id: e.id, agent: e.agent, resource: (e.meta && e.meta.resource) || e.text, text: e.text, createdAt: e.createdAt, expiresAt: e.meta && e.meta.expiresAt }));
+}
+
+// Pending plans awaiting a human's go/veto — fed into the Needs-you rail.
+function pendingPlans() {
+  return entries.filter((e) => e.type === 'plan' && !e.resolved && (!e.meta || !e.meta.status || e.meta.status === 'pending'))
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((e) => ({ id: e.id, project: e.project, agent: e.agent, text: e.text, createdAt: e.createdAt }));
+}
+
 // Open (unresolved) escalations across all projects — fed into the Needs-you rail.
 function openEscalations() {
   return entries.filter((e) => e.type === 'escalation' && !e.resolved)
@@ -135,7 +185,7 @@ function openEscalations() {
 }
 
 module.exports = {
-  add, list, get, action, clear, summary, openEscalations, setClock,
+  add, list, get, action, clear, summary, openEscalations, lineage, activeClaims, pendingPlans, setClock,
   TYPES, TEXT_MAX, MAX_PER_PROJECT,
   _test: { reset: () => { entries = []; seq = 1; }, entries: () => entries, load, save },
 };

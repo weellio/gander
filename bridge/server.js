@@ -599,6 +599,12 @@ function upsert(ev) {
   if (ev.desktop !== undefined) existing.desktop = !!ev.desktop;      // Claude Desktop watcher tile (view-only)
   if (ev.state !== undefined) {
     if (!VALID_STATES.includes(ev.state)) return { error: `invalid state: ${ev.state}` };
+    // continuous-run tracking (B6b): an interactive session goes idle between
+    // turns, so runStartAt keeps resetting and never nudges; an autonomous grind
+    // stays active and its run clock keeps ticking — that's the one we flag.
+    const active = ev.state !== 'idle' && ev.state !== 'done';
+    if (active && !existing.runStartAt) existing.runStartAt = Date.now();
+    else if (!active) existing.runStartAt = 0;
     existing.state = ev.state;
   }
   if (!existing.state) existing.state = 'idle';
@@ -1625,6 +1631,11 @@ function snapshot() {
       osNotify('Gander — went quiet mid-goal', `${a.project || 'a session'} stopped on a question — it may be waiting on you`);
     }
     if (!a.stalled && a.state !== 'idle') a._stalledFed = false;
+    // B6b long-run nudge: a session grinding autonomously past the threshold —
+    // the persistence guard ("you may already be done; verify before continuing").
+    // Opt-in: cfg.longRunMinutes (0 = off).
+    const lrm = Number(cfg.longRunMinutes) || 0;
+    a.longRun = (lrm > 0 && a.root && a.runStartAt && (now - a.runStartAt) > lrm * 60000) || undefined;
   }
   const byProject = {};
   for (const a of list) {
@@ -1670,6 +1681,7 @@ function snapshot() {
     queue: { queued: _qq, running: _qr },
     board: board.summary(),
     escalations: board.openEscalations(),
+    plans: board.pendingPlans(),
     procs: procsMod.decorate(procsMod.compact(procsCache.list), claudeSessionMap()),
     fleet: fleet.status(),
     dispatch: { enabled: !!cfg.dispatch, sessions: dispatch.list().length, permissions: perms.length, rateLimit: dispatch.rateLimit() },
@@ -2239,9 +2251,11 @@ const server = http.createServer(async (req, res) => {
     const bu = new URL(req.url, 'http://localhost');
     const project = bu.searchParams.get('project') || '';
     if (!project) return sendJson(res, 200, { summary: board.summary(), types: board.TYPES });
+    if (bu.searchParams.get('view') === 'lineage') return sendJson(res, 200, { project, lineage: board.lineage(project) });
     return sendJson(res, 200, {
       project,
       entries: board.list(project, { type: bu.searchParams.get('type') || undefined, limit: Number(bu.searchParams.get('limit')) || 100, includeResolved: bu.searchParams.get('all') === '1' }),
+      claims: board.activeClaims(project),
       types: board.TYPES,
     });
   }
@@ -2263,7 +2277,7 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/board/action' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.action) return sendJson(res, 400, { error: 'action required' });
-    const r = body.action === 'clear' ? board.clear(body.project) : board.action(body.id, body.action);
+    const r = body.action === 'clear' ? board.clear(body.project) : board.action(body.id, body.action, { agent: body.agent });
     return sendJson(res, r.error ? 400 : 200, r);
   }
 

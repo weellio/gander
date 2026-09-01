@@ -97,4 +97,60 @@ describe('coordination board', () => {
     const r = board.add({ project: 'p', type: 'finding', text: 'builds on earlier', refs: [1, '2', 'nan', 3] });
     assert.deepEqual(r.entry.refs, [1, 2, 3]);
   });
+
+  // ── B2: lineage ──────────────────────────────────────────────────────────
+  test('lineage nests findings by refs into a build-on forest', () => {
+    const a = board.add({ project: 'volt', type: 'finding', text: 'root cause is step()' }); t += 1;
+    const b = board.add({ project: 'volt', type: 'finding', text: 'fix makes lvl4 solvable', refs: [a.entry.id] }); t += 1;
+    board.add({ project: 'volt', type: 'finding', text: 'also fixes lvl5', refs: [b.entry.id] }); t += 1;
+    board.add({ project: 'volt', type: 'finding', text: 'unrelated finding' });
+    const tree = board.lineage('volt');
+    assert.equal(tree.length, 2, 'two roots: the chain root + the unrelated one');
+    const chain = tree.find((n) => n.id === a.entry.id);
+    assert.equal(chain.children.length, 1);
+    assert.equal(chain.children[0].children.length, 1, 'grandchild nested');
+  });
+
+  test('lineage tolerates ref cycles without looping forever', () => {
+    const a = board.add({ project: 'p', type: 'finding', text: 'a' });
+    const b = board.add({ project: 'p', type: 'finding', text: 'b', refs: [a.entry.id] });
+    // point a back at b (a cycle) — must still terminate
+    board.get(a.entry.id).refs = [b.entry.id];
+    const tree = board.lineage('p');
+    assert.ok(Array.isArray(tree));
+  });
+
+  // ── B3: claims ───────────────────────────────────────────────────────────
+  test('active claims exclude released and expired', () => {
+    board.add({ project: 'volt', type: 'claim', agent: 'A', text: 'auth.js', meta: { resource: 'auth.js', expiresAt: t + 10000 } });
+    const rel = board.add({ project: 'volt', type: 'claim', agent: 'B', text: 'db.js', meta: { resource: 'db.js', expiresAt: t + 10000 } });
+    board.add({ project: 'volt', type: 'claim', agent: 'C', text: 'old.js', meta: { resource: 'old.js', expiresAt: t - 1 } });
+    board.action(rel.entry.id, 'release');
+    const active = board.activeClaims('volt');
+    assert.equal(active.length, 1);
+    assert.equal(active[0].resource, 'auth.js');
+  });
+
+  // ── B4: plans ────────────────────────────────────────────────────────────
+  test('pending plans surface until approved or vetoed', () => {
+    const p1 = board.add({ project: 'volt', type: 'plan', agent: 'X', text: 'delete the legacy table' });
+    const p2 = board.add({ project: 'volt', type: 'plan', agent: 'Y', text: 'rewrite the router' });
+    assert.equal(board.pendingPlans().length, 2);
+    board.action(p1.entry.id, 'approve');
+    board.action(p2.entry.id, 'veto');
+    assert.equal(board.pendingPlans().length, 0);
+    assert.equal(board.get(p1.entry.id).meta.status, 'approved');
+    assert.equal(board.get(p2.entry.id).meta.status, 'vetoed');
+  });
+
+  // ── B5: assignments ──────────────────────────────────────────────────────
+  test('assignment lifecycle: open -> claimed -> done', () => {
+    const a = board.add({ project: 'volt', type: 'assignment', agent: 'coordinator', text: 'write tests for step()' });
+    board.action(a.entry.id, 'claim-task', { agent: 'TestRunner' });
+    assert.equal(board.get(a.entry.id).meta.status, 'claimed');
+    assert.equal(board.get(a.entry.id).meta.assignee, 'TestRunner');
+    board.action(a.entry.id, 'complete');
+    assert.equal(board.get(a.entry.id).meta.status, 'done');
+    assert.equal(board.get(a.entry.id).resolved, true);
+  });
 });

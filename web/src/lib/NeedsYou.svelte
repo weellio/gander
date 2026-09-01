@@ -2,19 +2,24 @@
   // "Needs you" triage rail — one ranked list of every session waiting on a human
   // (needs input / errored / finished), with the reason, how long it's waited, and
   // the answer keys right here so you never have to go find the terminal.
-  let { agents = [], budget = null, escalations = [], onOpen, onFly, onConfig, onBoard } = $props();
+  let { agents = [], budget = null, escalations = [], plans = [], onOpen, onFly, onConfig, onBoard } = $props();
   let open = $state(false);
   let sentId = $state(null);
 
-  // agent-raised escalations (an agent explicitly asked for a human via the
+  // agent-raised escalations + plans (an agent asked for a human via the
   // coordination board) — the top of the rail, since a human was requested.
-  async function resolveEsc(e) {
-    try { await fetch('/api/board/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'resolve', id: e.id }) }); } catch (_) {}
+  async function boardAction(id, action) {
+    try { await fetch('/api/board/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, id }) }); } catch (_) {}
   }
   function escAge(e) {
     if (!e.createdAt) return '';
     const s = Math.max(0, Math.round((Date.now() - e.createdAt) / 1000));
     if (s < 60) return s + 's'; if (s < 3600) return Math.round(s / 60) + 'm'; return Math.round(s / 3600) + 'h';
+  }
+  function runFor(a) {
+    if (!a.runStartAt) return '';
+    const m = Math.round((Date.now() - a.runStartAt) / 60000);
+    return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm';
   }
 
   const sid = (a) => a.sessionId || String(a.id).replace(/^sess:/, '');
@@ -43,15 +48,15 @@
     return Math.round(s / 3600) + 'h';
   }
 
-  // awaiting (oldest first = most urgent) → error → stalled mid-goal → finished roots.
-  const stateOf = (a) => (a.state === 'idle' && a.stalled ? 'stalled' : a.state);
+  // awaiting (oldest first) → error → stalled → long-run → finished roots.
+  const stateOf = (a) => (a.longRun ? 'longrun' : a.state === 'idle' && a.stalled ? 'stalled' : a.state);
   let items = $derived.by(() => {
-    const rank = { awaiting: 0, error: 1, stalled: 2, done: 3 };
+    const rank = { awaiting: 0, error: 1, stalled: 2, longrun: 3, done: 4 };
     return agents
-      .filter((a) => a.state === 'awaiting' || a.state === 'error' || (a.state === 'idle' && a.stalled) || (a.state === 'done' && a.root))
+      .filter((a) => a.state === 'awaiting' || a.state === 'error' || (a.state === 'idle' && a.stalled) || a.longRun || (a.state === 'done' && a.root))
       .sort((x, y) => (rank[stateOf(x)] - rank[stateOf(y)]) || ((x.updatedAt || 0) - (y.updatedAt || 0)));
   });
-  let count = $derived(items.length + escalations.length + (budget?.overDaily ? 1 : 0));
+  let count = $derived(items.length + escalations.length + plans.length + (budget?.overDaily ? 1 : 0));
   const KEYS = [['1', '1'], ['2', '2'], ['3', '3'], ['↑', '{UP}'], ['↓', '{DOWN}'], ['y', 'y'], ['n', 'n'], ['↵', '{ENTER}'], ['esc', '{ESC}']];
   function onKey(e) { if (e.key === 'Escape') open = false; }
 </script>
@@ -64,7 +69,7 @@
     <div class="nu-backdrop" onclick={() => (open = false)} role="presentation"></div>
     <div class="nu-panel" role="menu">
       <div class="nu-h">Needs you{#if count}<span class="dim"> · {count}</span>{/if}</div>
-      {#if !items.length && !escalations.length && !budget?.overDaily}
+      {#if !items.length && !escalations.length && !plans.length && !budget?.overDaily}
         <div class="nu-empty">All clear — nothing needs you. ✨</div>
       {:else}
         {#each escalations as e (e.id)}
@@ -76,7 +81,20 @@
             </div>
             <div class="nu-actcol">
               {#if onBoard}<button class="nu-act" onclick={() => { onBoard(e.project); open = false; }}>Board</button>{/if}
-              <button class="nu-act ghost" onclick={() => resolveEsc(e)}>Resolve</button>
+              <button class="nu-act ghost" onclick={() => boardAction(e.id, 'resolve')}>Resolve</button>
+            </div>
+          </div>
+        {/each}
+        {#each plans as pl (pl.id)}
+          <div class="nu-item plan">
+            <span class="nu-ic">📋</span>
+            <div class="nu-body">
+              <div class="nu-title">{pl.agent || 'an agent'} wants a go-ahead{#if pl.project}<span class="nu-proj">{pl.project}</span>{/if}{#if escAge(pl)}<span class="nu-age">{escAge(pl)}</span>{/if}</div>
+              <div class="nu-sub">{pl.text}</div>
+              <div class="nu-keys">
+                <button class="kk allow" onclick={() => boardAction(pl.id, 'approve')}>✓ Approve</button>
+                <button class="kk deny" onclick={() => boardAction(pl.id, 'veto')}>✕ Veto</button>
+              </div>
             </div>
           </div>
         {/each}
@@ -89,10 +107,10 @@
         {/if}
         {#each items as a (a.id)}
           <div class="nu-item {stateOf(a)}">
-            <span class="nu-ic">{stateOf(a) === 'awaiting' ? '🔔' : stateOf(a) === 'error' ? '⚠️' : stateOf(a) === 'stalled' ? '💤' : '✅'}</span>
+            <span class="nu-ic">{stateOf(a) === 'awaiting' ? '🔔' : stateOf(a) === 'error' ? '⚠️' : stateOf(a) === 'stalled' ? '💤' : stateOf(a) === 'longrun' ? '⏳' : '✅'}</span>
             <div class="nu-body">
               <div class="nu-title">{a.name || a.id}{#if a.project}<span class="nu-proj">{a.project}</span>{/if}{#if age(a)}<span class="nu-age">{age(a)}</span>{/if}</div>
-              <div class="nu-sub">{stateOf(a) === 'awaiting' ? (a.awaitMsg || 'needs your input') : stateOf(a) === 'error' ? 'errored — take a look' : stateOf(a) === 'stalled' ? `went quiet mid-goal — its last message looks like a question${a.goal ? ' · “' + String(a.goal).slice(0, 60) + '”' : ''}` : 'finished — give it the next task?'}</div>
+              <div class="nu-sub">{stateOf(a) === 'awaiting' ? (a.awaitMsg || 'needs your input') : stateOf(a) === 'error' ? 'errored — take a look' : stateOf(a) === 'stalled' ? `went quiet mid-goal — its last message looks like a question${a.goal ? ' · “' + String(a.goal).slice(0, 60) + '”' : ''}` : stateOf(a) === 'longrun' ? `running ${runFor(a)} without a break — worth a glance it isn't redoing solved work${a.goal ? ' · “' + String(a.goal).slice(0, 50) + '”' : ''}` : 'finished — give it the next task?'}</div>
               {#if a.perm}
                 <div class="nu-keys" title="Dispatch session — answers Claude directly over the bridge">
                   <button class="kk allow" class:sent={sentId === a.id + ':allow'} onclick={() => perm(a, 'allow')}>✓ Allow {a.perm.tool}</button>
@@ -134,6 +152,8 @@
   .nu-item.error { background: #EF44440f; }
   .nu-item.stalled { background: #6366F10f; }
   .nu-item.escalation { background: #F59E0B18; }
+  .nu-item.plan { background: #6366F114; }
+  .nu-item.longrun { background: #6366F10c; }
   .nu-ic { font-size: 14px; flex-shrink: 0; line-height: 1.4; }
   .nu-body { flex: 1 1 auto; min-width: 0; }
   .nu-title { font-size: 12.5px; font-weight: 600; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }

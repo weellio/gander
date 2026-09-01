@@ -6,7 +6,9 @@
   let { open = $bindable(false), project = $bindable('') } = $props();
   let summary = $state([]);       // [{project,total,pinned,escalations,latest}]
   let entries = $state([]);
-  let filter = $state('');        // '' | note | finding | escalation
+  let tree = $state([]);          // lineage forest when view==='lineage'
+  let filter = $state('');        // '' | note | finding | claim | plan | escalation
+  let view = $state('list');      // 'list' | 'lineage'
   let note = $state('');
   let flash = $state('');
   let _w = false;
@@ -20,13 +22,18 @@
     if (!project && summary.length) project = summary[0].project;
   }
   async function loadEntries() {
-    if (!project) { entries = []; return; }
+    if (!project) { entries = []; tree = []; return; }
     try {
-      const q = new URLSearchParams({ project, all: '1' });
-      if (filter) q.set('type', filter);
-      const r = await (await fetch('/api/board?' + q)).json();
-      entries = r.entries || [];
-    } catch (_) { entries = []; }
+      if (view === 'lineage') {
+        const r = await (await fetch('/api/board?' + new URLSearchParams({ project, view: 'lineage' }))).json();
+        tree = r.lineage || [];
+      } else {
+        const q = new URLSearchParams({ project, all: '1' });
+        if (filter) q.set('type', filter);
+        const r = await (await fetch('/api/board?' + q)).json();
+        entries = r.entries || [];
+      }
+    } catch (_) { entries = []; tree = []; }
   }
   $effect(() => {
     if (!open) { _w = false; return; }
@@ -34,8 +41,8 @@
     const t = setInterval(() => { loadSummary(); loadEntries(); }, 4000);
     return () => clearInterval(t);
   });
-  // reload the list when the chosen project or filter changes
-  $effect(() => { project; filter; if (open && _w) loadEntries(); });
+  // reload when the chosen project, filter, or view changes
+  $effect(() => { project; filter; view; if (open && _w) loadEntries(); });
 
   function say(t) { flash = t; setTimeout(() => (flash = ''), 1800); }
   async function addNote() {
@@ -74,9 +81,10 @@
           {/each}
         </select>
         <div class="filters">
-          {#each [['', 'all'], ['note', '📝'], ['finding', '🔬'], ['escalation', '🙋']] as [v, lbl] (v)}
-            <button class="fchip" class:on={filter === v} onclick={() => (filter = v)}>{lbl}</button>
+          {#each [['', 'all'], ['note', '📝'], ['finding', '🔬'], ['claim', '🔒'], ['plan', '📋'], ['assignment', '📌'], ['escalation', '🙋']] as [v, lbl] (v)}
+            <button class="fchip" class:on={view === 'list' && filter === v} onclick={() => { view = 'list'; filter = v; }} title={v || 'all'}>{lbl}</button>
           {/each}
+          <button class="fchip" class:on={view === 'lineage'} onclick={() => (view = 'lineage')} title="lineage — findings as a build-on tree">🌳</button>
         </div>
       </div>
 
@@ -88,7 +96,22 @@
         </div>
       </div>
 
-      {#if !entries.length}
+      {#if view === 'lineage'}
+        {#if !tree.length}
+          <div class="empty">No findings yet. Findings that reference others (<code>--refs</code>) chain up here as a build-on tree.</div>
+        {:else}
+          {#snippet branch(nodes, depth)}
+            {#each nodes as n (n.id)}
+              <div class="ln" style="margin-left:{depth * 16}px">
+                <span class="ln-dot">{depth ? '↳' : '🔬'}</span>
+                <div class="ln-body"><span class="ln-id">#{n.id}</span> {#if n.agent}<span class="who">{n.agent}</span>{/if}<div class="ln-txt">{n.text}</div></div>
+              </div>
+              {#if n.children && n.children.length}{@render branch(n.children, depth + 1)}{/if}
+            {/each}
+          {/snippet}
+          {@render branch(tree, 0)}
+        {/if}
+      {:else if !entries.length}
         <div class="empty">{project ? 'This board is empty. Agents post with ' : 'No project selected. '}{#if project}<code>node scripts/board.js post --project {project} --text "…"</code>{/if} — or leave the first note above.</div>
       {:else}
         {#each entries as e (e.id)}
@@ -99,6 +122,7 @@
                 <b>#{e.id}</b>
                 {#if e.type !== 'note'}<span class="ty">{e.type}</span>{/if}
                 {#if e.agent}<span class="who">{e.agent}</span>{/if}
+                {#if e.meta?.status}<span class="status {e.meta.status}">{e.meta.status}{#if e.meta.assignee} · {e.meta.assignee}{/if}</span>{/if}
                 {#if e.pinned}<span class="pin">📌</span>{/if}
                 <span class="age">{when(e.createdAt)}</span>
               </div>
@@ -160,5 +184,15 @@
   .clear { align-self: flex-start; font-size: 10.5px; padding: 4px 10px; border-radius: 6px; cursor: pointer; margin-top: 2px;
     border: 0.5px solid var(--color-border-tertiary); background: none; color: var(--color-text-tertiary); }
   .clear:hover { border-color: #EF4444; color: #EF4444; }
+  .status { font-size: 9px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 5px; background: var(--color-background-secondary); color: var(--color-text-secondary); }
+  .status.open { color: var(--accent, #6366F1); }
+  .status.claimed { color: #C9820A; }
+  .status.done, .status.approved { color: #0f9e6e; }
+  .status.vetoed { color: #EF4444; }
+  .ln { display: flex; gap: 7px; padding: 5px 2px; align-items: flex-start; border-left: 1.5px solid var(--color-border-tertiary); padding-left: 8px; }
+  .ln-dot { font-size: 11px; line-height: 1.4; flex-shrink: 0; color: var(--accent, #6366F1); }
+  .ln-body { min-width: 0; }
+  .ln-id { font-family: var(--font-mono); font-size: 10px; color: var(--color-text-tertiary); }
+  .ln-txt { font-size: 12.5px; line-height: 1.4; word-break: break-word; }
   .statusbar { border-top: 0.5px solid var(--color-border-tertiary); padding: 8px 14px; font-size: 11px; color: var(--color-text-secondary); background: var(--color-background-secondary); }
 </style>

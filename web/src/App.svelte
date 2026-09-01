@@ -55,6 +55,7 @@
   let procs = $state([]);   // background processes → the Office floor's robots
   let queueCounts = $state(null);   // { queued, running } → the floor's Ticket Bot badge
   let escalations = $state([]);     // agents that asked for a human, via the coordination board
+  let plans = $state([]);           // pending plans awaiting a go/veto
   let boardProject = $state('');    // which project the Board panel opens on
   let online = $state(false);
   let selectedProject = $state(localStorage.getItem('aoc-project') || '');
@@ -127,6 +128,7 @@
       procs = d.procs || [];
       queueCounts = d.queue || null;
       escalations = d.escalations || [];
+      plans = d.plans || [];
       checkBuild(d.build);
       const nowAwaiting = new Set(agents.filter((a) => a.state === 'awaiting').map((a) => a.id));
       if (!firstPoll) {
@@ -520,7 +522,7 @@
         {/if}
       </div>
 
-      <NeedsYou {agents} {budget} {escalations} onOpen={(id) => (tileModalId = id)} onFly={flyTo} onConfig={() => openP('config')} onBoard={openBoard} />
+      <NeedsYou {agents} {budget} {escalations} {plans} onOpen={(id) => (tileModalId = id)} onFly={flyTo} onConfig={() => openP('config')} onBoard={openBoard} />
 
       <HelpPanel />
     </div>
