@@ -54,13 +54,14 @@ function load() {
 load();
 
 // ── public API ───────────────────────────────────────────────────────────────
-function add({ cwd, prompt, afterId }) {
+function add({ cwd, prompt, afterId, doneWhen }) {
   if (!cwd || !String(prompt || '').trim()) return { error: 'cwd and prompt required' };
   const it = {
     id: seq++, cwd: String(cwd), project: projectFromCwd(cwd), prompt: String(prompt).trim().slice(0, 4000),
     status: 'queued', createdAt: Date.now(), startedAt: null, doneAt: null, sessionId: null, runner: null, error: null,
   };
   if (afterId) it.afterId = Number(afterId);   // chain: don't start until #afterId lands
+  if (doneWhen && String(doneWhen).trim()) it.doneWhen = String(doneWhen).trim().slice(0, 500);   // KC2: preregistered success
   items.push(it);
   save();
   return { ok: true, item: it };

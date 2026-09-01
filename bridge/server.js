@@ -1505,13 +1505,21 @@ function runTestGate(it, cb) {
 // Queue a prompt, splitting "… then: …" into a dependency chain — each part
 // starts only after the previous one lands. Shared by the panel, Telegram,
 // and Slack.
-function queueChain(cwd, prompt) {
+// KC2: a queue task can carry a definition of done — success stated up front,
+// so the session knows when to stop (the antidote to re-solving a solved
+// problem). It rides the prompt; with the test gate on, tests are the check.
+function withDoneWhen(it) {
+  return it.doneWhen ? `${it.prompt}\n\nDefinition of done (stop when this is true; don't over-work): ${it.doneWhen}` : it.prompt;
+}
+function queueChain(cwd, prompt, doneWhen) {
   const parts = String(prompt).split(/\s*\bthen:\s*/i).map((s) => s.trim()).filter(Boolean);
   if (!parts.length) return { error: 'empty prompt' };
   let prev = null, first = null;
   const ids = [];
-  for (const p of parts) {
-    const r = queue.add({ cwd, prompt: p, afterId: prev });
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    // the definition of done rides the FINAL part (the deliverable of the chain)
+    const r = queue.add({ cwd, prompt: p, afterId: prev, doneWhen: i === parts.length - 1 ? doneWhen : undefined });
     if (!r.ok) return first ? { ok: true, item: first, ids, error: r.error } : r;
     ids.push(r.item.id);
     prev = r.item.id;
@@ -1532,8 +1540,8 @@ function queueTick() {
       dispatchEnabled: () => !!cfg.dispatch,
       dispatchGet: (sid) => { const s = dispatch.get(sid); return s ? { busy: s.busy, lastResult: s.lastResult, exited: s.exited } : null; },
       dispatchList: () => dispatch.list(),
-      startDispatch: (it) => dispatch.start({ cwd: it.wtPath || it.cwd, prompt: it.prompt, permMode: cfg.launchPermMode || '', cli: claudeCliRaw(), extraFlags: cfg.launchFlags }),
-      startTerminal: (it) => { const c = it.wtPath || it.cwd; const r = launchSession(c, null, it.prompt); if (r.ok) captureWin(c); return r; },
+      startDispatch: (it) => dispatch.start({ cwd: it.wtPath || it.cwd, prompt: withDoneWhen(it), permMode: cfg.launchPermMode || '', cli: claudeCliRaw(), extraFlags: cfg.launchFlags }),
+      startTerminal: (it) => { const c = it.wtPath || it.cwd; const r = launchSession(c, null, withDoneWhen(it)); if (r.ok) captureWin(c); return r; },
       // worktree isolation (queue setting): per-task worktree + branch; only the
       // bridge merges back (bridge/git.js)
       wt: {
@@ -2292,7 +2300,7 @@ const server = http.createServer(async (req, res) => {
     if (!body || !body.cwd || !body.prompt) return sendJson(res, 400, { error: 'cwd and prompt required' });
     if (!fs.existsSync(body.cwd)) return sendJson(res, 400, { error: 'path not found' });
     if (!assertCwd(res, body.cwd)) return;
-    const r = queueChain(body.cwd, body.prompt);
+    const r = queueChain(body.cwd, body.prompt, body.doneWhen);
     if (r.ok) { console.log(`[queue] +#${r.ids.join(',#')} (${r.item.project}) ${r.item.prompt.slice(0, 60)}`); setTimeout(queueTick, 400); }
     return sendJson(res, r.error && !r.ok ? 400 : 200, r);
   }

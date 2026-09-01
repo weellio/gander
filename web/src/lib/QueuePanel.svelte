@@ -7,6 +7,7 @@
   let projects = $state([]);
   let cwd = $state('');
   let goal = $state('');
+  let doneWhen = $state('');   // KC2: definition of done
   let flash = $state('');
   let tgOnDone = $state(false);
   let dispatchOn = $state(false);
@@ -40,8 +41,8 @@
   function note(t) { flash = t; setTimeout(() => (flash = ''), 2200); }
   async function add() {
     if (!cwd || !goal.trim()) { note('⚠ pick a project and type a goal'); return; }
-    const r = await post('/api/queue', { cwd, prompt: goal.trim() });
-    if (r && r.ok) { note('✓ queued #' + r.item.id); goal = ''; load(); }
+    const r = await post('/api/queue', { cwd, prompt: goal.trim(), doneWhen: doneWhen.trim() || undefined });
+    if (r && r.ok) { note('✓ queued #' + r.item.id); goal = ''; doneWhen = ''; load(); }
     else note('✗ ' + ((r && r.error) || 'failed'));
   }
   async function act(id, action) {
@@ -74,6 +75,7 @@
       <div class="addbox">
         <div class="lblrow"><span class="lbl">Add a task</span><MicButton onappend={(t) => (goal = (goal ? goal.trim() + ' ' : '') + t)} /></div>
         <textarea rows="2" bind:value={goal} placeholder="what should Claude do? (Ctrl+Enter adds · 'then:' chains follow-up tasks)" onkeydown={onGoalKey}></textarea>
+        <input class="in dod" bind:value={doneWhen} placeholder="✓ definition of done (optional) — what 'finished' means, so it stops when true" />
         <div class="addrow">
           <select class="in" bind:value={cwd}>
             {#each projects as p (p.path)}<option value={p.path}>{p.name}</option>{/each}
@@ -109,6 +111,7 @@
                 <span class="when">{it.status === 'running' ? age(it.startedAt) + ' in' : it.doneAt ? age(it.doneAt) + ' ago' : age(it.createdAt) + ' waiting'}</span>
               </div>
               <div class="prompt">{it.prompt}</div>
+              {#if it.doneWhen}<div class="dodrow">✓ done when: {it.doneWhen}</div>{/if}
               {#if it.branch}<div class="merge" class:kept={it.merge && it.merge !== 'merged' && it.merge !== 'no changes'}>⎇ {it.merge || it.branch}{#if it.gate === 'passed'} · 🧪 tests passed{/if}</div>{/if}
               {#if it.error}<div class="err">{it.error}</div>{/if}
               {#if it.testOut}<details class="tout"><summary>test output</summary><pre>{it.testOut}</pre></details>{/if}
@@ -150,6 +153,8 @@
   .go { font-size: 12px; font-weight: 600; padding: 5px 14px; border-radius: 6px; cursor: pointer; border: none; background: var(--accent, #6366F1); color: #fff; flex-shrink: 0; }
   .hint { font-size: 10px; color: var(--color-text-tertiary); line-height: 1.4; }
   .cfgrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; }
+  .in.dod { width: 100%; }
+  .dodrow { font-size: 10.5px; color: #0f9e6e; margin-top: 3px; }
   .merge { font-size: 10px; font-family: var(--font-mono); color: #10B981; margin-top: 2px; }
   .merge.kept { color: #F59E0B; }
   .chain { font-size: 10px; color: var(--color-text-tertiary); }
