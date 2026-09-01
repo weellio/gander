@@ -143,6 +143,26 @@ describe('coordination board', () => {
     assert.equal(board.get(p2.entry.id).meta.status, 'vetoed');
   });
 
+  // ── KC1: gems (durable lane) ─────────────────────────────────────────────
+  test('promote marks a finding a gem; gems() lists them, demote removes', () => {
+    const f1 = board.add({ project: 'volt', type: 'finding', text: 'the load-bearing insight' });
+    board.add({ project: 'volt', type: 'finding', text: 'a throwaway note' });
+    board.action(f1.entry.id, 'promote');
+    let g = board.gems('volt');
+    assert.equal(g.length, 1);
+    assert.equal(g[0].id, f1.entry.id);
+    assert.equal(board.summary().find((x) => x.project === 'volt').gems, 1);
+    board.action(f1.entry.id, 'demote');
+    assert.equal(board.gems('volt').length, 0);
+  });
+
+  test('gems survive the per-project cap', () => {
+    const gem = board.add({ project: 'p', type: 'finding', text: 'keep me forever' });
+    board.action(gem.entry.id, 'promote');
+    for (let i = 0; i < board.MAX_PER_PROJECT + 30; i++) { t += 1; board.add({ project: 'p', text: 'bulk ' + i }); }
+    assert.ok(board._test.entries().some((e) => e.id === gem.entry.id), 'the gem was not culled');
+  });
+
   // ── B5: assignments ──────────────────────────────────────────────────────
   test('assignment lifecycle: open -> claimed -> done', () => {
     const a = board.add({ project: 'volt', type: 'assignment', agent: 'coordinator', text: 'write tests for step()' });

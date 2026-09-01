@@ -2253,6 +2253,7 @@ const server = http.createServer(async (req, res) => {
     const project = bu.searchParams.get('project') || '';
     if (!project) return sendJson(res, 200, { summary: board.summary(), types: board.TYPES });
     if (bu.searchParams.get('view') === 'lineage') return sendJson(res, 200, { project, lineage: board.lineage(project) });
+    if (bu.searchParams.get('view') === 'gems') return sendJson(res, 200, { project, gems: board.gems(project) });
     return sendJson(res, 200, {
       project,
       entries: board.list(project, { type: bu.searchParams.get('type') || undefined, limit: Number(bu.searchParams.get('limit')) || 100, includeResolved: bu.searchParams.get('all') === '1' }),

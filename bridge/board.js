@@ -43,11 +43,12 @@ load();
 
 function cleanProject(p) { return String(p || '').trim().slice(0, 80); }
 
-// Enforce the per-project cap: keep all pinned + the newest non-pinned.
+// Enforce the per-project cap: keep all pinned + gems + the newest non-pinned.
+const isGem = (e) => !!(e.meta && e.meta.gem);
 function trim(project) {
   const mine = entries.filter((e) => e.project === project);
   if (mine.length <= MAX_PER_PROJECT) return;
-  const drop = mine.filter((e) => !e.pinned).sort((a, b) => a.createdAt - b.createdAt);
+  const drop = mine.filter((e) => !e.pinned && !isGem(e)).sort((a, b) => a.createdAt - b.createdAt);
   const excess = mine.length - MAX_PER_PROJECT;
   const kill = new Set(drop.slice(0, excess).map((e) => e.id));
   if (kill.size) entries = entries.filter((e) => !kill.has(e.id));
@@ -104,6 +105,8 @@ function action(id, what, opts = {}) {
   else if (what === 'release') { meta().released = true; e.resolved = true; }         // claim: let go
   else if (what === 'claim-task') { meta().status = 'claimed'; if (opts.agent) meta().assignee = String(opts.agent).slice(0, 80); }
   else if (what === 'complete') { meta().status = 'done'; e.resolved = true; }        // assignment: reported done
+  else if (what === 'promote') { meta().gem = true; }    // a durable finding — carries to the next session
+  else if (what === 'demote') { meta().gem = false; }
   else if (what === 'remove') { entries = entries.filter((x) => x.id !== e.id); save(); return { ok: true, removed: e.id }; }
   else return { error: 'unknown action' };
   save();
@@ -124,9 +127,10 @@ function clear(project) {
 function summary() {
   const by = {};
   for (const e of entries) {
-    const s = by[e.project] || (by[e.project] = { project: e.project, total: 0, pinned: 0, escalations: 0, latestAt: 0, latest: '' });
+    const s = by[e.project] || (by[e.project] = { project: e.project, total: 0, pinned: 0, gems: 0, escalations: 0, latestAt: 0, latest: '' });
     s.total++;
     if (e.pinned) s.pinned++;
+    if (isGem(e) && !e.resolved) s.gems++;
     if (e.type === 'escalation' && !e.resolved) s.escalations++;
     if (e.createdAt >= s.latestAt) { s.latestAt = e.createdAt; s.latest = e.text.slice(0, 80); }
   }
@@ -170,6 +174,16 @@ function activeClaims(project) {
     .map((e) => ({ id: e.id, agent: e.agent, resource: (e.meta && e.meta.resource) || e.text, text: e.text, createdAt: e.createdAt, expiresAt: e.meta && e.meta.expiresAt }));
 }
 
+// Gems: findings/notes promoted to the durable lane — what the NEXT session on
+// this project should start from. The compounding upgrade: knowledge that
+// survives the cap and is surfaced first, instead of scrolling away.
+function gems(project) {
+  const p = cleanProject(project);
+  return entries.filter((e) => e.project === p && isGem(e) && !e.resolved)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((e) => ({ id: e.id, type: e.type, agent: e.agent, text: e.text, createdAt: e.createdAt, refs: e.refs }));
+}
+
 // Pending plans awaiting a human's go/veto — fed into the Needs-you rail.
 function pendingPlans() {
   return entries.filter((e) => e.type === 'plan' && !e.resolved && (!e.meta || !e.meta.status || e.meta.status === 'pending'))
@@ -185,7 +199,7 @@ function openEscalations() {
 }
 
 module.exports = {
-  add, list, get, action, clear, summary, openEscalations, lineage, activeClaims, pendingPlans, setClock,
+  add, list, get, action, clear, summary, openEscalations, lineage, activeClaims, pendingPlans, gems, setClock,
   TYPES, TEXT_MAX, MAX_PER_PROJECT,
   _test: { reset: () => { entries = []; seq = 1; }, entries: () => entries, load, save },
 };

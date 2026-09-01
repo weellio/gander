@@ -41,6 +41,8 @@ function req(method, path, port, body) {
 
 const USAGE = `gander board — coordinate with the other agents on a project
   read      --project P [--type note|finding|claim|plan|assignment] [--limit N]
+  gems      --project P                                 the durable findings — read these FIRST
+  promote   --id N                                      mark a finding a gem (carries forward)
   lineage   --project P                                 findings as a build-on tree
   post      --project P --text "…" [--agent NAME]       leave a note
   find      --project P --text "…" [--refs 1,2]         a finding (builds on refs)
@@ -87,6 +89,22 @@ async function main() {
       const r = await req('GET', '/api/board?' + new URLSearchParams({ project, view: 'lineage' }), o.port);
       if (!r.lineage || !r.lineage.length) { console.log(`(no findings for ${project})`); return; }
       printTree(r.lineage, 0);
+      return;
+    }
+
+    // gems — the durable lane the next session should start from
+    if (cmd === 'gems') {
+      if (!project) return fail('need --project');
+      const r = await req('GET', '/api/board?' + new URLSearchParams({ project, view: 'gems' }), o.port);
+      if (!r.gems || !r.gems.length) { console.log(`(no gems for ${project} — promote a key finding with: board.js promote --id N)`); return; }
+      for (const e of r.gems) console.log(`💎 #${e.id} ${e.agent ? e.agent + ': ' : ''}${e.text}`);
+      return;
+    }
+    if (cmd === 'promote' || cmd === 'demote') {
+      if (!o.id || o.id === true) return fail('need --id N');
+      const r = await req('POST', '/api/board/action', o.port, { id: Number(o.id), action: cmd });
+      if (r.error) return fail('board error: ' + r.error);
+      console.log(`${cmd} #${o.id} ok`);
       return;
     }
 

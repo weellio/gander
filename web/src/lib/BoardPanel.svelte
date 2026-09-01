@@ -7,8 +7,9 @@
   let summary = $state([]);       // [{project,total,pinned,escalations,latest}]
   let entries = $state([]);
   let tree = $state([]);          // lineage forest when view==='lineage'
+  let gems = $state([]);          // durable findings when view==='gems'
   let filter = $state('');        // '' | note | finding | claim | plan | escalation
-  let view = $state('list');      // 'list' | 'lineage'
+  let view = $state('list');      // 'list' | 'lineage' | 'gems'
   let note = $state('');
   let flash = $state('');
   let _w = false;
@@ -27,6 +28,9 @@
       if (view === 'lineage') {
         const r = await (await fetch('/api/board?' + new URLSearchParams({ project, view: 'lineage' }))).json();
         tree = r.lineage || [];
+      } else if (view === 'gems') {
+        const r = await (await fetch('/api/board?' + new URLSearchParams({ project, view: 'gems' }))).json();
+        gems = r.gems || [];
       } else {
         const q = new URLSearchParams({ project, all: '1' });
         if (filter) q.set('type', filter);
@@ -84,6 +88,7 @@
           {#each [['', 'all'], ['note', '📝'], ['finding', '🔬'], ['claim', '🔒'], ['plan', '📋'], ['assignment', '📌'], ['escalation', '🙋']] as [v, lbl] (v)}
             <button class="fchip" class:on={view === 'list' && filter === v} onclick={() => { view = 'list'; filter = v; }} title={v || 'all'}>{lbl}</button>
           {/each}
+          <button class="fchip" class:on={view === 'gems'} onclick={() => (view = 'gems')} title="gems — the durable findings the next session should start from">💎</button>
           <button class="fchip" class:on={view === 'lineage'} onclick={() => (view = 'lineage')} title="lineage — findings as a build-on tree">🌳</button>
         </div>
       </div>
@@ -96,7 +101,22 @@
         </div>
       </div>
 
-      {#if view === 'lineage'}
+      {#if view === 'gems'}
+        {#if !gems.length}
+          <div class="empty">No gems yet. Promote a load-bearing finding (💎) and it survives the cap — the durable knowledge the <b>next</b> session starts from. Agents read them with <code>node scripts/board.js gems --project {project}</code>.</div>
+        {:else}
+          {#each gems as g (g.id)}
+            <div class="item finding">
+              <span class="ic">💎</span>
+              <div class="ibody">
+                <div class="itop"><b>#{g.id}</b>{#if g.agent}<span class="who">{g.agent}</span>{/if}<span class="age">{when(g.createdAt)}</span></div>
+                <div class="txt">{g.text}</div>
+              </div>
+              <div class="acts"><button class="mini" onclick={() => act(g.id, 'demote')}>demote</button></div>
+            </div>
+          {/each}
+        {/if}
+      {:else if view === 'lineage'}
         {#if !tree.length}
           <div class="empty">No findings yet. Findings that reference others (<code>--refs</code>) chain up here as a build-on tree.</div>
         {:else}
@@ -130,6 +150,7 @@
               {#if e.refs && e.refs.length}<div class="refs">builds on #{e.refs.join(', #')}</div>{/if}
             </div>
             <div class="acts">
+              {#if e.type === 'finding' || e.type === 'note'}<button class="mini" class:gem={e.meta?.gem} onclick={() => act(e.id, e.meta?.gem ? 'demote' : 'promote')} title="a durable finding the next session should start from">💎</button>{/if}
               <button class="mini" onclick={() => act(e.id, e.pinned ? 'unpin' : 'pin')}>{e.pinned ? 'unpin' : 'pin'}</button>
               {#if e.type === 'escalation' && !e.resolved}<button class="mini" onclick={() => act(e.id, 'resolve')}>resolve</button>{/if}
               <button class="mini ghost" onclick={() => act(e.id, 'remove')}>✕</button>
@@ -181,6 +202,7 @@
   .mini { font-size: 10px; padding: 2px 8px; border-radius: 5px; cursor: pointer; border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-secondary); }
   .mini:hover { border-color: var(--accent, #6366F1); color: var(--color-text-primary); }
   .mini.ghost { border: none; background: none; }
+  .mini.gem { border-color: color-mix(in srgb, var(--accent, #6366F1) 45%, transparent); background: color-mix(in srgb, var(--accent, #6366F1) 12%, transparent); }
   .clear { align-self: flex-start; font-size: 10.5px; padding: 4px 10px; border-radius: 6px; cursor: pointer; margin-top: 2px;
     border: 0.5px solid var(--color-border-tertiary); background: none; color: var(--color-text-tertiary); }
   .clear:hover { border-color: #EF4444; color: #EF4444; }

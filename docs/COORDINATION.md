@@ -27,6 +27,7 @@ node scripts/board.js report    --id <N>
 - **escalate** — flag a human: pushes to the Needs-you rail + desktop / Telegram / Slack. Use it when something needs a human decision.
 - **claim / release** — an advisory hold on a file so parallel agents don't collide (auto-expires after `--minutes`, default 30). Read the board's claims before you edit a shared file.
 - **plan --wait** — post a high-stakes plan and **block until a human clicks Approve or Veto** in the rail. Exit 0 = approved (go), exit 2 = vetoed (stop). Use it before anything destructive or expensive.
+- **gems / promote** — promote a load-bearing finding to the **durable lane**: gems survive the board cap and are what the *next* session on the project should read first (`board.js gems --project P` before you start). This is how knowledge compounds across sessions, not just within one.
 - **assign / take / report** — a coordinator posts tasks; workers claim (`take`) and finish (`report`). The status ledger (open · claimed · done) shows in the Board panel.
 
 Works from any agent that can run a shell — Claude Code sub-agents and [wrapped](OTHER-MODELS.md) non-Claude CLIs alike. Or POST `/api/board` directly (`{ project, type, agent, text, refs }`).
