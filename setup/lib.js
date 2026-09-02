@@ -56,6 +56,7 @@ function buildHooks() {
     SubagentStart: [evt()],
     SubagentStop: [evt()],
     Stop: [evt()],
+    Notification: [evt()],
     SessionEnd: [evt()],
   };
 }
