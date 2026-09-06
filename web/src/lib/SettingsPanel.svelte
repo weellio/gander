@@ -47,7 +47,9 @@
 
   // ── Gander Dispatch (bridge-hosted sessions) ──
   let dpOpen = $state(false); let dpOn = $state(false); let dpStatus = $state(''); let dpSessions = $state(0);
-  async function loadDispatch() { try { const j = await (await fetch('/api/dispatch-config')).json(); dpOn = !!j.enabled; dpSessions = (j.sessions || []).length; } catch (_) {} }
+  let ibOn = $state(true), ibCount = $state(0), ibStatus = $state('');   // ↯ inbox delivery (replies straight into a session's cross-session inbox)
+  async function loadDispatch() { try { const j = await (await fetch('/api/dispatch-config')).json(); dpOn = !!j.enabled; dpSessions = (j.sessions || []).length; ibOn = j.inboxDeliver !== false; ibCount = Number(j.inboxes) || 0; } catch (_) {} }
+  async function saveInbox() { ibStatus = 'Saving…'; const r = await post('/api/dispatch-config', { inboxDeliver: ibOn }); ibStatus = r && r.ok ? (ibOn ? '✓ Replies go straight into session inboxes' : '✓ Off — replies queue for the next turn') : 'Error'; setTimeout(() => (ibStatus = ''), 2200); }
   async function saveDispatch() { dpStatus = 'Saving…'; const r = await post('/api/dispatch-config', { enabled: dpOn }); dpStatus = r && r.ok ? (dpOn ? '✓ Dispatch ON' : '✓ Dispatch off — classic terminal launch') : 'Error'; setTimeout(() => (dpStatus = ''), 2200); }
 
   // ── cost budget (global) ──
@@ -235,6 +237,9 @@
           {#if dpStatus}<div class="tg-status">{dpStatus}</div>{/if}
           <div class="tg-hint">When ON, <b>▶ Start</b> / <b>＋ New task</b> with a goal (and <b>⤳ Resume</b> replies) run the session <b>inside the bridge</b> over stream-json instead of opening a terminal: replies deliver <b>instantly</b> (no window-typing), <b>permission prompts become Allow / Deny buttons</b> right on the dashboard and in the 🔔 rail, and it works with the dashboard on your phone. Runs on your own <code>claude</code> login — plan quota, no API key.</div>
           <div class="tg-hint">When OFF (or per-launch via “terminal instead” in ＋ New task), everything uses the classic method: a real terminal window + quick-keys/nudge window automation — nothing is removed. Goal-less ▶ Start always opens a terminal either way (an interactive session needs a keyboard). Hosted sessions still write normal transcripts, so History/Resume/cost all keep working.</div>
+          <label class="cbrow" style="margin-top:8px"><input type="checkbox" bind:checked={ibOn} onchange={saveInbox} /> <b>↯ Deliver replies into the session's inbox</b> <span class="dim">(terminal / VS Code sessions · {ibCount} live now)</span></label>
+          {#if ibStatus}<div class="tg-status">{ibStatus}</div>{/if}
+          <div class="tg-hint">Every Claude Code session has a private cross-session inbox (what <code>/list-agents</code> + SendMessage use). Gander's hooks report it, so a reply from a tile, the 🔔 rail or Telegram is written <b>straight into that inbox</b> and picked up at the session's next turn — no window typing, no waiting for a Stop hook. Tiles show ↯ when it's live. Off = the classic queued channel.</div>
         </div>
       {/if}
     </div>

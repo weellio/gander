@@ -105,6 +105,10 @@ process.stdin.on('end', () => {
     // bridge can then label "claude.exe 8900" with this session's project.
     const cp = findClaudePid(obj.session_id);
     if (cp) obj._claudePid = cp;
+    // Cross-session inbox: hooks inherit the session's own messaging socket +
+    // token, and only that token opens its inbox. Report both so the bridge
+    // can deliver replies straight into the session (no window automation).
+    if (process.env.CLAUDE_CODE_MESSAGING_SOCKET) { obj._msgSocket = process.env.CLAUDE_CODE_MESSAGING_SOCKET; obj._msgToken = process.env.CLAUDE_CODE_MESSAGING_TOKEN || ''; }
     payload = JSON.stringify(obj);
     const ev = obj && obj.hook_event_name;
     const isSub = obj && obj.agent_id && obj.agent_id !== obj.session_id;

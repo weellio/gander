@@ -411,8 +411,10 @@
       {#if flash}<div class="flash" class:err={flash[0] === '✗' || flash[0] === '⚠'}>{flash}</div>{/if}
       {#if agent.dispatch}
         <div class="foot">⚡ Dispatch session — hosted by the bridge. Replies deliver <b>instantly</b>; “Stop” interrupts the current turn. Drop/paste an image and Claude saves + Reads it.</div>
+      {:else if agent.inbox}
+        <div class="foot">↯ Replies go straight into this session's <b>cross-session inbox</b> (picked up at its next turn — no window typing). “Stop” halts it at its next tool. Drop/paste an image and Claude saves + Reads it.{#if agent.peerName} · address <code>{agent.peerName}</code>{/if}</div>
       {:else}
-        <div class="foot">Replies deliver when the agent next checks in. “Stop” halts it at its next tool. Drop/paste an image and Claude saves + Reads it.</div>
+        <div class="foot">Replies deliver when the agent next checks in. “Stop” halts it at its next tool. Drop/paste an image and Claude saves + Reads it.{#if agent.peerName} · address <code>{agent.peerName}</code>{/if}</div>
       {/if}
       {/if}
     {:else}

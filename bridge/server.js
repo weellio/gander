@@ -27,6 +27,7 @@ const https = require('https');
 const license = require('./license.js');
 const projects = require('./projects.js');
 const git = require('./git.js');
+const peers = require('./peers');        // Claude Code session registry + cross-session inbox delivery
 const usage = require('./usage.js');
 const github = require('./github.js');
 const configmgr = require('./configmgr.js');
@@ -1758,8 +1759,16 @@ function snapshot() {
   for (const [sid, q] of commands) if (q.length) pending[sid] = q.length;
   // decorate hosted agents with their first pending permission so tiles/modal can Allow/Deny
   const perms = dispatch.pendingList().concat(hookPermPendingList());
+  let regBySid = new Map();
+  try { for (const p of peers.readRegistry()) regBySid.set(p.sessionId, p); } catch (_) {}
   for (const a of list) {
     if (!a.root || !a.sessionId) continue;
+    const reg = regBySid.get(a.sessionId);
+    if (reg) {
+      a.peerName = reg.name || undefined;                       // the name other sessions use to message it
+      if (reg.pid && !sessClaude.has(a.sessionId)) { try { linkClaudePid(a.sessionId, reg.pid, reg.cwd || a.cwd); } catch (_) {} }   // registry = exact claude.exe pid
+    }
+    a.inbox = peers.canDeliver(a.sessionId) || undefined;      // replies can go straight into its inbox
     const mine = perms.filter((p) => p.sessionId === a.sessionId);
     a.perm = mine.length ? { requestId: mine[0].requestId, tool: mine[0].tool, detail: mine[0].detail, hasSuggestions: !!(mine[0].suggestions || []).length, ts: mine[0].ts } : undefined;
     a.permCount = mine.length || undefined;
@@ -2108,6 +2117,7 @@ const server = http.createServer(async (req, res) => {
     eventsReceived++;
     lastHookAt = Date.now();
     if (body._claudePid && body.session_id) { try { linkClaudePid(body.session_id, body._claudePid, body.cwd); } catch (_) {} }
+    if (body._msgSocket && body.session_id) peers.learn(body.session_id, body._msgSocket, body._msgToken);
     let permPending = null;   // PermissionRequest parked for the rail; the emitter waits on /api/hook-permission/wait
     if (body.hook_event_name === 'PermissionRequest' && body.session_id) {
       const rid = hookPermRegister(body);
@@ -2214,6 +2224,20 @@ Allow / Deny it in the dashboard rail.`);
       const r = type === 'stop' ? dispatch.interrupt(body.sessionId) : dispatch.send(body.sessionId, body.text);
       if (r.ok) console.log(`[command→dispatch] ${body.sessionId} <- ${type}`);
       return sendJson(res, r.error ? 400 : 200, r.ok ? { ...r, instant: true } : r);
+    }
+    // Terminal / VS Code session with a known inbox: deliver straight into the
+    // session's cross-session inbox (the same channel `claude` uses between
+    // sessions) — instant, no window automation. Anything else falls back to
+    // the queued channel (Stop-hook pickup + wake nudge).
+    if ((body.type || 'message') === 'message' && body.sessionId && cfg.inboxDeliver !== false && peers.canDeliver(body.sessionId)) {
+      const d = await peers.deliver(body.sessionId, body.text, { fromName: 'gander' });
+      if (d.ok) {
+        console.log(`[command→inbox] ${body.sessionId} <- ${String(body.text || '').slice(0, 60)}`);
+        const k = 'sess:' + body.sessionId;
+        if (awaitTimers.has(k)) { clearTimeout(awaitTimers.get(k)); awaitTimers.delete(k); }
+        return sendJson(res, 200, { ok: true, instant: true, via: 'inbox' });
+      }
+      console.log(`[command→inbox] ${body.sessionId} failed: ${d.error} — queuing instead`);
     }
     const r = queueCommand(body.sessionId, body.type || 'message', body.text);
     if (!r.error) {
@@ -2360,12 +2384,18 @@ Allow / Deny it in the dashboard rail.`);
 
   // ── Gander Dispatch: config toggle + permission surface ────────────────────
   if (url === '/api/dispatch-config' && req.method === 'GET') {
-    return sendJson(res, 200, { enabled: !!cfg.dispatch, sessions: dispatch.list(), rateLimit: dispatch.rateLimit() });
+    return sendJson(res, 200, { enabled: !!cfg.dispatch, sessions: dispatch.list(), rateLimit: dispatch.rateLimit(), inboxDeliver: cfg.inboxDeliver !== false, inboxes: peers.readRegistry().filter((p) => peers.canDeliver(p.sessionId)).length });
   }
   if (url === '/api/dispatch-config' && req.method === 'POST') {
     const body = await readBody(req);
     if (body && body.enabled !== undefined) { cfg.dispatch = !!body.enabled; saveConfig(); console.log(`[dispatch] ${cfg.dispatch ? 'enabled' : 'disabled — falling back to terminal launch + window automation'}`); }
-    return sendJson(res, 200, { ok: true, enabled: !!cfg.dispatch });
+    if (body && body.inboxDeliver !== undefined) { cfg.inboxDeliver = !!body.inboxDeliver; saveConfig(); console.log(`[inbox] delivery ${cfg.inboxDeliver ? 'on' : 'off — replies queue for the next turn'}`); }
+    return sendJson(res, 200, { ok: true, enabled: !!cfg.dispatch, inboxDeliver: cfg.inboxDeliver !== false });
+  }
+  // Claude Code's own session registry (~/.claude/sessions) + which inboxes Gander can write to
+  if (url === '/api/peers' && req.method === 'GET') {
+    const list = peers.readRegistry(0).map((p) => ({ ...p, socket: undefined, inbox: peers.canDeliver(p.sessionId) }));
+    return sendJson(res, 200, { peers: list, inboxDeliver: cfg.inboxDeliver !== false });
   }
   if (url === '/api/permissions' && req.method === 'GET') {
     return sendJson(res, 200, { pending: dispatch.pendingList().concat(hookPermPendingList()) });
