@@ -21,7 +21,7 @@ A live, animated dashboard of your **Claude Code agents and sub-agents** — an 
 
 - **Live office floor + Mosaic** — a structured top-down office: every session in its own **walled room with a doorway**, rendered as pixel-art **geese** whose poses act out the state (typing, thinking, facepalm on error, celebrating on done); agents walk *through the doors* to the water cooler and clock out when finished.
 - **🤖 Process robots + SERVER ROOM** — every background process your sessions leave running, visualized, attributed to its real owner, and killable — with verdicts like *parked 2 days, safe to close* vs *has live work*.
-- **🔔 Needs-you rail** — who's waiting on input, errored, or **went quiet mid-goal**, across all projects; answer inline, or ✓ Allow / ✕ Deny the exact permission.
+- **🔔 Needs-you rail** — who's waiting on input, errored, or **went quiet mid-goal**, across all projects; answer inline, or ✓ Allow / ✕ Deny the exact permission — for **any** session, terminal ones included (via a `PermissionRequest` hook).
 - **🪧 Coordination board** — a per-project shared store the agents post to so a swarm builds on each other's work instead of re-deriving it: notes + findings with build-on lineage, 💎 gems that carry to the next session, file claims, plan review, and escalations that ping you. Human-visible by default.
 - **⚡ Gander Dispatch** — host sessions inside the bridge: instant replies, real permission buttons, live plan-window telemetry. Your own `claude` login, plan quota, **no API key**.
 - **💸 Cost guardrails** — live per-session spend, `$/min` runaway alerts, daily/per-session budgets with an optional hard stop, and 5-hour plan-window pacing.

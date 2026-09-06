@@ -1138,6 +1138,42 @@ const CLAUDEPIDS_FILE = path.join(__dirname, 'aoc-claudepids.json');
 const sessClaude = new Map();   // sessionId -> { claudePid, project, cwd, goal, at }
 try { for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(CLAUDEPIDS_FILE, 'utf8')))) sessClaude.set(k, v); } catch (_) {}
 function saveClaudePids() { try { fs.writeFileSync(CLAUDEPIDS_FILE, JSON.stringify(Object.fromEntries(sessClaude), null, 1)); } catch (_) {} }
+// ── Permission prompts via hook (any session, not just Dispatch) ─────────────
+// Claude Code's PermissionRequest hook parks emit.js until we hand it a
+// decision. The bridge registers the request, the rail shows Allow/Deny, and
+// the emitter long-polls /api/hook-permission/wait for the verdict. Unanswered
+// requests expire (Claude then shows its own prompt) — never a dead button.
+const hookPerms = new Map();          // requestId -> { sessionId, project, cwd, requestId, tool, detail, input, ts, answer }
+const hookPermWaiters = new Map();    // requestId -> [{ res, timer }]
+const HOOK_PERM_TTL = 600e3;
+function hookPermRegister(body) {
+  const requestId = String(body.tool_use_id || (body.session_id + ':' + Date.now()));
+  const tool = String(body.tool_name || 'tool');
+  const inp = body.tool_input || {};
+  const detail = typeof inp === 'object' ? (inp.command || inp.file_path || inp.description || JSON.stringify(inp).slice(0, 200)) : String(inp).slice(0, 200);
+  hookPerms.set(requestId, { sessionId: body.session_id, project: projectFromCwd(body.cwd), cwd: body.cwd, requestId, tool, detail: String(detail).slice(0, 300), input: inp, ts: Date.now(), answer: null, classifier: body.classifier_verdict || null });
+  return requestId;
+}
+function hookPermPendingList() {
+  const now = Date.now(), out = [];
+  for (const [id, p] of hookPerms) {
+    if (now - p.ts > HOOK_PERM_TTL) { hookPerms.delete(id); continue; }
+    if (!p.answer) out.push({ sessionId: p.sessionId, project: p.project, cwd: p.cwd, requestId: p.requestId, tool: p.tool, detail: p.detail, input: p.input, suggestions: [], ts: p.ts, viaHook: true });
+  }
+  return out.sort((a, b) => a.ts - b.ts);
+}
+function hookPermAnswer(requestId, behavior, message) {
+  const p = hookPerms.get(String(requestId));
+  if (!p) return { error: 'no such pending permission (already answered or expired?)' };
+  p.answer = { behavior: behavior === 'allow' ? 'allow' : 'deny', message: message || '' };
+  for (const w of hookPermWaiters.get(p.requestId) || []) { clearTimeout(w.timer); try { sendJson(w.res, 200, { answered: true, ...p.answer }); } catch (_) {} }
+  hookPermWaiters.delete(p.requestId);
+  const a = agents.get('sess:' + p.sessionId);
+  if (a && a.state === 'awaiting') { a.state = 'thinking'; a.awaitMsg = undefined; a.updatedAt = Date.now(); }   // Claude resumes the moment it has a decision
+  console.log(`[perm] ${p.answer.behavior} ${p.tool} for ${p.project} (via hook)`);
+  return { ok: true, behavior: p.answer.behavior };
+}
+
 function linkClaudePid(sessionId, claudePid, cwd) {
   if (!sessionId || !claudePid || sessClaude.has(sessionId)) return;
   sessClaude.set(sessionId, { claudePid: Number(claudePid), project: projectFromCwd(cwd), cwd: cwd || '', at: Date.now() });
@@ -1710,7 +1746,7 @@ function snapshot() {
   const pending = {};
   for (const [sid, q] of commands) if (q.length) pending[sid] = q.length;
   // decorate hosted agents with their first pending permission so tiles/modal can Allow/Deny
-  const perms = dispatch.pendingList();
+  const perms = dispatch.pendingList().concat(hookPermPendingList());
   for (const a of list) {
     if (!a.root || !a.sessionId) continue;
     const mine = perms.filter((p) => p.sessionId === a.sessionId);
@@ -1804,6 +1840,11 @@ function mapHookToEvents(p) {
   switch (p.hook_event_name) {
     case 'SessionStart':
       return [{ ...base, agentId: rootId, name: project, root: true, state: 'thinking', log: 'session started · ' + project }];
+    case 'PermissionRequest': {
+      // parked for the rail (see hookPermRegister); tile goes awaiting even if the bridge never saw this session before
+      const what = String((p.tool_input && (p.tool_input.command || p.tool_input.file_path || p.tool_input.description)) || '').slice(0, 100);
+      return [{ ...base, agentId: rootId, name: project, root: true, state: 'awaiting', log: `permission: ${p.tool_name || 'tool'}${what ? ' — ' + what : ''}` }];
+    }
     case 'UserPromptSubmit': {
       // A substantive prompt becomes the session's current goal (used by the
       // stalled-mid-goal check). "yes"/"go" continues the previous goal.
@@ -2055,6 +2096,16 @@ const server = http.createServer(async (req, res) => {
     eventsReceived++;
     lastHookAt = Date.now();
     if (body._claudePid && body.session_id) { try { linkClaudePid(body.session_id, body._claudePid, body.cwd); } catch (_) {} }
+    let permPending = null;   // PermissionRequest parked for the rail; the emitter waits on /api/hook-permission/wait
+    if (body.hook_event_name === 'PermissionRequest' && body.session_id) {
+      const rid = hookPermRegister(body);
+      permPending = { requestId: rid, awaitMsg: `wants to run ${body.tool_name || 'a tool'}${body.tool_input && body.tool_input.command ? ': ' + String(body.tool_input.command).slice(0, 80) : ''}` };
+      const pj = projectFromCwd(body.cwd);
+      osNotify('Gander — permission needed', `${pj}: ${body.tool_name || 'a tool'} — Allow / Deny in the rail`);
+      sendTelegram(`🔔 <b>${pj}</b> wants to run <b>${body.tool_name || 'a tool'}</b>:
+${String((body.tool_input && (body.tool_input.command || body.tool_input.file_path)) || '').slice(0, 300)}
+Allow / Deny it in the dashboard rail.`);
+    }
     const project = projectFromCwd(body.cwd);
     if (body.session_id) lastActiveSession = body.session_id;
     if (body.cwd) projects.noteKnown(body.cwd);   // auto-import the project
@@ -2065,6 +2116,7 @@ const server = http.createServer(async (req, res) => {
     const prevById = new Map();   // capture state BEFORE upsert, for transition detection (ambient)
     for (const ev of evs) if (ev && ev.agentId && !prevById.has(ev.agentId)) prevById.set(ev.agentId, agents.get(ev.agentId)?.state);
     for (const ev of evs) upsert(ev);
+    if (permPending && agents.get(rootKey)) agents.get(rootKey).awaitMsg = permPending.awaitMsg;
     const rootNow = agents.get(rootKey);
     if (rootNow) {
       if (rootNow.state === 'awaiting' && prevState !== 'awaiting') {
@@ -2104,7 +2156,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
     if (deliver) console.log(`[deliver] ${sid} <- ${deliver.kind}`);
-    return sendJson(res, 200, { ok: true, applied: evs.length, deliver });
+    return sendJson(res, 200, { ok: true, applied: evs.length, deliver, ...(permPending ? { pending: true, requestId: permPending.requestId } : {}) });
   }
 
   if (url === '/api/mute' && req.method === 'POST') {
@@ -2304,7 +2356,22 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true, enabled: !!cfg.dispatch });
   }
   if (url === '/api/permissions' && req.method === 'GET') {
-    return sendJson(res, 200, { pending: dispatch.pendingList() });
+    return sendJson(res, 200, { pending: dispatch.pendingList().concat(hookPermPendingList()) });
+  }
+  // emit.js parks here (long-poll, ~25s per call, re-called until Claude's hook timeout)
+  if (url === '/api/hook-permission/wait' && req.method === 'GET') {
+    const wu = new URL(req.url, 'http://localhost');
+    const rid = String(wu.searchParams.get('requestId') || '');
+    const p = hookPerms.get(rid);
+    if (!p) return sendJson(res, 200, { gone: true });
+    if (p.answer) return sendJson(res, 200, { answered: true, ...p.answer });
+    const timer = setTimeout(() => {
+      const arr = hookPermWaiters.get(rid) || [];
+      hookPermWaiters.set(rid, arr.filter((w) => w.res !== res));
+      try { sendJson(res, 200, { pending: true }); } catch (_) {}
+    }, 25000);
+    (hookPermWaiters.get(rid) || hookPermWaiters.set(rid, []).get(rid)).push({ res, timer });
+    return;
   }
   // Board adoption config: the inject toggle + the optional CLAUDE.md snippet
   // (for interactive sessions, which Gander doesn't launch and so can't brief).
@@ -2420,7 +2487,8 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/permissions/answer' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.sessionId || !body.requestId) return sendJson(res, 400, { error: 'sessionId and requestId required' });
-    const r = dispatch.answerPermission(body.sessionId, body.requestId, { behavior: body.behavior, applySuggestions: !!body.applySuggestions, message: body.message });
+    let r = dispatch.answerPermission(body.sessionId, body.requestId, { behavior: body.behavior, applySuggestions: !!body.applySuggestions, message: body.message });
+    if (r.error && hookPerms.has(String(body.requestId))) r = hookPermAnswer(body.requestId, body.behavior, body.message);   // a hook-parked prompt, not a Dispatch one
     if (r.ok) console.log(`[permission] ${body.sessionId} ${r.behavior} ${body.requestId}`);
     return sendJson(res, r.error ? 400 : 200, r);
   }

@@ -42,6 +42,7 @@ These are app-wide settings, configured from the dashboard's **⚙ Settings → 
 - **Slack** — paste an incoming-webhook URL (api.slack.com/apps → Incoming Webhooks) and every alert Telegram gets is mirrored to a Slack channel. For **two-way control** (reply, `/task`, `/queue`, `/stop` from Slack), also add: an **app-level token** (your app's Basic Information → App-Level Tokens, scope `connections:write`, with **Socket Mode** switched on) and a **bot token** (OAuth & Permissions → scope `chat:write`; under Event Subscriptions subscribe the bot to `message.im` — plus `message.channels` if you want to talk to it in channels — and invite it). No public URL or tunnel needed — the bridge connects out via Socket Mode.
 - **Cost budget** — a daily / per-session spend cap. Session caps de-escalate as a **circuit breaker**: steered to wrap up at 70%, final warning at 90%, and (with **Enforce** on) **Stopped** at the cap; crossing the daily cap stops every active session.
 - **⎇ Worktree isolation** (📋 Task queue panel) — each queue task runs in its own git worktree + branch so tasks can run in the same project in parallel; the bridge merges back on completion (conflicts keep the branch).
+- **Permission prompts from the rail (any session)** — installed automatically with the hooks: Gander registers a `PermissionRequest` hook, so when *any* Claude session (terminal, VS Code, `claude agents`, not just Dispatch-hosted ones) stops to ask "Allow this command?", the prompt shows up in the 🔔 rail with **Allow / Deny** buttons, pings Telegram/Slack/desktop, and the hook hands your answer back to Claude. Not answered within ~10 minutes? The hook steps aside and Claude shows its normal terminal prompt — it never blocks you. (Sessions launched with `bypass` permissions never ask, so nothing appears.)
 - **Status line** — `node scripts/gander-statusline.js --install` writes a `statusLine` into `~/.claude/settings.json` so every terminal shows Gander's needs-you / queue / escalation / gem counts beside model, context %, and cost. `--uninstall` restores whatever you had before.
 - **Open-in-editor command** — only if "Open in VS Code" can't auto-detect your editor; point it at `code.cmd`, `codium`, etc.
 - **Desktop alerts (no browser needed)** — the **bridge itself** pops a native OS notification (Windows toast · macOS `osascript` · Linux `notify-send`, zero-dep) on needs-you / error / runaway. Unlike the in-app chime, this fires with the dashboard closed, so you get pinged even if you live in the terminal (e.g. `claude agents`). Toggle in Settings → App configuration → **Desktop alerts**, with a Test button.
@@ -60,7 +61,7 @@ It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — 
 
 ## Alternative: as a Claude Code plugin
 
-```
+```text
 /plugin marketplace add <this-repo-or-path>
 /plugin install gander@gander
 ```

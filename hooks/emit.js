@@ -67,6 +67,31 @@ function findClaudePid(sessionId) {
   } catch (_) { return 0; }
 }
 
+// Long-poll the bridge for a human's Allow/Deny (each call parks ~25s), for up
+// to ~9.5 minutes — just under the hook's 590s timeout.
+function waitForDecision(requestId, port) {
+  const deadline = Date.now() + 570000;
+  const once = () => {
+    if (Date.now() > deadline) return process.exit(0);
+    const r = http.request({ host: 'localhost', port, path: '/api/hook-permission/wait?requestId=' + encodeURIComponent(requestId), method: 'GET', timeout: 30000 }, (res) => {
+      let b = ''; res.on('data', (d) => (b += d));
+      res.on('end', () => {
+        let j = {}; try { j = JSON.parse(b || '{}'); } catch (_) {}
+        if (j.answered) {
+          process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: j.behavior === 'allow' ? 'allow' : 'deny', decisionReason: j.message || (j.behavior === 'allow' ? 'Allowed from the Gander dashboard' : 'Denied from the Gander dashboard') } }));
+          return process.exit(0);
+        }
+        if (j.gone) return process.exit(0);
+        setTimeout(once, 250);
+      });
+    });
+    r.on('error', () => process.exit(0));
+    r.on('timeout', () => { r.destroy(); setTimeout(once, 500); });
+    r.end();
+  };
+  once();
+}
+
 let data = '';
 process.stdin.on('data', (c) => { data += c; if (data.length > 1e6) process.stdin.destroy(); });
 process.stdin.on('error', () => process.exit(0));
@@ -110,6 +135,11 @@ process.stdin.on('end', () => {
       res.on('end', () => {
         try {
           const j = JSON.parse(body || '{}');
+          // PermissionRequest: the bridge parked it for the rail. Wait here (Claude
+          // holds this hook open up to its timeout) until a human answers, then hand
+          // Claude the decision. No answer in time -> exit silently and Claude shows
+          // its own prompt as usual. Never blocks anything on a dead bridge.
+          if (j && j.pending && j.requestId) { waitForDecision(j.requestId, port); return; }
           const d = j && j.deliver;
           if (d && d.kind === 'stop-block') {
             process.stdout.write(JSON.stringify({ decision: 'block', reason: d.text }));

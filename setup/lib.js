@@ -57,6 +57,10 @@ function buildHooks() {
     SubagentStop: [evt()],
     Stop: [evt()],
     SessionEnd: [evt()],
+    // Answer permission prompts from the dashboard for ANY session (not just
+    // bridge-hosted ones): the hook parks until you Allow/Deny in the rail, so
+    // it gets a long timeout — on timeout Claude falls back to its own prompt.
+    PermissionRequest: [{ matcher: '*', hooks: [{ ...emit(), timeout: 590 }] }],
   };
 }
 

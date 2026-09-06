@@ -23,3 +23,4 @@ Thumbs.db
 # Raw demo recordings (ship the optimized .webp instead)
 docs/*.gif
 bridge/aoc-board.json
+bridge/aoc-claudepids.json
