@@ -125,4 +125,31 @@ function worktreeFinish(cwd, wtPath, branch, label, opts = {}) {
   } catch (e) { removeWt(); return `merge error: ${shortErr(e)} — branch ${branch} kept`; }
 }
 
-module.exports = { status, statusMany, worktreeStart, worktreeFinish };
+// Review-before-merge: commit whatever the task left uncommitted so the branch
+// carries the whole attempt, then let the bridge show the diff and hold it.
+function worktreeSnapshot(wtPath, label) {
+  try {
+    const dirty = gitSync(wtPath, ['status', '--porcelain']).trim();
+    if (dirty) { gitSync(wtPath, ['add', '-A']); gitSync(wtPath, ['commit', '-m', `queue task work: ${label || 'review'}`]); return { committed: true }; }
+    return { committed: false };
+  } catch (e) { return { error: shortErr(e) }; }
+}
+
+// What the branch would land: commits + stat + patch (capped) since it forked
+// from the main tree (three-dot = merge-base diff, so unrelated main-tree
+// commits made meanwhile don't show up as the task's work).
+function worktreeDiff(cwd, branch, opts = {}) {
+  const cap = opts.cap || 200000;
+  const out = { branch, ahead: 0, log: '', stat: '', patch: '', truncated: false };
+  try { out.ahead = Number(gitSync(cwd, ['rev-list', '--count', `HEAD..${branch}`]).trim()) || 0; } catch (_) {}
+  try { out.log = gitSync(cwd, ['log', '--oneline', `HEAD..${branch}`]).trim(); } catch (_) {}
+  try { out.stat = gitSync(cwd, ['diff', '--stat', `HEAD...${branch}`]).trim(); } catch (_) {}
+  try {
+    const patch = gitSync(cwd, ['diff', `HEAD...${branch}`]);
+    out.patch = patch.length > cap ? patch.slice(0, cap) : patch;
+    out.truncated = patch.length > cap;
+  } catch (e) { out.error = shortErr(e); }
+  return out;
+}
+
+module.exports = { status, statusMany, worktreeStart, worktreeFinish, worktreeSnapshot, worktreeDiff };

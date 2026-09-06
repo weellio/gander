@@ -1631,6 +1631,17 @@ function queueTick() {
       wt: {
         start: (it) => { const r = git.worktreeStart(it.cwd, it.id); if (r && r.ok) preTrustFolder(r.wtPath); return r; },
         finish: (it, opts) => git.worktreeFinish(it.cwd, it.wtPath, it.branch, `#${it.id} ${String(it.prompt).slice(0, 60)}`, opts),
+        snapshot: (it) => git.worktreeSnapshot(it.wtPath, `#${it.id} ${String(it.prompt).slice(0, 60)}`),
+      },
+      // review-before-merge: a green branch waits for your 👀 in the rail
+      onReview: (it) => {
+        pushFeed({ ts: Date.now(), agentId: 'queue', agent: 'queue', project: it.project, sessionId: it.sessionId || '', state: 'awaiting', log: `ready for review: ${String(it.prompt).slice(0, 70)} (${it.branch})`, error: false });
+        fireAmbient('awaiting', { project: it.project, name: 'queue task', reason: 'ready for review: ' + String(it.prompt).slice(0, 100) });
+        osNotify('Gander — ready for review', `${it.project}: ${String(it.prompt).slice(0, 80)} — approve or request changes in the rail`);
+        sendTelegram(`👀 <b>Gander queue</b>
+Ready for review in <b>${it.project}</b>: ${String(it.prompt).slice(0, 140)}
+⎇ ${it.branch}${it.gate === 'passed' ? ' · 🧪 tests passed' : ''}
+Approve or request changes in the dashboard rail.`);
       },
       gate: runTestGate,
       // KC4: hold new queue starts while the plan window is rejected/exhausted
@@ -1777,6 +1788,7 @@ function snapshot() {
     board: board.summary(),
     escalations: board.openEscalations(),
     plans: board.pendingPlans(),
+    reviews: (() => { try { return (queue.list().items || []).filter((x) => x.status === 'review').map((x) => ({ id: x.id, project: x.project, cwd: x.cwd, prompt: x.prompt, branch: x.branch, gate: x.gate, reviewAt: x.reviewAt })); } catch (_) { return []; } })(),
     boardPosts: board.recent(Date.now() - 20000),   // last 20s — the floor animates a goose pinning a note
     procs: procsMod.decorate(procsMod.compact(procsCache.list), claudeSessionMap()),
     fleet: fleet.status(),
@@ -2474,9 +2486,18 @@ Allow / Deny it in the dashboard rail.`);
   if (url === '/api/queue/action' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.action) return sendJson(res, 400, { error: 'action required' });
-    const r = queue.action(body.id, body.action);
-    if (r.ok && body.action === 'retry') setTimeout(queueTick, 400);
+    const r = queue.action(body.id, body.action, { note: body.note });
+    if (r.ok && (body.action === 'retry' || body.action === 'approve' || body.action === 'request-changes')) setTimeout(queueTick, 400);
     return sendJson(res, r.error ? 400 : 200, r);
+  }
+  // review-before-merge: what a held branch would land (commits · stat · patch)
+  if (url === '/api/queue/diff' && req.method === 'GET') {
+    const du = new URL(req.url, 'http://localhost');
+    const it = (queue.list().items || []).find((x) => String(x.id) === String(du.searchParams.get('id')));
+    if (!it) return sendJson(res, 404, { error: 'no such task' });
+    if (!it.branch) return sendJson(res, 400, { error: 'task has no branch (worktree mode was off)' });
+    if (it.status === 'review' && it.wtPath) { try { git.worktreeSnapshot(it.wtPath, `#${it.id}`); } catch (_) {} }
+    return sendJson(res, 200, { id: it.id, status: it.status, ...git.worktreeDiff(it.cwd, it.branch) });
   }
   if (url === '/api/queue-config' && req.method === 'POST') {
     const body = await readBody(req);

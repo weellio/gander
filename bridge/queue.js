@@ -27,7 +27,7 @@ const MIN_RUN_MS = 20 * 1000;            // ignore idle tiles in the first momen
 
 let items = [];                          // [{ id, cwd, project, prompt, status, createdAt, startedAt, doneAt, sessionId, runner, error, wtPath, branch, merge, afterId, gate, gateCmd, testOut }]
 let seq = 1;
-let cfgState = { enabled: true, maxSlots: 2, worktrees: false, testGate: true };
+let cfgState = { enabled: true, maxSlots: 2, worktrees: false, testGate: true, review: false };
 
 function projectFromCwd(cwd) {
   const parts = String(cwd || '').split(/[\\/]/).filter(Boolean);
@@ -44,7 +44,7 @@ function load() {
     const j = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
     items = Array.isArray(j.items) ? j.items : [];
     seq = Number(j.seq) || (items.reduce((m, i) => Math.max(m, i.id), 0) + 1);
-    if (j.cfg) cfgState = { enabled: j.cfg.enabled !== false, maxSlots: Math.max(1, Math.min(8, Number(j.cfg.maxSlots) || 2)), worktrees: !!j.cfg.worktrees, testGate: j.cfg.testGate !== false };
+    if (j.cfg) cfgState = { enabled: j.cfg.enabled !== false, maxSlots: Math.max(1, Math.min(8, Number(j.cfg.maxSlots) || 2)), worktrees: !!j.cfg.worktrees, testGate: j.cfg.testGate !== false, review: !!j.cfg.review };
     // a bridge restart orphans anything that was mid-flight — requeue it
     // ('gating' items keep their status: tick restarts the test run, since the
     // started flag lives only in memory)
@@ -68,7 +68,7 @@ function add({ cwd, prompt, afterId, doneWhen }) {
   return { ok: true, item: it };
 }
 
-function action(id, what) {
+function action(id, what, extra) {
   const it = items.find((x) => x.id === Number(id));
   if (what === 'clear-done') { items = items.filter((x) => x.status === 'queued' || x.status === 'running'); save(); return { ok: true }; }
   if (!it) return { error: 'no such task' };
@@ -77,8 +77,16 @@ function action(id, what) {
     if (it.status === 'queued') { it.status = 'cancelled'; it.doneAt = Date.now(); save(); }
     return { ok: true, item: it };
   }
+  if (what === 'approve' || what === 'request-changes') {
+    // review-before-merge decision; the next tick lands it (merge) or keeps the
+    // branch + queues a follow-up carrying your note
+    if (it.status !== 'review') return { error: 'task is not waiting for review' };
+    it.reviewDecision = what === 'approve' ? 'approve' : 'changes';
+    it.reviewNote = String((extra && extra.note) || '').trim().slice(0, 2000);
+    save(); return { ok: true, item: it };
+  }
   if (what === 'retry') {
-    if (it.status === 'running' || it.status === 'queued' || it.status === 'gating') return { error: 'task is not finished' };
+    if (it.status === 'running' || it.status === 'queued' || it.status === 'gating' || it.status === 'review') return { error: 'task is not finished' };
     it.status = 'queued'; it.startedAt = null; it.doneAt = null; it.sessionId = null; it.runner = null; it.error = null;
     it.gate = null; it.gateCmd = null; it.testOut = null; it.wtPath = null; it.branch = null; it.merge = null;
     save(); return { ok: true, item: it };
@@ -86,7 +94,7 @@ function action(id, what) {
   if (what === 'retry-context') {
     // re-queue as a NEW task with the failure baked into the prompt, so the
     // second attempt starts knowing what sank the first one
-    if (it.status === 'running' || it.status === 'queued' || it.status === 'gating') return { error: 'task is not finished' };
+    if (it.status === 'running' || it.status === 'queued' || it.status === 'gating' || it.status === 'review') return { error: 'task is not finished' };
     const ctx = [
       it.error ? `It failed with: ${it.error}` : null,
       it.testOut ? `Test output (tail):\n${it.testOut.slice(-1500)}` : null,
@@ -94,19 +102,20 @@ function action(id, what) {
     ].filter(Boolean).join('\n\n');
     return add({ cwd: it.cwd, prompt: `${it.prompt}\n\n(Retry — a previous attempt did not land.${ctx ? '\n' + ctx : ''}\nFix the cause this time.)` });
   }
-  if (what === 'remove') { items = items.filter((x) => x !== it || x.status === 'running'); save(); return { ok: true }; }
+  if (what === 'remove') { items = items.filter((x) => x !== it || x.status === 'running' || x.status === 'review'); save(); return { ok: true }; }
   return { error: 'unknown action' };
 }
 
 let lastPaused = false;   // set by tick — plan rate-limited, holding new starts
-function list() { return { enabled: cfgState.enabled, maxSlots: cfgState.maxSlots, worktrees: cfgState.worktrees, testGate: cfgState.testGate, paused: lastPaused, items: items.slice().sort((a, b) => b.id - a.id) }; }
+function list() { return { enabled: cfgState.enabled, maxSlots: cfgState.maxSlots, worktrees: cfgState.worktrees, testGate: cfgState.testGate, review: cfgState.review, paused: lastPaused, items: items.slice().sort((a, b) => b.id - a.id) }; }
 function setConfig(c) {
   if (c && c.enabled !== undefined) cfgState.enabled = !!c.enabled;
   if (c && c.maxSlots !== undefined) cfgState.maxSlots = Math.max(1, Math.min(8, Number(c.maxSlots) || 2));
   if (c && c.worktrees !== undefined) cfgState.worktrees = !!c.worktrees;
   if (c && c.testGate !== undefined) cfgState.testGate = !!c.testGate;
+  if (c && c.review !== undefined) cfgState.review = !!c.review;
   save();
-  return { ok: true, enabled: cfgState.enabled, maxSlots: cfgState.maxSlots, worktrees: cfgState.worktrees, testGate: cfgState.testGate };
+  return { ok: true, enabled: cfgState.enabled, maxSlots: cfgState.maxSlots, worktrees: cfgState.worktrees, testGate: cfgState.testGate, review: cfgState.review };
 }
 
 // ── the scheduler ────────────────────────────────────────────────────────────
@@ -137,8 +146,21 @@ function tick(deps) {
   // gate ('gating'): the bridge runs the project's tests inside the worktree
   // before merging — green merges, red keeps the branch. Failed tasks skip the
   // gate (their leftovers still merge so no work is ever lost).
+  // Review-before-merge (queue setting): a green worktree branch is HELD —
+  // snapshot its leftovers into a commit, park it as 'review', and let the rail
+  // show the diff with Approve / Request changes. Candidates are never held
+  // (they keep their branches regardless).
+  const holdForReview = (it) => {
+    if (!(cfgState.review && it.wtPath && !it.candidate)) return false;
+    it.status = 'review'; it.error = null; it.reviewAt = deps.now(); it.reviewDecision = null; it.reviewNote = null;
+    try { if (deps.wt && deps.wt.snapshot) deps.wt.snapshot(it); } catch (_) {}
+    save();
+    try { if (deps.onReview) deps.onReview(it); } catch (_) {}
+    return true;
+  };
   const settle = (it, ok, errMsg) => {
     if (ok && it.wtPath && cfgState.testGate && deps.gate) { it.status = 'gating'; it.error = null; return; }
+    if (ok && holdForReview(it)) return;
     it.status = ok ? 'done' : 'failed';
     it.error = ok ? null : errMsg;
     it.doneAt = now; finished++;
@@ -183,6 +205,27 @@ function tick(deps) {
     }
   }
 
+  // 1c) review decisions made in the rail / queue panel (queue.action)
+  for (const it of items) {
+    if (it.status !== 'review' || !it.reviewDecision) continue;
+    if (it.reviewDecision === 'approve') {
+      it.status = 'done'; it.error = null; it.doneAt = now; finished++;
+      finishWt(it);
+    } else {
+      it.status = 'failed'; it.error = 'changes requested' + (it.reviewNote ? ': ' + it.reviewNote : ''); it.doneAt = now; finished++;
+      finishWt(it, { noMerge: true });
+      it.merge = `branch ${it.branch} kept for the follow-up`;
+      // the follow-up starts from the kept branch and carries your note
+      const fu = add({ cwd: it.cwd, prompt: `${it.prompt}
+
+(Review feedback on the previous attempt — its branch ${it.branch} is kept. First run:  git merge ${it.branch}  to bring that work in, then address this feedback:
+${it.reviewNote || '(no note given — ask on the board if unclear)'})`, doneWhen: it.doneWhen });
+      if (fu.ok) it.followUpId = fu.item.id;
+    }
+    save();
+    try { deps.onDone(it); } catch (_) {}
+  }
+
   // 1b) start test gates for freshly-settled items (also re-fires after a
   // bridge restart, since _gateStarted lives only in memory)
   for (const it of items) {
@@ -201,6 +244,7 @@ function tick(deps) {
           finishWt(it, { noMerge: true });   // keep the branch — nothing broken lands
         } else {
           it.gate = g.skipped ? 'skipped' : 'passed';
+          if (holdForReview(it)) return;
           it.status = 'done'; it.error = null; it.doneAt = deps.now();
           finishWt(it);
         }
@@ -234,7 +278,7 @@ function tick(deps) {
     // chained task: wait for its dependency to land; a dead dependency fails it
     if (it.afterId) {
       const dep = items.find((x) => x.id === it.afterId);
-      if (dep && (dep.status === 'queued' || dep.status === 'running' || dep.status === 'gating')) continue;
+      if (dep && (dep.status === 'queued' || dep.status === 'running' || dep.status === 'gating' || dep.status === 'review')) continue;
       if (dep && dep.status !== 'done') {
         it.status = 'failed'; it.error = `dependency #${dep.id} ${dep.status}`; it.doneAt = now; finished++;
         try { deps.onDone(it); } catch (_) {}
@@ -268,4 +312,4 @@ function tick(deps) {
   return { started, finished };
 }
 
-module.exports = { add, action, list, setConfig, tick, _test: { load, save, items: () => items, reset: () => { items = []; seq = 1; cfgState = { enabled: true, maxSlots: 2, worktrees: false, testGate: true }; } } };
+module.exports = { add, action, list, setConfig, tick, _test: { load, save, items: () => items, reset: () => { items = []; seq = 1; cfgState = { enabled: true, maxSlots: 2, worktrees: false, testGate: true, review: false }; } } };

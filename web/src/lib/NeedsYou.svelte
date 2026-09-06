@@ -2,7 +2,19 @@
   // "Needs you" triage rail — one ranked list of every session waiting on a human
   // (needs input / errored / finished), with the reason, how long it's waited, and
   // the answer keys right here so you never have to go find the terminal.
-  let { agents = [], budget = null, escalations = [], plans = [], onOpen, onFly, onConfig, onBoard } = $props();
+  let { agents = [], budget = null, escalations = [], plans = [], reviews = [], onOpen, onFly, onConfig, onBoard } = $props();
+  // review-before-merge: a queue task's green branch waiting for your 👀
+  let diffs = $state({});
+  async function loadDiff(id) {
+    try { const d = await (await fetch('/api/queue/diff?id=' + id)).json(); diffs = { ...diffs, [id]: d }; } catch (_) {}
+  }
+  async function reviewAct(id, action) {
+    let note;
+    if (action === 'request-changes') { note = window.prompt('What should change? (goes into the follow-up task, which starts from the kept branch)'); if (note === null) return; }
+    try { await fetch('/api/queue/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action, note }) }); } catch (_) {}
+  }
+  function agoText(ts) { if (!ts) return ''; const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? 'just now' : m < 60 ? m + 'm' : Math.round(m / 60) + 'h'; }
+  function diffText(d) { return (d.log || '') + (d.stat ? '\n\n' + d.stat : '') + (d.patch ? '\n\n' + d.patch : '\n\n(no changes vs main)'); }
   let open = $state(false);
   let sentId = $state(null);
 
@@ -56,7 +68,7 @@
       .filter((a) => a.state === 'awaiting' || a.state === 'error' || (a.state === 'idle' && a.stalled) || a.longRun || (a.state === 'done' && a.root))
       .sort((x, y) => (rank[stateOf(x)] - rank[stateOf(y)]) || ((x.updatedAt || 0) - (y.updatedAt || 0)));
   });
-  let count = $derived(items.length + escalations.length + plans.length + (budget?.overDaily ? 1 : 0));
+  let count = $derived(items.length + escalations.length + plans.length + reviews.length + (budget?.overDaily ? 1 : 0));
   const KEYS = [['1', '1'], ['2', '2'], ['3', '3'], ['↑', '{UP}'], ['↓', '{DOWN}'], ['y', 'y'], ['n', 'n'], ['↵', '{ENTER}'], ['esc', '{ESC}']];
   function onKey(e) { if (e.key === 'Escape') open = false; }
 </script>
@@ -69,7 +81,7 @@
     <div class="nu-backdrop" onclick={() => (open = false)} role="presentation"></div>
     <div class="nu-panel" role="menu">
       <div class="nu-h">Needs you{#if count}<span class="dim"> · {count}</span>{/if}</div>
-      {#if !items.length && !escalations.length && !plans.length && !budget?.overDaily}
+      {#if !items.length && !escalations.length && !plans.length && !reviews.length && !budget?.overDaily}
         <div class="nu-empty">All clear — nothing needs you. ✨</div>
       {:else}
         {#each escalations as e (e.id)}
@@ -94,6 +106,24 @@
               <div class="nu-keys">
                 <button class="kk allow" onclick={() => boardAction(pl.id, 'approve')}>✓ Approve</button>
                 <button class="kk deny" onclick={() => boardAction(pl.id, 'veto')}>✕ Veto</button>
+              </div>
+            </div>
+          </div>
+        {/each}
+        {#each reviews as rv (rv.id)}
+          <div class="nu-item review">
+            <span class="nu-ic">👀</span>
+            <div class="nu-body">
+              <div class="nu-title">task #{rv.id} is ready to merge<span class="nu-proj">{rv.project}</span>{#if rv.reviewAt}<span class="nu-age">{agoText(rv.reviewAt)}</span>{/if}</div>
+              <div class="nu-sub">{rv.prompt}</div>
+              <div class="nu-sub dim">⎇ {rv.branch}{#if rv.gate === 'passed'} · 🧪 tests passed{:else if rv.gate === 'skipped'} · 🧪 no tests found{/if}</div>
+              {#if diffs[rv.id]}
+                <details class="diff" open><summary>{diffs[rv.id].ahead || 0} commit(s){diffs[rv.id].truncated ? ' · patch truncated' : ''}</summary><pre>{diffText(diffs[rv.id])}</pre></details>
+              {/if}
+              <div class="nu-keys">
+                <button class="kk" onclick={() => loadDiff(rv.id)}>{diffs[rv.id] ? '↻ diff' : '👁 View diff'}</button>
+                <button class="kk allow" onclick={() => reviewAct(rv.id, 'approve')}>✓ Approve &amp; merge</button>
+                <button class="kk deny" onclick={() => reviewAct(rv.id, 'request-changes')}>✎ Request changes</button>
               </div>
             </div>
           </div>
@@ -153,6 +183,11 @@
   .nu-item.stalled { background: #6366F10f; }
   .nu-item.escalation { background: #F59E0B18; }
   .nu-item.plan { background: #6366F114; }
+  .nu-item.review { background: #F59E0B14; }
+  .nu-sub.dim { opacity: 0.7; font-size: 11px; }
+  .diff { margin: 4px 0; }
+  .diff summary { cursor: pointer; font-size: 11px; opacity: 0.8; }
+  .diff pre { max-height: 260px; overflow: auto; font-size: 10.5px; line-height: 1.35; white-space: pre-wrap; word-break: break-word; margin: 4px 0 0; padding: 6px; background: #0000001a; border-radius: 6px; }
   .nu-item.longrun { background: #6366F10c; }
   .nu-ic { font-size: 14px; flex-shrink: 0; line-height: 1.4; }
   .nu-body { flex: 1 1 auto; min-width: 0; }
