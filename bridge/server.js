@@ -2322,6 +2322,21 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true, inject: cfg.boardInject !== false, claudeMd });
   }
 
+  // ── Status line ───────────────────────────────────────────────────────────────
+  // Gander's signals for the Claude Code status bar (scripts/gander-statusline.js).
+  // Called often, so: in-memory only, no scans, no transcript reads.
+  if (url === '/api/statusline' && req.method === 'GET') {
+    const su = new URL(req.url, 'http://localhost');
+    const proj = projectFromCwd(su.searchParams.get('cwd') || '');
+    let needsYou = 0;
+    for (const a of agents.values()) if (a.state === 'awaiting' || a.state === 'error' || (a.state === 'idle' && a.stalled)) needsYou++;
+    const esc = board.openEscalations().length, plans = board.pendingPlans().length;
+    const bs = board.summary().find((x) => x.project === proj);
+    let queued = 0, running = 0, review = 0, paused = false;
+    try { const q = queue.list(); paused = !!q.paused; for (const it of q.items) { if (it.status === 'queued') queued++; else if (it.status === 'running') running++; else if (it.status === 'review') review++; } } catch (_) {}
+    return sendJson(res, 200, { needsYou: needsYou + esc + plans + review, queued, running, review, paused, escalations: esc, gems: bs ? bs.gems : 0 });
+  }
+
   // ── Coordination board ───────────────────────────────────────────────────────
   // A per-project shared store agents post to (notes, findings, escalations) so a
   // swarm builds on each other's work instead of re-deriving it. Human-visible by
