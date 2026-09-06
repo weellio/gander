@@ -28,6 +28,7 @@ const license = require('./license.js');
 const projects = require('./projects.js');
 const git = require('./git.js');
 const peers = require('./peers');        // Claude Code session registry + cross-session inbox delivery
+const teams = require('./teams');        // Agent Teams files (~/.claude/teams + ~/.claude/tasks), experimental
 const usage = require('./usage.js');
 const github = require('./github.js');
 const configmgr = require('./configmgr.js');
@@ -1797,6 +1798,7 @@ function snapshot() {
     board: board.summary(),
     escalations: board.openEscalations(),
     plans: board.pendingPlans(),
+    teams: (() => { try { return teams.readTeams(); } catch (_) { return []; } })(),   // Agent Teams on the floor (empty unless Claude wrote team files)
     reviews: (() => { try { return (queue.list().items || []).filter((x) => x.status === 'review').map((x) => ({ id: x.id, project: x.project, cwd: x.cwd, prompt: x.prompt, branch: x.branch, gate: x.gate, reviewAt: x.reviewAt })); } catch (_) { return []; } })(),
     boardPosts: board.recent(Date.now() - 20000),   // last 20s — the floor animates a goose pinning a note
     procs: procsMod.decorate(procsMod.compact(procsCache.list), claudeSessionMap()),
@@ -1861,6 +1863,20 @@ function mapHookToEvents(p) {
   switch (p.hook_event_name) {
     case 'SessionStart':
       return [{ ...base, agentId: rootId, name: project, root: true, state: 'thinking', log: 'session started · ' + project }];
+    // Agent Teams: the payloads carry little beyond session/cwd today, so pick
+    // up any task/teammate fields opportunistically and keep the line useful.
+    case 'TaskCreated': {
+      const what = String(p.task_subject || p.subject || (p.task && (p.task.subject || p.task.description)) || p.description || '').slice(0, 100);
+      return [{ ...base, agentId: rootId, name: project, root: true, log: `📝 team task created${what ? ': ' + what : ''}` }];
+    }
+    case 'TaskCompleted': {
+      const what = String(p.task_subject || p.subject || (p.task && (p.task.subject || p.task.description)) || p.description || '').slice(0, 100);
+      return [{ ...base, agentId: rootId, name: project, root: true, log: `✅ team task completed${what ? ': ' + what : ''}` }];
+    }
+    case 'TeammateIdle': {
+      const who = String(p.teammate_name || p.teammate || p.agent_name || '').slice(0, 60);
+      return [{ ...base, agentId: rootId, name: project, root: true, state: 'idle', log: `💤 teammate idle${who ? ': ' + who : ''}` }];
+    }
     case 'PermissionRequest': {
       // parked for the rail (see hookPermRegister); tile goes awaiting even if the bridge never saw this session before
       const what = String((p.tool_input && (p.tool_input.command || p.tool_input.file_path || p.tool_input.description)) || '').slice(0, 100);
@@ -2391,6 +2407,10 @@ Allow / Deny it in the dashboard rail.`);
     if (body && body.enabled !== undefined) { cfg.dispatch = !!body.enabled; saveConfig(); console.log(`[dispatch] ${cfg.dispatch ? 'enabled' : 'disabled — falling back to terminal launch + window automation'}`); }
     if (body && body.inboxDeliver !== undefined) { cfg.inboxDeliver = !!body.inboxDeliver; saveConfig(); console.log(`[inbox] delivery ${cfg.inboxDeliver ? 'on' : 'off — replies queue for the next turn'}`); }
     return sendJson(res, 200, { ok: true, enabled: !!cfg.dispatch, inboxDeliver: cfg.inboxDeliver !== false });
+  }
+  // Agent Teams (experimental): whatever Claude wrote under ~/.claude/teams + ~/.claude/tasks
+  if (url === '/api/teams' && req.method === 'GET') {
+    return sendJson(res, 200, { teams: teams.readTeams(0) });
   }
   // Claude Code's own session registry (~/.claude/sessions) + which inboxes Gander can write to
   if (url === '/api/peers' && req.method === 'GET') {

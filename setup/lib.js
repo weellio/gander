@@ -61,6 +61,11 @@ function buildHooks() {
     // bridge-hosted ones): the hook parks until you Allow/Deny in the rail, so
     // it gets a long timeout — on timeout Claude falls back to its own prompt.
     PermissionRequest: [{ matcher: '*', hooks: [{ ...emit(), timeout: 590 }] }],
+    // Agent Teams (experimental in Claude Code): teammates going idle and the
+    // shared task list changing show up on the floor + activity feed.
+    TeammateIdle: [evt()],
+    TaskCreated: [evt()],
+    TaskCompleted: [evt()],
   };
 }
 

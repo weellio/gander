@@ -32,6 +32,7 @@
   import Hierarchy from './lib/Hierarchy.svelte';
   import Office from './lib/Office.svelte';
   import ProcsStrip from './lib/ProcsStrip.svelte';
+  import TeamsStrip from './lib/TeamsStrip.svelte';
   import { theme, applyTheme, PRESETS, BACKGROUNDS } from './lib/theme.js';
 
   // appearance controls (merged in from the old Theme menu)
@@ -57,6 +58,7 @@
   let escalations = $state([]);     // agents that asked for a human, via the coordination board
   let plans = $state([]);           // pending plans awaiting a go/veto
   let reviews = $state([]);         // queue branches held for review-before-merge
+  let teams = $state([]);           // Agent Teams (experimental) read from ~/.claude/teams + tasks
   let boardPostsState = $state([]); // recent board posts → floor pin animation
   let boardProject = $state('');    // which project the Board panel opens on
   let online = $state(false);
@@ -132,6 +134,7 @@
       escalations = d.escalations || [];
       plans = d.plans || [];
       reviews = d.reviews || [];
+      teams = d.teams || [];
       boardPostsState = d.boardPosts || [];
       checkBuild(d.build);
       const nowAwaiting = new Set(agents.filter((a) => a.state === 'awaiting').map((a) => a.id));
@@ -592,6 +595,7 @@
     </div>
   {/if}
 
+  <TeamsStrip {teams} />
   {#if shown.length === 0 && !procs.length}
     <div class="empty">No agents reporting yet. Run <code>/hooks</code> in a Claude Code session (or start a new one) to begin.</div>
   {:else if $layout === 'office'}
