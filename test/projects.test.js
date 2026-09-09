@@ -224,3 +224,33 @@ describe('copyComponent — skill copy', () => {
     assert.deepEqual(result, { ok: true, copied: 'analyzer' });
   });
 });
+
+// ---------------------------------------------------------------------------
+// discover: a session started in the HOME folder must merge into the
+// "Global (user)" entry, never duplicate its path (a duplicate path throws
+// each_key_duplicate in every path-keyed project list on the dashboard)
+// ---------------------------------------------------------------------------
+describe('discover — home-folder session does not duplicate the global entry', () => {
+  test('one entry for the home path, with both sources', () => {
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-home-'));
+    fs.mkdirSync(path.join(tmpHome, '.claude'), { recursive: true });
+    const realHome = os.homedir;
+    os.homedir = () => tmpHome;
+    const cfg = projects.getConfig();
+    const savedRoots = cfg.roots.slice(), savedKnown = cfg.known.slice();
+    cfg.roots.length = 0; cfg.known.length = 0; cfg.known.push(tmpHome);   // a session ran with cwd = home
+    try {
+      const list = projects.discover();
+      const homeEntries = list.filter((p) => keyOf(p.path) === keyOf(tmpHome));
+      assert.equal(homeEntries.length, 1);
+      assert.equal(homeEntries[0].name, 'Global (user)');
+      assert.deepEqual(homeEntries[0].sources, ['global', 'session']);
+      const keys = list.map((p) => keyOf(p.path));
+      assert.equal(new Set(keys).size, keys.length, 'no duplicate paths at all');
+    } finally {
+      os.homedir = realHome;
+      cfg.roots.length = 0; cfg.roots.push(...savedRoots); cfg.known.length = 0; cfg.known.push(...savedKnown);
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+});

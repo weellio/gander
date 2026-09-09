@@ -65,7 +65,10 @@ function discover() {
   const globalClaude = path.join(home, '.claude');
   if (fs.existsSync(globalClaude)) {
     // path = home so copyComponent(home) targets <home>/.claude (= ~/.claude)
-    seen.set('__global__', { path: home, name: 'Global (user)', sources: ['global'], running: false, ...componentsOf(globalClaude, home) });
+    // keyed by the REAL home path (not a sentinel) so a session that started in
+    // the home folder merges into this entry instead of duplicating it — a
+    // duplicate path breaks every path-keyed project list in the dashboard
+    seen.set(keyOf(home), { path: home, name: 'Global (user)', sources: ['global'], running: false, ...componentsOf(globalClaude, home) });
   }
 
   // Configured roots: the root itself, and its immediate children that look like projects.

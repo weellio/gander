@@ -2332,7 +2332,10 @@ Allow / Deny it in the dashboard rail.`);
       if (byPath.has(rp)) byPath.get(rp).running = true;
       else { const pr = projects.project(a.cwd); pr.running = true; pr.sources = ['session']; byPath.set(rp, pr); list.push(pr); }
     }
-    return sendJson(res, 200, { roots: projects.getConfig().roots, projects: list, muted: [...muted] });
+    // belt and braces: never ship two entries with the same path (the dashboard keys lists on it)
+    const uniq = []; const seenK = new Set();
+    for (const p of list) { const k = projects.keyOf(p.path); if (seenK.has(k)) continue; seenK.add(k); uniq.push(p); }
+    return sendJson(res, 200, { roots: projects.getConfig().roots, projects: uniq, muted: [...muted] });
   }
 
   if (url === '/api/projects/roots' && req.method === 'POST') {
