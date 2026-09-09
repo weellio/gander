@@ -56,6 +56,7 @@ function buildHooks() {
     SubagentStart: [evt()],
     SubagentStop: [evt()],
     Stop: [evt()],
+    Notification: [evt()],
     SessionEnd: [evt()],
     // Answer permission prompts from the dashboard for ANY session (not just
     // bridge-hosted ones): the hook parks until you Allow/Deny in the rail, so
