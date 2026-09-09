@@ -139,4 +139,7 @@ function uninstall(opts) {
   uninstallComponents(opts);
 }
 
-module.exports = { install, uninstall, settingsPath, ROOT };
+// buildHooks is the single source of truth for which events Gander wires —
+// bridge/health.js verifies exactly this list, and test/hooks-parity.test.js
+// pins the plugin manifest (hooks/hooks.json) to it.
+module.exports = { install, uninstall, settingsPath, ROOT, buildHooks };

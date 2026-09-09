@@ -7,18 +7,13 @@ const fs   = require('fs');
 const path = require('path');
 const os   = require('os');
 
-// Events the hook install is expected to wire.
-const EXPECTED_EVENTS = [
-  'SessionStart',
-  'UserPromptSubmit',
-  'PostToolUse',
-  'PostToolUseFailure',
-  'SubagentStart',
-  'SubagentStop',
-  'Stop',
-  'SessionEnd',
-  'Notification',
-];
+// Events the hook install is expected to wire — derived from the installer's
+// own table (setup/lib.js buildHooks) so a hook added there is verified here
+// automatically. A hardcoded copy once drifted (Notification was in the
+// plugin manifest and here, but never in the installer) and nothing noticed.
+let EXPECTED_EVENTS;
+try { EXPECTED_EVENTS = Object.keys(require('../setup/lib.js').buildHooks()); }
+catch (_) { EXPECTED_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'SubagentStart', 'SubagentStop', 'Stop', 'Notification', 'SessionEnd', 'PermissionRequest', 'TeammateIdle', 'TaskCreated', 'TaskCompleted']; }
 
 // A command string is considered "Gander" if it references one of these tokens.
 function isGanderCmd(cmd) {
