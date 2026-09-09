@@ -20,6 +20,8 @@ const COMPONENTS = [
   { src: path.join(ROOT, 'skills', 'context-audit'), rel: ['skills', 'context-audit'] },
   { src: path.join(ROOT, 'agents', 'context-auditor.md'), rel: ['agents', 'context-auditor.md'] },
   { src: path.join(ROOT, 'commands', 'gander.md'), rel: ['commands', 'gander.md'] },
+  { src: path.join(ROOT, 'skills', 'agent-ops'), rel: ['skills', 'agent-ops'] },       // "open/restart/reset Gander" from any session
+  { src: path.join(ROOT, 'skills', 'autopilot'), rel: ['skills', 'autopilot'] },       // run a multi-step task to completion, sub-agent per step
 ];
 function componentBase(opts) { return opts.project ? process.cwd() : os.homedir(); }
 function installComponents(opts) {
@@ -30,7 +32,7 @@ function installComponents(opts) {
     if (opts.dryRun) { console.log(`[dry-run] would copy ${fwd(c.src)} -> ${fwd(dest)}`); continue; }
     try { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.cpSync(c.src, dest, { recursive: true }); } catch (_) {}
   }
-  if (!opts.dryRun) console.log('✓ Installed Gander skills (component-builder, context-audit) + agents (component-smith, context-auditor) + command (/gander)');
+  if (!opts.dryRun) console.log('✓ Installed Gander skills (component-builder, context-audit, agent-ops, autopilot) + agents (component-smith, context-auditor) + command (/gander)');
 }
 function uninstallComponents(opts) {
   const base = componentBase(opts);

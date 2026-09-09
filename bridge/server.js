@@ -53,7 +53,8 @@ let eventsReceived = 0;
 
 const argPort = (() => {
   const i = process.argv.indexOf('--port');
-  return i !== -1 ? parseInt(process.argv[i + 1], 10) : 3131;
+  if (i !== -1) return parseInt(process.argv[i + 1], 10) || 3131;
+  return parseInt(process.env.AOC_PORT, 10) || 3131;   // documented env knob (launch.js also passes it as --port)
 })();
 
 const DASHBOARD_DIR = path.join(__dirname, '..', 'dashboard');
@@ -2810,7 +2811,8 @@ Allow / Deny it in the dashboard rail.`);
     // keep an existing peer's saved token when the form sends none (token field left blank)
     const prev = new Map(((cfg.fleet && cfg.fleet.peers) || []).map((p) => [String(p.url || '').replace(/\/+$/, ''), p.token]));
     for (const p of body.peers) if (p && !p.token) { const t = prev.get(String(p.url || '').replace(/\/+$/, '')); if (t) p.token = t; }
-    const norm = fleet.configure({ peers: body.peers, intervalMs: body.intervalMs });
+    // a form save without intervalMs keeps a hand-edited value instead of resetting it
+    const norm = fleet.configure({ peers: body.peers, intervalMs: body.intervalMs !== undefined ? body.intervalMs : (cfg.fleet && cfg.fleet.intervalMs) });
     cfg.fleet = norm;
     saveConfig();
     if (norm.peers.length) fleet.start(); else fleet.stop();

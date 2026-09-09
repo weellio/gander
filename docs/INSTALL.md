@@ -39,7 +39,7 @@ These are app-wide settings, configured from the dashboard's **⚙ Settings → 
 
 - **⚡ Gander Dispatch** — flip on **Host sessions in the bridge**: ▶ Start / ＋ New task with a goal (and ⤳ Resume replies) run over bidirectional stream-json inside the bridge instead of opening a terminal. Instant replies, dashboard-native permission Allow/Deny, live rate-limit telemetry. Toggle **off anytime** to return to the classic terminal method, or per-launch via *"open a terminal window instead"* in ＋ New task. A goal-less ▶ Start always opens a terminal (an interactive session needs a keyboard).
 - **Telegram** — paste a bot token + your chat id to get pinged when a session needs you, and reply or `/stop` from your phone. Also: **`/task <project> <goal>`** queues new work from the chat, **`/queue`** lists it.
-- **Slack** — paste an incoming-webhook URL (api.slack.com/apps → Incoming Webhooks) and every alert Telegram gets is mirrored to a Slack channel. For **two-way control** (reply, `/task`, `/queue`, `/stop` from Slack), also add: an **app-level token** (your app's Basic Information → App-Level Tokens, scope `connections:write`, with **Socket Mode** switched on) and a **bot token** (OAuth & Permissions → scope `chat:write`; under Event Subscriptions subscribe the bot to `message.im` — plus `message.channels` if you want to talk to it in channels — and invite it). No public URL or tunnel needed — the bridge connects out via Socket Mode.
+- **Slack** — paste an incoming-webhook URL (api.slack.com/apps → Incoming Webhooks) and every alert Telegram gets is mirrored to a Slack channel. For **two-way control** (`/task`, `/queue`, `/stop`, and replies typed as `project: your message` from Slack), also add: an **app-level token** (your app's Basic Information → App-Level Tokens, scope `connections:write`, with **Socket Mode** switched on) and a **bot token** (OAuth & Permissions → scope `chat:write`; under Event Subscriptions subscribe the bot to `message.im` — plus `message.channels` if you want to talk to it in channels — and invite it). No public URL or tunnel needed — the bridge connects out via Socket Mode.
 - **Cost budget** — a daily / per-session spend cap. Session caps de-escalate as a **circuit breaker**: steered to wrap up at 70%, final warning at 90%, and (with **Enforce** on) **Stopped** at the cap; crossing the daily cap stops every active session.
 - **⎇ Worktree isolation** (📋 Task queue panel) — each queue task runs in its own git worktree + branch so tasks can run in the same project in parallel; the bridge merges back on completion (conflicts keep the branch).
 - **👀 Review before merge** (📋 Task queue panel) — with worktrees on, hold every green branch for *your* review instead of auto-merging: the task lands in the 🔔 rail (and pings Telegram / desktop) with **View diff**, **✓ Approve & merge**, and **✎ Request changes** — which keeps the branch and queues a follow-up task that starts by merging it and carries your note.
@@ -89,6 +89,34 @@ It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — 
   - **Claude command / path** — `{ "claudeCmd": "" }`. Runs `claude` on PATH by default; if you get *"'claude' is not recognized"*, set the full path (`where claude` / `which claude`, e.g. `C:\Users\you\.local\bin\claude.exe`).
   - **Permission mode** — `{ "launchPermMode": "" }`: `""` (ask, default) · `acceptEdits` · `plan` · `bypass`. **`bypass`** launches with `--dangerously-skip-permissions` so Claude won't prompt before edits/commands — handy if you don't want to babysit prompts, but only use it on projects you trust. *(The one-time "trust this folder" prompt has no bypass flag, but Claude remembers it per folder after you accept once.)*
   - **Extra flags** — `{ "launchFlags": "" }`: appended verbatim, e.g. `--model sonnet`.
+
+### Every JSON key (for scripted / headless setups)
+
+Most knobs are set from **⚙ Settings**, which writes `bridge/aoc-config.json`. If you provision machines by hand, these are the keys the bridge actually reads (defaults in brackets):
+
+| Key | What it does |
+|---|---|
+| `dispatch` [false] | ⚡ Gander Dispatch on/off (Settings → Host sessions in the bridge). |
+| `inboxDeliver` [true] | Write replies straight into a session's cross-session inbox. |
+| `claudeCmd` · `launchPermMode` · `launchFlags` | New-session options (see above). |
+| `dailyBudget` · `sessionBudget` [0 = off] · `budgetEnforce` [false] | 💸 Cost budget caps + hard stop. |
+| `burnAlert` [5.0] · `stallMinutes` [3] · `longRunMinutes` [0 = off] | Runaway $/min, went-quiet-mid-goal, and "still grinding after N minutes" nudges. |
+| `osNotify` [false] | Native desktop toasts from the bridge. |
+| `nudgeOnSend` [false] · `nudgeInterval` [0 = off, minutes] | Wake idle sessions (see *Idle nudge*). |
+| `editorCmd` [auto] | Open-in-editor command. |
+| `ambient` | Smart-light / webhook alerts — the JSON mirrors the Settings form (per-scenario colour + pattern, `webhook`, `command`, `lifx.token` / `lifx.selector`). Easiest to set once from the UI and copy the block. |
+| `boardInject` [true] | Append the coordination-board briefing to launched prompts. |
+| `queueTelegram` [false] | Telegram ping when a queue task finishes (failures always ping). |
+| `autoRetire` [true] · `retireDoneSec` [180] · `retireClosedSec` [60] · `retireIdleSec` [1500] · `retireStaleActiveSec` [1800] | How long tiles linger before clocking out: finished sub-agents, truly closed sessions, idle sessions, orphaned "active" tiles. |
+| `telegramToken` · `telegramChatId` · `telegramReplyToken` · `dashboardUrl` | Telegram (see above). |
+| `slackWebhook` · `slackAppToken` · `slackBotToken` · `slackChannel` | Slack (see above). |
+| `fleet` `{ peers, intervalMs }` | Fleet hub polling (see above). A Settings save keeps a hand-edited `intervalMs`. |
+| `pricing` · `testCmds` · `testCmd` · `allowRemote` · `accessToken` | See the rows above. |
+| `license` | Optional licence key (also `AOC_LICENSE`). |
+
+Queue settings (`enabled`, `maxSlots`, `worktrees`, `testGate`, `review`) live in `bridge/aoc-queue.json` under `cfg` and are set from the 📋 panel. Project roots/known folders live in `bridge/aoc-projects.json`.
+
+**Environment overrides** (mostly for tests and unusual layouts): `AOC_PORT`, `AOC_ALLOW_REMOTE`, `AOC_TOKEN`, `AOC_TG_TOKEN` / `AOC_TG_CHAT` / `AOC_DASH_URL`, `AOC_SLACK_WEBHOOK`, `AOC_LICENSE`, `AOC_BOARD_FILE`, `AOC_QUEUE_FILE`, `GANDER_SETTINGS` (which `settings.json` the installer edits), `GANDER_SESSIONS_DIR` / `GANDER_TEAMS_DIR` / `GANDER_TASKS_DIR` (where Claude Code's session registry / team files are read from).
 
 ## Using other models (claude-code-router)
 

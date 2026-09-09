@@ -30,6 +30,17 @@ describe('hook wiring parity', () => {
     assert.deepEqual(verified, installer);
   });
 
+  test('manifest and installer agree on each hook\'s SHAPE (script, matcher, timeout, async)', () => {
+    const man = JSON.parse(fs.readFileSync(path.join(ROOT, 'hooks', 'hooks.json'), 'utf8')).hooks;
+    const shape = (groups) => groups.map((g) => ({
+      matcher: g.matcher || null,
+      hooks: g.hooks.map((h) => ({ script: (h.command.match(/(emit|launch)\.js/) || [])[0] || h.command, timeout: h.timeout, async: !!h.async })),
+    }));
+    for (const [event, groups] of Object.entries(buildHooks())) {
+      assert.deepEqual(shape(man[event] || []), shape(groups), `${event} shape differs between hooks/hooks.json and setup/lib.js`);
+    }
+  });
+
   test('every installer entry runs emit.js or launch.js with a valid shape', () => {
     for (const [event, groups] of Object.entries(buildHooks())) {
       assert.ok(Array.isArray(groups) && groups.length, `${event} has hook groups`);

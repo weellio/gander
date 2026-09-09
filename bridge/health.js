@@ -18,7 +18,9 @@ catch (_) { EXPECTED_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse',
 // A command string is considered "Gander" if it references one of these tokens.
 function isGanderCmd(cmd) {
   if (typeof cmd !== 'string') return false;
-  return /emit\.js|api[/\\]hook|gander/i.test(cmd);
+  // emit.js (events) or launch.js (SessionStart starts the bridge) — the repo
+  // folder is not always called "gander", so never rely on the path name alone
+  return /emit\.js|launch\.js|api[/\\]hook|gander/i.test(cmd);
 }
 
 // Walk the hooks entry for one event and decide if any command references Gander.

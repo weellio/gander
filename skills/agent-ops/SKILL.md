@@ -1,11 +1,11 @@
 ---
 name: agent-ops
-description: Control the Agent Ops Center dashboard — open/show it, restart the bridge, reset the agent tiles, or check status. Use when the user asks to open/show the agent dashboard, start or stop the visualizer, or clear the agents.
+description: Control the Gander dashboard — open/show it, restart the bridge, reset the agent tiles, or check status. Use when the user asks to open/show the agent dashboard, start or stop the visualizer, or clear the agents.
 ---
 
-# Agent Ops Center — control
+# Gander — control
 
-Agent Ops Center is a live dashboard that visualizes this session's Claude Code agents and sub-agents as animated avatar tiles. A small local **bridge server** holds the agent registry and serves the dashboard at `http://localhost:3131/`. Claude Code **hooks** push real tool activity to it automatically, so normally it "just works" once the plugin is installed — this skill is for manual control.
+Gander is a live dashboard that visualizes this session's Claude Code agents and sub-agents as animated avatar tiles. A small local **bridge server** holds the agent registry and serves the dashboard at `http://localhost:3131/`. Claude Code **hooks** push real tool activity to it automatically, so normally it "just works" once the plugin is installed — this skill is for manual control.
 
 The bridge + dashboard live under the plugin root (`${CLAUDE_PLUGIN_ROOT}` in hook/MCP contexts). When running commands from this skill, use the plugin's `bridge/` and `dashboard/` folders.
 
