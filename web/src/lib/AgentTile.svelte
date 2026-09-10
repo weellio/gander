@@ -40,7 +40,7 @@
 
   <div class="log">{agent.logLines && agent.logLines[0] ? '› ' + agent.logLines[0] : ''}</div>
 
-  <div class="teaser">{agent.lastMessage ? agent.lastMessage : '{codex ? 'Click to open · read-only' : 'Click to open · reply · stop'}'}</div>
+  <div class="teaser">{agent.lastMessage ? agent.lastMessage : (codex ? 'Click to open · read-only' : 'Click to open · reply · stop')}</div>
 </div>
 
 <style>
