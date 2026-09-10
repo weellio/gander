@@ -1241,15 +1241,31 @@
           ctx.textAlign = 'center';
           const lbl = agent.name && agent.name.length > 16 ? agent.name.slice(0, 15) + '…' : (agent.name || '');
           const ly = drawY + 50 * fs + (drewSprite ? 14 : 6);   // sprites are taller — drop the label clear of the feet
+          // OpenAI Codex sessions (tool === 'codex') get a teal-tinted plate + a tiny "codex"
+          // tag hanging off its right edge — same plate geometry, just recognisable at a glance
+          const isCodex = agent.tool === 'codex';
+          const tw = lbl ? ctx.measureText(lbl).width : 0;
           if (lbl) {
-            const tw = ctx.measureText(lbl).width;
-            ctx.fillStyle = 'rgba(128,133,150,0.14)';
+            ctx.fillStyle = isCodex ? 'rgba(20,184,166,0.2)' : 'rgba(128,133,150,0.14)';
             ctx.beginPath();
             if (ctx.roundRect) ctx.roundRect(drawX - tw / 2 - 5, ly - 9, tw + 10, 12.5, 6); else ctx.rect(drawX - tw / 2 - 5, ly - 9, tw + 10, 12.5);
             ctx.fill();
           }
           ctx.fillStyle = 'rgba(130,130,140,0.95)';
           ctx.fillText(lbl, drawX, ly);
+          if (isCodex) {
+            ctx.save();
+            ctx.font = 'bold 7px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+            ctx.textAlign = 'left';
+            const tag = 'codex', tx = drawX + tw / 2 + 8, ttw = ctx.measureText(tag).width;
+            ctx.fillStyle = 'rgba(20,184,166,0.92)';
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(tx - 3, ly - 8, ttw + 6, 10, 4); else ctx.rect(tx - 3, ly - 8, ttw + 6, 10);
+            ctx.fill();
+            ctx.fillStyle = '#062a26';
+            ctx.fillText(tag, tx, ly);
+            ctx.restore();
+          }
         }
         // the agent's defined model (haiku/sonnet/opus), if any — small + dim under the name
         if (agent.model && agent.model !== 'inherit' && (isRoot || zoom >= 0.7)) {

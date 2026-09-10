@@ -29,6 +29,10 @@
   let ctxPct = $derived(cost && typeof cost.ctxPct === 'number' ? cost.ctxPct : null);
   let parked = $derived(agent && ['idle', 'done', 'awaiting'].includes(agent.state));
   let compactReady = $derived(ctxPct !== null && ctxPct >= 0.7 && parked);
+  // OpenAI Codex session (CLI / Codex Desktop) — watched via its rollout logs, so
+  // like Claude Desktop it's view-only: no reply/stop/sendkeys channel into Codex.
+  let codex = $derived(!!(agent && agent.tool === 'codex'));
+  function kfmt(n) { const v = Number(n) || 0; return v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'k' : String(v); }
   function pct(x) { return Math.round((x || 0) * 100) + '%'; }
   function ctxColor(p) { return p >= 0.85 ? '#EF4444' : p >= 0.7 ? '#F59E0B' : '#10B981'; }
 
@@ -250,16 +254,34 @@
       </div>
       <div class="meta">
         {#if agent.machine}<span class="machine" title="Running on a fleet peer — commands are forwarded to that machine's bridge">🖥 {agent.machine}</span>{/if}
+        {#if codex}<span class="machine codex" title="OpenAI Codex session — read-only (reply in Codex)">Codex</span>{/if}
         {#if agent.project}<span>{agent.project}</span>{/if}
         {#if agent.sessionId}<span class="mono">· {String(agent.sessionId).slice(0, 8)}</span>{/if}
         {#if agent.parentId}<span>· sub-agent</span>{/if}
         {#if agent.role}<span title="Agent type">· {agent.role}</span>{/if}
         {#if agent.model && agent.model !== 'inherit'}<span title="Defined model">· 🧠 {agent.model}</span>{/if}
         {#if agent.updatedAt}<span class="mono" title="Time since last event">· ⏱ {rel(agent.updatedAt)}</span>{/if}
-        {#if cost}<span class="mono" title="This session's estimated spend">· 💰 ${cost.costUSD.toFixed(2)}</span>{/if}
+        {#if cost}<span class="mono" title="This session's estimated spend">· 💰 ${cost.costUSD.toFixed(2)}</span>
+        {:else if codex && agent.costUSD != null}<span class="mono" title="Priced by the bridge from the Codex token log">· 💰 ${Number(agent.costUSD).toFixed(2)}</span>{/if}
         {#if agent.runaway && $costAlerts}<span class="mono burn" title="Burning fast right now — consider Stop">· 💸 ${(agent.burnRate || 0).toFixed(2)}/min</span>{/if}
       </div>
       {#if agent.cwd}<div class="path mono">{agent.cwd}</div>{/if}
+
+      {#if codex}
+        <div class="sec">
+          <div class="lbl">Codex session <span class="dim2">· from the Codex rollout log</span></div>
+          <div class="gauges">
+            <span class="g" title="Where the session runs">{agent.codex?.originator || 'codex'}{#if agent.codex?.cliVersion} <span class="dim">v{agent.codex.cliVersion}</span>{/if}</span>
+            {#if agent.model}<span class="g mono" title="Model">🧠 {agent.model}</span>{/if}
+            <span class="g" title="Turns">↻ {agent.codex?.turns ?? 0} turns</span>
+            <span class="g" title="Tool calls">⚙ {agent.codex?.toolCalls ?? 0} tool calls</span>
+            {#if agent.codex?.errors}<span class="g err" title="Errors">✗ {agent.codex.errors} errors</span>{/if}
+            <span class="g mono" title="Tokens: input · cached · output">🔢 {kfmt(agent.codex?.tokens?.input)} in · {kfmt(agent.codex?.tokens?.cached)} cached · {kfmt(agent.codex?.tokens?.output)} out</span>
+            <span class="g mono" title={agent.costUSD ? 'Priced by the bridge' : 'Unpriced — add a pricing entry for this model in aoc-config.json'}>💰 {agent.costUSD != null ? '$' + Number(agent.costUSD).toFixed(2) : '—'}</span>
+            {#if agent.codex?.branch}<span class="g mono" title="Git branch">⎇ {agent.codex.branch}</span>{/if}
+          </div>
+        </div>
+      {/if}
 
       {#if agent.perm}
         <div class="permcard">
@@ -278,6 +300,8 @@
           <div class="await-msg">{agent.awaitMsg || 'Claude is waiting for your input.'}</div>
           {#if agent.dispatch}
             <div class="await-note">Dispatch session — just type your answer in the reply box below; it delivers instantly.</div>
+          {:else if codex}
+            <div class="await-note">Codex session — Gander can't answer it. Reply in Codex ({agent.codex?.originator || 'the Codex CLI'}).</div>
           {:else}
             <div class="await-note">The exact menu lives in the terminal — Gander can't read it. Open it (<b>Open in VS Code</b>) to see the options, then answer with the keys below (e.g. <b>1</b> = first option, <b>y</b>/<b>n</b>, <b>↵</b>).</div>
           {/if}
@@ -362,15 +386,15 @@
 
       {#if agent.cwd || sid}
         <div class="actions">
-          {#if sid && !agent.desktop}<button class="select" onclick={() => (txId = sid)}>📄 Transcript</button>{/if}
-          {#if sid && !agent.desktop && onReplay}<button class="select" onclick={() => onReplay(sid)} title="Replay this session on a timeline — states, tools, cumulative cost">⏪ Replay</button>{/if}
+          {#if sid && !agent.desktop && !codex}<button class="select" onclick={() => (txId = sid)}>📄 Transcript</button>{/if}
+          {#if sid && !agent.desktop && !codex && onReplay}<button class="select" onclick={() => onReplay(sid)} title="Replay this session on a timeline — states, tools, cumulative cost">⏪ Replay</button>{/if}
           {#if agent.winPid}<button class="select" onclick={focusWindow} title="Bring this session's terminal window to the front (the window Gander captured when it launched)">🪟 Focus window</button>{/if}
           {#if agent.cwd}<button class="select" onclick={() => openIn('folder')}>📂 Open folder</button>{/if}
           {#if agent.cwd}<button class="select" onclick={() => openIn('editor')}>Open in VS Code</button>{/if}
         </div>
       {/if}
 
-      {#if agent.cwd && !agent.dispatch && !agent.desktop}
+      {#if agent.cwd && !agent.dispatch && !agent.desktop && !codex}
         <div class="keys" class:awaiting={agent.state === 'awaiting'} title="Types the key into this session's terminal window — keep the Claude terminal focused there.">
           <span class="klbl">⌨ Answer a prompt{#if agent.state === 'awaiting'} <span class="now">· waiting on you</span>{/if}</span>
           <div class="kbtns">
@@ -389,8 +413,10 @@
 
       {#if agent.desktop}
         <div class="foot">🖥 <b>Claude Desktop</b> — watched via its local logs (MCP tool calls, agent-mode activity). Conversations live on claude.ai, so this tile is <b>view-only</b>: there's no reply/stop channel into the app. If its agent mode runs Claude Code with your global hooks, those sessions appear as normal tiles too.</div>
+      {:else if codex}
+        <div class="foot codexfoot">Codex session — read-only (reply in Codex)</div>
       {/if}
-      {#if !agent.desktop}
+      {#if !agent.desktop && !codex}
       {#if pendingImage}
         <div class="attach">
           <img src={pendingImage.dataUrl} alt="attachment" />
@@ -449,6 +475,9 @@
   .ghlink:hover { color: var(--color-text-primary); border-color: var(--accent, #6366F1); }
   .meta { font-size: 11px; color: var(--color-text-secondary); display: flex; gap: 4px; flex-wrap: wrap; }
   .machine { font-size: 10px; font-weight: 600; padding: 0 7px; border-radius: 99px; background: #06B6D41a; border: 0.5px solid #06B6D466; color: #06B6D4; }
+  .machine.codex { font-family: var(--font-mono); background: #14B8A61a; border-color: #14B8A680; color: #14B8A6; }
+  .gauges .g.err { color: #EF4444; border-color: #EF444466; }
+  .codexfoot { font-weight: 600; color: #14B8A6; padding: 6px 9px; border-radius: 8px; border: 0.5px dashed #14B8A666; background: #14B8A60d; }
   .path { font-size: 10px; color: var(--color-text-tertiary); word-break: break-all; }
   .mono { font-family: var(--font-mono); }
   .sec { display: flex; flex-direction: column; gap: 5px; }

@@ -9,17 +9,23 @@
   let awaiting = $derived(agent.state === 'awaiting');
   function hash(id) { let h = 0; const s = String(id); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
   let fd = $derived((hash(agent.id) % 50) / 10);
+  // OpenAI Codex sessions (CLI + Codex Desktop) arrive as ordinary agents with tool === 'codex'
+  let codex = $derived(agent.tool === 'codex');
+  let codexTip = $derived(codex
+    ? 'OpenAI Codex session · ' + [agent.codex?.originator || 'codex', agent.model, agent.codex?.turns != null ? agent.codex.turns + ' turns' : ''].filter(Boolean).join(' · ') + ' · read-only (reply in Codex)'
+    : '');
   function open() { onOpen(agent.id); }
 </script>
 
 <!-- A click opens the full agent modal (read · reply · stop · transcript · cost · GitHub),
      same as clicking a figure on the office floor. The ✎ on the avatar edits the image. -->
-<div class="tile" class:idle={agent.state === 'idle'} class:working={agent.state !== 'idle' && agent.state !== 'done' && !awaiting} class:runaway={agent.runaway && $costAlerts} class:sub={!!agent.parentId} class:awaiting
+<div class="tile" class:idle={agent.state === 'idle'} class:working={agent.state !== 'idle' && agent.state !== 'done' && !awaiting} class:runaway={agent.runaway && $costAlerts} class:sub={!!agent.parentId} class:awaiting class:codex
      role="button" tabindex="0" title="Open — read, reply, stop, transcript"
      onclick={open} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
      style="--c:{color}; --fd:{fd}s" data-id={agent.id}>
   <div class="head">
     <span class="name">{agent.parentId ? '↳ ' : ''}{agent.name}</span>
+    {#if codex}<span class="model codex" title={codexTip}>Codex</span>{/if}
     {#if $costAlerts && agent.costUSD != null}
       <span class="cost" class:hot={agent.runaway} title={agent.runaway ? `Burning ~$${(agent.burnRate || 0).toFixed(2)}/min — open and Stop it` : `Session cost ≈ $${agent.costUSD.toFixed(2)}`}>
         {#if agent.runaway}💸 ${(agent.burnRate || 0).toFixed(2)}/min{:else}${agent.costUSD.toFixed(2)}{/if}
@@ -34,7 +40,7 @@
 
   <div class="log">{agent.logLines && agent.logLines[0] ? '› ' + agent.logLines[0] : ''}</div>
 
-  <div class="teaser">{agent.lastMessage ? agent.lastMessage : 'Click to open · reply · stop'}</div>
+  <div class="teaser">{agent.lastMessage ? agent.lastMessage : '{codex ? 'Click to open · read-only' : 'Click to open · reply · stop'}'}</div>
 </div>
 
 <style>
@@ -70,6 +76,9 @@
   .model { font-size: 9px; font-family: var(--font-mono); padding: 2px 6px; border-radius: 99px; white-space: nowrap;
     background: var(--color-background-secondary); color: var(--color-text-tertiary); border: 0.5px solid var(--color-border-tertiary); }
   .model.machine { color: #06B6D4; border-color: #06B6D466; background: #06B6D41a; font-weight: 600; }
+  /* Codex chip — teal so OpenAI sessions read at a glance in the grid */
+  .model.codex { font-size: 10px; color: #14B8A6; border-color: #14B8A680; background: #14B8A61a; font-weight: 600; letter-spacing: 0.02em; }
+  .tile.codex { border-color: #14B8A64d; }
   .tile.sub { margin-left: 6px; }
   .tile.awaiting { opacity: 1; border-left-color: #F59E0B; }
   .tile.awaiting::after { content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;

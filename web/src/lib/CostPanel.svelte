@@ -9,6 +9,7 @@
   let data = $state(null);
 
   let forensics = $state(null);
+  let codex = $state(null);       // OpenAI Codex sessions (CLI + Codex Desktop) — GET /api/codex
   async function load() {
     loading = true;
     // spend forensics (deterministic): where tokens went + whether it shipped.
@@ -16,6 +17,8 @@
     // don't gate one behind the other.
     forensics = null;
     fetch('/api/forensics?days=14').then((r) => r.json()).then((f) => { if (!f.error) forensics = f; }).catch(() => {});
+    codex = null;
+    fetch('/api/codex').then((r) => r.json()).then((c) => { if (c && !c.error) codex = c; }).catch(() => {});
     try {
       const r = await fetch('/api/usage');
       data = await r.json();
@@ -57,6 +60,14 @@
   function shortSession(id) {
     return String(id || '').slice(0, 8);
   }
+  function trunc(str, n) { const t = String(str || ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; }
+  function ts(v) { return typeof v === 'number' ? v : (Date.parse(v) || 0); }
+
+  // --- Codex ---
+  const codexRecent = $derived(codex && codex.sessions ? [...codex.sessions].sort((a, b) => ts(b.lastAt) - ts(a.lastAt)).slice(0, 8) : []);
+  // goals the Codex runtime parked for a reason (usage_limited / budget_limited / blocked …)
+  const codexWarnGoals = $derived(codex && codex.goals ? codex.goals.filter((g) => g && !['completed', 'active'].includes(String(g.status || '').toLowerCase())) : []);
+  const codexUnpriced = $derived(!!(codex && codex.totals && !Number(codex.totals.costToday) && Number(codex.totals.tokensToday) > 0));
 
   const maxDayCost = $derived(
     data && data.byDay && data.byDay.length
@@ -221,6 +232,66 @@
 
         <div class="genat">updated {data.generatedAt}</div>
       {/if}
+
+      <!-- OpenAI Codex sessions (CLI + Codex Desktop) — read from $CODEX_HOME by the bridge -->
+      {#if codex}
+        <div class="section">
+          <div class="lbl">Codex <span class="fdim">· OpenAI Codex CLI + Desktop{#if codex.queued} · {codex.queued} queued{/if}</span></div>
+          {#if !codex.sessions || !codex.sessions.length}
+            <div class="muted">No Codex sessions found (looks for $CODEX_HOME/sessions)</div>
+          {:else}
+            <div class="ctot">
+              <span class="mono"><b>{codex.totals.today}</b> sessions today · <b>{compact(codex.totals.tokensToday)}</b> tokens today · <b>{money(codex.totals.costToday)}</b> today</span>
+              <span class="dim mono">{codex.totals.sessions} total · {compact(codex.totals.tokens)} tok · {money(codex.totals.costUSD)}</span>
+            </div>
+            {#if codexUnpriced}
+              <div class="fsub warntxt">Unpriced — add a <code>pricing</code> entry for gpt-6 in aoc-config.json to price this.</div>
+            {/if}
+
+            {#each codexWarnGoals as g, i (g.thread_id || i)}
+              <div class="gwarn" title={g.thread_id || ''}>
+                <span class="gst">{g.status}</span>
+                <span class="gobj">{trunc(g.objective, 70) || g.thread_id}</span>
+                {#if g.token_budget}<span class="mono dim" title="tokens used / budget">{compact(g.tokens_used)}/{compact(g.token_budget)}</span>{/if}
+              </div>
+            {/each}
+
+            {#if codex.byProject && codex.byProject.length}
+              <div class="fhead">By project</div>
+              <table>
+                <thead><tr><th>Project</th><th class="num">Sessions</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+                <tbody>
+                  {#each codex.byProject as p (p.project)}
+                    <tr>
+                      <td class="name" title={p.project}>{p.project}</td>
+                      <td class="num mono">{p.sessions}</td>
+                      <td class="num mono">{compact(p.tokens)}</td>
+                      <td class="num mono">{money(p.costUSD)}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            {/if}
+
+            <div class="fhead">Recent sessions <span class="fdim">· last {codexRecent.length}</span></div>
+            <table>
+              <tbody>
+                {#each codexRecent as s (s.id)}
+                  <tr>
+                    <td class="name" title={(s.title || s.id) + (s.model ? ' · ' + s.model : '') + (s.originator ? ' · ' + s.originator : '')}>
+                      <span class="live" class:on={s.live} title={s.live ? 'live' : 'ended'}></span>{s.project || '—'}
+                      <span class="psub">{trunc(s.title, 60) || shortSession(s.id)}</span>
+                    </td>
+                    <td class="num mono" title="turns">{s.turns ?? 0}↻</td>
+                    <td class="num mono" title="total tokens">{compact(s.tokens && s.tokens.total)}</td>
+                    <td class="num mono">{money(s.costUSD)}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
+        </div>
+      {/if}
     </div>
   </aside>
 {/if}
@@ -271,4 +342,16 @@
   .dim { color: var(--color-text-tertiary); }
 
   .genat { font-size: 9px; color: var(--color-text-tertiary); font-family: var(--font-mono); text-align: right; }
+
+  /* Codex */
+  .ctot { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--color-text-primary); }
+  .ctot .dim { font-size: 10px; }
+  .warntxt { color: #C9820A; }
+  .warntxt code { font-family: var(--font-mono); }
+  .gwarn { display: flex; align-items: baseline; gap: 6px; font-size: 11px; padding: 3px 7px; border-radius: 6px; margin-top: 3px;
+    background: color-mix(in srgb, #C9820A 10%, transparent); border: 0.5px solid color-mix(in srgb, #C9820A 30%, transparent); }
+  .gst { font-family: var(--font-mono); font-size: 9.5px; font-weight: 600; color: #C9820A; text-transform: uppercase; flex-shrink: 0; }
+  .gobj { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-secondary); }
+  .live { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--color-border-secondary); margin-right: 5px; vertical-align: middle; }
+  .live.on { background: #14B8A6; box-shadow: 0 0 6px #14B8A6; }
 </style>
