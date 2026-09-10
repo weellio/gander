@@ -293,7 +293,7 @@ async function checkBudget() {
 // The budget alerts above are about TOTAL spend. This samples each live session's
 // cost over time so a stuck/looping agent shows a red "runaway" highlight on its
 // tile in real time. Threshold is $/min; demo/manual agents can set it directly.
-const BURN_ALERT = Number(cfg.burnAlert) > 0 ? Number(cfg.burnAlert) : 5.0; // $/min (sustained)
+let BURN_ALERT = Number(cfg.burnAlert) > 0 ? Number(cfg.burnAlert) : 5.0; // $/min (sustained)
 const costSamples = new Map();   // sessionId -> { cost, ts, ema, streak }
 function sidOf(a) { return a.sessionId || (String(a.id).startsWith('sess:') ? String(a.id).slice(5) : null); }
 async function sampleBurn() {
@@ -1754,7 +1754,7 @@ function refreshProcs(cb) {
 // Stalled mid-goal: a session with a stated goal whose turn ended (Stop → idle)
 // on a message that reads like a question — it's waiting on an answer, not done.
 // Deterministic heuristic: last message asks something + idle ≥ stallMinutes.
-const STALL_MS = Math.max(0, (cfg.stallMinutes === undefined ? 3 : Number(cfg.stallMinutes) || 0) * 60000);
+let STALL_MS = Math.max(0, (cfg.stallMinutes === undefined ? 3 : Number(cfg.stallMinutes) || 0) * 60000);
 const ASKY = /\?\s*["')\]]*\s*$|\b(should i|shall i|want me to|would you like( me)? to|do you want( me)? to|let me know (if|when|which|what|how)|say (go|the word)|which (option|approach|one|direction)|awaiting your|your call|before i (proceed|continue|start)|ready when you are|waiting (on|for) (you|your))\b/i;
 function isStalled(a, now) {
   if (!STALL_MS || !a.root || a.closed || a.desktop || a.remote) return false;
@@ -2765,6 +2765,70 @@ Allow / Deny it in the dashboard rail.`);
     return sendJson(res, 200, { ok: true, cmd: cfg.claudeCmd || '', permMode: cfg.launchPermMode || '', flags: cfg.launchFlags || '' });
   }
 
+  // ── Every remaining config knob, from the UI (Settings → App configuration → Advanced) ──
+  // Secrets are never echoed back — only { set, hint }. Changes apply live where the
+  // bridge reads cfg at use time; allowRemote / accessToken / license bind at startup,
+  // so those report restartNeeded and the drawer offers a one-click restart.
+  const secretView = (v) => ({ set: !!v, hint: v ? '····' + String(v).slice(-4) : '' });
+  const appConfigView = (restartNeeded) => ({
+    stallMinutes: cfg.stallMinutes === undefined ? 3 : Number(cfg.stallMinutes) || 0,
+    burnAlert: Number(cfg.burnAlert) > 0 ? Number(cfg.burnAlert) : 5.0,
+    longRunMinutes: Number(cfg.longRunMinutes) || 0,
+    autoRetire: cfg.autoRetire !== false,
+    retireDoneSec: Number(cfg.retireDoneSec) || 180, retireClosedSec: Number(cfg.retireClosedSec) || 60,
+    retireIdleSec: Number(cfg.retireIdleSec) || 1500, retireStaleActiveSec: Number(cfg.retireStaleActiveSec) || 1800,
+    testCmd: String(cfg.testCmd || ''), testCmds: (cfg.testCmds && typeof cfg.testCmds === 'object') ? cfg.testCmds : {},
+    codex: cfg.codex !== false,
+    telegramReplyToken: secretView(cfg.telegramReplyToken), license: secretView(cfg.license),
+    allowRemote: !!cfg.allowRemote, accessToken: secretView(cfg.accessToken),
+    fleetIntervalMs: Number(cfg.fleet && cfg.fleet.intervalMs) || 5000,
+    restartNeeded: !!restartNeeded,
+  });
+  if (url === '/api/app-config' && req.method === 'GET') return sendJson(res, 200, appConfigView(false));
+  if (url === '/api/app-config' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || typeof body !== 'object') return sendJson(res, 400, { error: 'invalid JSON' });
+    let restartNeeded = false;
+    const num = (v, min, max, dflt) => { const n = Number(v); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : dflt; };
+    if (body.stallMinutes !== undefined) { cfg.stallMinutes = num(body.stallMinutes, 0, 1440, 3); STALL_MS = cfg.stallMinutes * 60000; }
+    if (body.burnAlert !== undefined) { cfg.burnAlert = num(body.burnAlert, 0, 10000, 5); BURN_ALERT = cfg.burnAlert > 0 ? cfg.burnAlert : 5.0; }
+    if (body.longRunMinutes !== undefined) cfg.longRunMinutes = num(body.longRunMinutes, 0, 100000, 0);
+    if (body.autoRetire !== undefined) { cfg.autoRetire = !!body.autoRetire; RETIRE.enabled = cfg.autoRetire; }
+    for (const [k, rk, d] of [['retireDoneSec', 'done', 180], ['retireClosedSec', 'closed', 60], ['retireIdleSec', 'idle', 1500], ['retireStaleActiveSec', 'staleActive', 1800]]) {
+      if (body[k] !== undefined) { cfg[k] = num(body[k], 10, 864000, d); RETIRE[rk] = cfg[k] * 1000; }
+    }
+    if (body.testCmd !== undefined) { const v = String(body.testCmd || '').trim(); if (v && badCliString(v)) return sendJson(res, 400, { error: 'test command contains shell metacharacters' }); cfg.testCmd = v; }
+    if (body.testCmds !== undefined && body.testCmds && typeof body.testCmds === 'object') {
+      const m = {};
+      for (const [proj, cmd] of Object.entries(body.testCmds)) { const pk = String(proj || '').trim(), cv = String(cmd || '').trim(); if (!pk || !cv) continue; if (badCliString(cv)) return sendJson(res, 400, { error: `test command for ${pk} contains shell metacharacters` }); m[pk] = cv; }
+      cfg.testCmds = m;
+    }
+    if (body.codex !== undefined) { cfg.codex = !!body.codex; if (!cfg.codex) codexSig.clear(); }
+    if (body.telegramReplyToken !== undefined) cfg.telegramReplyToken = String(body.telegramReplyToken || '').trim();
+    if (body.license !== undefined) { cfg.license = String(body.license || '').trim(); restartNeeded = true; }
+    if (body.allowRemote !== undefined && !!body.allowRemote !== !!cfg.allowRemote) { cfg.allowRemote = !!body.allowRemote; restartNeeded = true; }
+    if (body.accessToken !== undefined) { const v = String(body.accessToken || '').trim(); if (v !== String(cfg.accessToken || '')) { cfg.accessToken = v; restartNeeded = true; } }
+    if (body.fleetIntervalMs !== undefined) {
+      cfg.fleet = { ...(cfg.fleet || {}), peers: (cfg.fleet && cfg.fleet.peers) || [], intervalMs: num(body.fleetIntervalMs, 1000, 3600000, 5000) };
+      try { fleet.configure(cfg.fleet); if (cfg.fleet.peers.length) fleet.start(); } catch (_) {}
+    }
+    saveConfig();
+    console.log(`[app-config] saved${restartNeeded ? ' (restart needed)' : ''}`);
+    return sendJson(res, 200, { ok: true, ...appConfigView(restartNeeded) });
+  }
+  // One-click bridge restart from the drawer: hand off to a detached helper that
+  // re-launches via bridge/launch.js once this process has let go of the port.
+  if (url === '/api/restart-bridge' && req.method === 'POST') {
+    sendJson(res, 200, { ok: true });
+    try {
+      const launcher = path.join(__dirname, 'launch.js');
+      const code = `setTimeout(() => { require('child_process').spawn(process.execPath, [${JSON.stringify(launcher)}], { detached: true, stdio: 'ignore', env: process.env }).unref(); }, 1500);`;
+      spawn(process.execPath, ['-e', code], { detached: true, stdio: 'ignore', env: { ...process.env, AOC_PORT: String(argPort), GANDER_NO_OPEN: '1' } }).unref();
+      console.log('[restart] handing off to launch.js — bye');
+      setTimeout(() => process.exit(0), 400);
+    } catch (e) { console.log('[restart] failed: ' + e.message); }
+    return;
+  }
   // Model pricing (USD per million tokens) — keys match model ids as case-insensitive
   // substrings; used for non-Claude backends (Codex/gpt-*, DeepSeek, local models…).
   // Claude models are priced at list rates built in; an override here wins.

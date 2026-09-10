@@ -92,7 +92,7 @@ It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — 
 
 ### Every JSON key (for scripted / headless setups)
 
-Most knobs are set from **⚙ Settings**, which writes `bridge/aoc-config.json`. If you provision machines by hand, these are the keys the bridge actually reads (defaults in brackets):
+**Every knob is in ⚙ Settings → App configuration** (the rare ones under **🛠 Advanced** — thresholds, tile clock-out timers, test-gate commands, Codex on/off, reply-bot token, licence, remote access, fleet interval — with a one-click **Restart bridge** for the few that bind at startup). You never need to edit a file. The table below is the on-disk reference for scripted setups, keys as the bridge reads them (defaults in brackets):
 
 | Key | What it does |
 |---|---|

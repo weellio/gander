@@ -27,7 +27,7 @@
     loading = false;
   }
 
-  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); loadFleet(); loadPricing(); if (cwd) loadConfig(); }
+  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); loadFleet(); loadPricing(); loadAdvanced(); if (cwd) loadConfig(); }
 
   // ── Fleet (multi-machine): peer bridges polled by this hub ──
   let flOpen = $state(false); let flPeers = $state([]); let flStatus = $state(''); let flHealth = $state([]);
@@ -83,6 +83,60 @@
   function delPriceRow(i) { prRows = prRows.filter((_, k) => k !== i); }
   async function savePricing() { prStatus = 'Saving…'; const r = await post('/api/pricing-config', { rows: prRows }); if (r && r.ok) { prStatus = '✓ saved — tiles and the Cost panel re-price on the next refresh'; await loadPricing(); } else prStatus = '✗ ' + ((r && r.error) || 'error'); setTimeout(() => (prStatus = ''), 3500); }
   async function testOsNotify() { osStatus = 'sending…'; await post('/api/os-notify-config', { test: true }); osStatus = '⚡ sent — check your tray'; setTimeout(() => (osStatus = ''), 2800); }
+
+  // ── Advanced (every remaining bridge/aoc-config.json knob — thresholds, tile retirement, test gate, integrations, remote access) ──
+  let advOpen = $state(false); let advStatus = $state(''); let advRestart = $state(false); let advRestarting = $state(false);
+  let adv = $state({ stallMinutes: 0, burnAlert: 0, longRunMinutes: 0, autoRetire: true, retireDoneSec: 0, retireClosedSec: 0, retireIdleSec: 0, retireStaleActiveSec: 0, testCmd: '', codex: false, allowRemote: false, fleetIntervalMs: 0 });
+  let advTestRows = $state([]);   // per-project test-command overrides: [{ project, cmd }]
+  // secrets are never echoed by the bridge: we get { set, hint } and send a plain string only when the user types one ("" = clear)
+  let advTgTok = $state({ set: false, hint: '' }), advLic = $state({ set: false, hint: '' }), advAcc = $state({ set: false, hint: '' });
+  let advTgTokIn = $state(''), advLicIn = $state(''), advAccIn = $state('');
+  let advClear = $state({ telegramReplyToken: false, license: false, accessToken: false });
+  function applyAdvanced(j) {
+    adv = {
+      stallMinutes: Number(j.stallMinutes) || 0, burnAlert: Number(j.burnAlert) || 0, longRunMinutes: Number(j.longRunMinutes) || 0,
+      autoRetire: j.autoRetire !== false, retireDoneSec: Number(j.retireDoneSec) || 0, retireClosedSec: Number(j.retireClosedSec) || 0,
+      retireIdleSec: Number(j.retireIdleSec) || 0, retireStaleActiveSec: Number(j.retireStaleActiveSec) || 0,
+      testCmd: j.testCmd || '', codex: !!j.codex, allowRemote: !!j.allowRemote, fleetIntervalMs: Number(j.fleetIntervalMs) || 0,
+    };
+    advTestRows = Object.entries(j.testCmds || {}).map(([project, cmd]) => ({ project, cmd }));
+    advTgTok = j.telegramReplyToken || { set: false, hint: '' }; advLic = j.license || { set: false, hint: '' }; advAcc = j.accessToken || { set: false, hint: '' };
+    advTgTokIn = ''; advLicIn = ''; advAccIn = ''; advClear = { telegramReplyToken: false, license: false, accessToken: false };
+    advRestart = !!j.restartNeeded;
+  }
+  async function loadAdvanced() { try { const j = await (await fetch('/api/app-config')).json(); if (j && !j.error) applyAdvanced(j); } catch (_) {} }
+  function advAddTest() { advTestRows = [...advTestRows, { project: '', cmd: '' }]; }
+  function advDelTest(i) { advTestRows = advTestRows.filter((_, k) => k !== i); }
+  async function saveAdvanced() {
+    advStatus = 'Saving…';
+    const testCmds = {};
+    for (const r of advTestRows) { const p = String(r.project || '').trim(); if (p) testCmds[p] = String(r.cmd || '').trim(); }
+    const body = {
+      stallMinutes: Number(adv.stallMinutes) || 0, burnAlert: Number(adv.burnAlert) || 0, longRunMinutes: Number(adv.longRunMinutes) || 0,
+      autoRetire: !!adv.autoRetire, retireDoneSec: Number(adv.retireDoneSec) || 0, retireClosedSec: Number(adv.retireClosedSec) || 0,
+      retireIdleSec: Number(adv.retireIdleSec) || 0, retireStaleActiveSec: Number(adv.retireStaleActiveSec) || 0,
+      testCmd: String(adv.testCmd || '').trim(), testCmds, codex: !!adv.codex, allowRemote: !!adv.allowRemote, fleetIntervalMs: Number(adv.fleetIntervalMs) || 0,
+    };
+    // secrets: typed value → send it · "clear" pressed → send "" · otherwise omit (bridge keeps the stored one)
+    if (advTgTokIn.trim()) body.telegramReplyToken = advTgTokIn.trim(); else if (advClear.telegramReplyToken) body.telegramReplyToken = '';
+    if (advLicIn.trim()) body.license = advLicIn.trim(); else if (advClear.license) body.license = '';
+    if (advAccIn.trim()) body.accessToken = advAccIn.trim(); else if (advClear.accessToken) body.accessToken = '';
+    const r = await post('/api/app-config', body);
+    if (r && r.ok) { applyAdvanced(r); advStatus = '✓ saved'; } else advStatus = '✗ ' + ((r && r.error) || 'error');
+    setTimeout(() => (advStatus = ''), 3000);
+  }
+  async function restartBridge() {
+    advRestarting = true; advStatus = 'restarting… the page reloads when it\'s back';
+    await post('/api/restart-bridge', {});
+    // poll until the bridge answers again, then reload the tab
+    const t0 = Date.now();
+    const tick = async () => {
+      if (Date.now() - t0 > 60000) { advStatus = '✗ the bridge did not come back within 60s — start it by hand'; advRestarting = false; return; }
+      try { const r = await fetch('/api/app-config', { cache: 'no-store' }); if (r.ok) { location.reload(); return; } } catch (_) {}
+      setTimeout(tick, 1000);
+    };
+    setTimeout(tick, 1500);
+  }
 
   // ── Ambient alerts (webhook / command on state changes — drive a smart light, etc.) ──
   let ambOpen = $state(false); let ambStatus = $state('');
@@ -476,6 +530,78 @@
         </div>
       {/if}
     </div>
+
+    <div class="tg">
+      <button class="collapser" onclick={() => (advOpen = !advOpen)} aria-expanded={advOpen}>
+        <span class="caret">{advOpen ? '▾' : '▸'}</span> 🛠 Advanced
+        <span class="dim">· thresholds, tiles, test gate, remote</span>
+        {#if advRestart}<span class="pr-warn">restart needed</span>{/if}
+      </button>
+      {#if advOpen}
+        <div class="tg-form">
+          <div class="tg-hint">Everything else the bridge reads from <code>bridge/aoc-config.json</code> — no need to edit the file by hand.</div>
+
+          <div class="adv-group">Alerts &amp; thresholds</div>
+          <label class="cbrow">Stalled-session threshold <input class="in num" type="number" min="0" max="1440" bind:value={adv.stallMinutes} /> minutes <span class="dim">(0 = off)</span></label>
+          <label class="cbrow">Runaway burn <input class="in num" type="number" min="0" step="0.01" bind:value={adv.burnAlert} /> $/min</label>
+          <label class="cbrow">Long-run nudge <input class="in num" type="number" min="0" max="1440" bind:value={adv.longRunMinutes} /> minutes <span class="dim">(0 = off)</span></label>
+
+          <div class="adv-group">Tiles</div>
+          <label class="cbrow"><input type="checkbox" bind:checked={adv.autoRetire} /> Auto clock-out <span class="dim">— retire tiles on their own after the timers below</span></label>
+          <label class="cbrow">Finished sub-agents <input class="in num" type="number" min="0" bind:value={adv.retireDoneSec} /> seconds</label>
+          <label class="cbrow">Closed sessions <input class="in num" type="number" min="0" bind:value={adv.retireClosedSec} /> seconds</label>
+          <label class="cbrow">Idle sessions <input class="in num" type="number" min="0" bind:value={adv.retireIdleSec} /> seconds</label>
+          <label class="cbrow">Orphaned active tiles <input class="in num" type="number" min="0" bind:value={adv.retireStaleActiveSec} /> seconds</label>
+
+          <div class="adv-group">Queue test gate</div>
+          <input class="in" placeholder="auto-detect (npm test / node --test)" bind:value={adv.testCmd} title="global test command the queue runs before marking a task done" />
+          {#if advTestRows.length}
+            <div class="adv-head"><span>project</span><span>command</span><span></span></div>
+            {#each advTestRows as r, i}
+              <div class="adv-row">
+                <input class="in" placeholder="project name or path" bind:value={r.project} />
+                <input class="in" placeholder="pytest -q" bind:value={r.cmd} />
+                <button class="mini" title="remove" onclick={() => advDelTest(i)}>✕</button>
+              </div>
+            {/each}
+          {/if}
+          <div class="tg-btns"><button class="mini" onclick={advAddTest}>+ per-project override</button></div>
+
+          <div class="adv-group">Integrations</div>
+          <label class="cbrow"><input type="checkbox" bind:checked={adv.codex} /> Show Codex sessions</label>
+          <div class="amb-fields">
+            <input class="in grow" type="password" autocomplete="off" placeholder={advTgTok.set && !advClear.telegramReplyToken ? 'set ····' + advTgTok.hint + ' — leave blank to keep' : 'Telegram reply bot token'} bind:value={advTgTokIn} />
+            {#if advTgTok.set && !advClear.telegramReplyToken}<button class="mini" onclick={() => (advClear.telegramReplyToken = true)}>clear</button>{/if}
+          </div>
+          {#if advClear.telegramReplyToken}<div class="tg-status">Telegram token will be cleared on Save</div>{/if}
+          <div class="amb-fields">
+            <input class="in grow" type="password" autocomplete="off" placeholder={advLic.set && !advClear.license ? 'set ····' + advLic.hint + ' — leave blank to keep' : 'Licence key'} bind:value={advLicIn} />
+            {#if advLic.set && !advClear.license}<button class="mini" onclick={() => (advClear.license = true)}>clear</button>{/if}
+          </div>
+          {#if advClear.license}<div class="tg-status">Licence key will be cleared on Save</div>{/if}
+
+          <div class="adv-group">Remote access</div>
+          <label class="cbrow"><input type="checkbox" bind:checked={adv.allowRemote} /> Allow remote</label>
+          <div class="tg-hint adv-danger">binds to all interfaces — set an access token first</div>
+          <div class="amb-fields">
+            <input class="in grow" type="password" autocomplete="off" placeholder={advAcc.set && !advClear.accessToken ? 'set ····' + advAcc.hint + ' — leave blank to keep' : 'Access token'} bind:value={advAccIn} />
+            {#if advAcc.set && !advClear.accessToken}<button class="mini" onclick={() => (advClear.accessToken = true)}>clear</button>{/if}
+          </div>
+          {#if advClear.accessToken}<div class="tg-status">Access token will be cleared on Save</div>{/if}
+          <label class="cbrow">Fleet poll interval <input class="in num wide-num" type="number" min="0" step="100" bind:value={adv.fleetIntervalMs} /> ms</label>
+
+          <div class="tg-btns"><button class="select" onclick={saveAdvanced} disabled={advRestarting}>Save</button></div>
+          {#if advStatus}<div class="tg-status">{advStatus}</div>{/if}
+          {#if advRestart}
+            <div class="adv-restart">
+              <span>Takes effect after a bridge restart</span>
+              <button class="mini" onclick={restartBridge} disabled={advRestarting}>{advRestarting ? 'restarting…' : 'Restart bridge now'}</button>
+            </div>
+          {/if}
+          <div class="tg-hint">Remote access, the access token and the licence key need a bridge restart; everything else applies immediately. Secrets are stored in <code>bridge/aoc-config.json</code> and never shown back — only their last 4 characters.</div>
+        </div>
+      {/if}
+    </div>
     </div>
     {/if}
 
@@ -651,5 +777,13 @@
   @keyframes amb-blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.1; } }
   @keyframes amb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.22; } }
   @keyframes amb-rainbow { to { filter: hue-rotate(360deg); } }
+  /* Advanced — grouped bridge knobs */
+  .adv-group { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-tertiary); margin-top: 8px; padding-top: 6px; border-top: 0.5px dashed var(--color-border-tertiary); }
+  .adv-head, .adv-row { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 6px; align-items: center; }
+  .adv-head { font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-tertiary); margin-top: 2px; }
+  .adv-row .in { min-width: 0; }
+  .in.num.wide-num { width: 76px; }
+  .adv-danger { color: #EF4444; }
+  .adv-restart { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; padding: 7px 9px; font-size: 11px; color: #B45309; background: #F59E0B1f; border: 0.5px solid #F59E0B66; border-radius: 8px; }
   .lifx-box { margin: 8px 0 4px; padding: 9px 10px; border: 0.5px solid #10B98155; border-radius: 8px; background: #10B9810f; display: flex; flex-direction: column; gap: 6px; }
 </style>

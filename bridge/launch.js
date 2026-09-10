@@ -27,6 +27,7 @@ function ping(cb) {
 }
 
 function openBrowser(url) {
+  if (process.env.GANDER_NO_OPEN) return;   // self-restart from the Settings drawer: the open tab reloads itself
   try {
     if (process.platform === 'win32') {
       spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
