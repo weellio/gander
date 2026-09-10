@@ -27,7 +27,7 @@
     loading = false;
   }
 
-  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); loadFleet(); if (cwd) loadConfig(); }
+  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); loadFleet(); loadPricing(); if (cwd) loadConfig(); }
 
   // ── Fleet (multi-machine): peer bridges polled by this hub ──
   let flOpen = $state(false); let flPeers = $state([]); let flStatus = $state(''); let flHealth = $state([]);
@@ -76,6 +76,12 @@
   let osNotify = $state(false); let osStatus = $state('');
   async function loadOsNotify() { try { osNotify = !!(await (await fetch('/api/os-notify-config')).json()).enabled; } catch (_) {} }
   async function saveOsNotify() { osStatus = 'Saving…'; const r = await post('/api/os-notify-config', { enabled: osNotify }); osStatus = r && r.ok ? '✓ saved' : 'error'; setTimeout(() => (osStatus = ''), 1500); }
+  // ── Model pricing (USD per million tokens; keys match model ids as substrings) ──
+  let prOpen = $state(false); let prRows = $state([]); let prUnpriced = $state([]); let prStatus = $state('');
+  async function loadPricing() { try { const j = await (await fetch('/api/pricing-config')).json(); prRows = (j.rows || []).map((r) => ({ model: r.model, input: r.input, output: r.output, cacheRead: r.cacheRead ?? '' })); prUnpriced = j.unpriced || []; } catch (_) {} }
+  function addPriceRow(model = '') { prRows = [...prRows, { model, input: '', output: '', cacheRead: '' }]; prOpen = true; }
+  function delPriceRow(i) { prRows = prRows.filter((_, k) => k !== i); }
+  async function savePricing() { prStatus = 'Saving…'; const r = await post('/api/pricing-config', { rows: prRows }); if (r && r.ok) { prStatus = '✓ saved — tiles and the Cost panel re-price on the next refresh'; await loadPricing(); } else prStatus = '✗ ' + ((r && r.error) || 'error'); setTimeout(() => (prStatus = ''), 3500); }
   async function testOsNotify() { osStatus = 'sending…'; await post('/api/os-notify-config', { test: true }); osStatus = '⚡ sent — check your tray'; setTimeout(() => (osStatus = ''), 2800); }
 
   // ── Ambient alerts (webhook / command on state changes — drive a smart light, etc.) ──
@@ -400,6 +406,30 @@
     </div>
 
     <div class="tg">
+      <button class="collapser" onclick={() => (prOpen = !prOpen)} aria-expanded={prOpen}><b>💲 Model pricing</b> <span class="dim">· Codex / gpt-* / local</span>{#if prUnpriced.length}<span class="pr-warn">{prUnpriced.length} unpriced</span>{/if}</button>
+      {#if prOpen}
+        <div class="tg-form">
+          {#if prUnpriced.length}
+            <div class="tg-hint">Seen recently but not priced (counted as $0): {#each prUnpriced as m}<button class="mini" onclick={() => addPriceRow(m)}>+ {m}</button> {/each}</div>
+          {/if}
+          <div class="pr-head"><span>model (substring match)</span><span>input $/M</span><span>output $/M</span><span>cache read $/M</span><span></span></div>
+          {#each prRows as r, i}
+            <div class="pr-row">
+              <input class="in" placeholder="gpt-6" bind:value={r.model} />
+              <input class="in num" type="number" min="0" step="0.01" placeholder="2.00" bind:value={r.input} />
+              <input class="in num" type="number" min="0" step="0.01" placeholder="8.00" bind:value={r.output} />
+              <input class="in num" type="number" min="0" step="0.01" placeholder="auto (10% of input)" bind:value={r.cacheRead} />
+              <button class="mini" title="remove" onclick={() => delPriceRow(i)}>✕</button>
+            </div>
+          {/each}
+          <div class="tg-btns"><button class="mini" onclick={() => addPriceRow('')}>+ add model</button><button class="select" onclick={savePricing}>Save</button></div>
+          {#if prStatus}<div class="tg-status">{prStatus}</div>{/if}
+          <div class="tg-hint">USD per <b>million</b> tokens, from the provider's price list. The model column matches model ids as a case-insensitive <b>substring</b> (<code>gpt-6</code> covers <code>gpt-6-astra</code>). Claude models are priced at list rates automatically; an entry here overrides that. Unpriced non-Claude models are shown as $0, never guessed. Saved to <code>bridge/aoc-config.json → pricing</code>.</div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="tg">
       <button class="collapser" onclick={() => (ambOpen = !ambOpen)}>
         <span class="caret">{ambOpen ? '▾' : '▸'}</span> Ambient alerts — smart light / webhook
         {#if amb.enabled}<span class="tg-state">· on</span>{/if}
@@ -602,6 +632,10 @@
   .amb-label { font-size: 12px; font-weight: 600; flex: 1 1 auto; min-width: 0; }
   .amb-mean { font-size: 10px; font-weight: 400; color: var(--color-text-tertiary); }
   .amb-fields { display: flex; gap: 6px; }
+  .pr-head, .pr-row { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1.2fr auto; gap: 6px; align-items: center; }
+  .pr-head { font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-tertiary); margin-top: 4px; }
+  .pr-row .in { min-width: 0; }
+  .pr-warn { margin-left: 8px; font-size: 10px; color: #B45309; background: #F59E0B1f; border: 0.5px solid #F59E0B66; border-radius: 99px; padding: 1px 7px; }
   .in.clr { width: 84px; flex: 0 0 auto; }
   .in.eff { width: 104px; flex: 0 0 auto; }
   .in.grow { flex: 1 1 auto; min-width: 0; }

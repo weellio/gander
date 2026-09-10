@@ -2765,6 +2765,35 @@ Allow / Deny it in the dashboard rail.`);
     return sendJson(res, 200, { ok: true, cmd: cfg.claudeCmd || '', permMode: cfg.launchPermMode || '', flags: cfg.launchFlags || '' });
   }
 
+  // Model pricing (USD per million tokens) — keys match model ids as case-insensitive
+  // substrings; used for non-Claude backends (Codex/gpt-*, DeepSeek, local models…).
+  // Claude models are priced at list rates built in; an override here wins.
+  if (url === '/api/pricing-config' && req.method === 'GET') {
+    const rows = Object.entries((cfg.pricing && typeof cfg.pricing === 'object') ? cfg.pricing : {}).map(([model, v]) => ({ model, input: Number(v && v.input) || 0, output: Number(v && v.output) || 0, cacheRead: v && v.cacheRead !== undefined ? Number(v.cacheRead) : null, cacheWrite: v && v.cacheWrite !== undefined ? Number(v.cacheWrite) : null }));
+    // models seen recently that have NO price yet (so the form can suggest them)
+    const seen = new Set();
+    try { for (const a of agents.values()) if (a.model && a.model !== 'inherit') seen.add(String(a.model)); } catch (_) {}
+    try { for (const s2 of codex.summary({ days: 30, extras: false }).sessions) if (s2.model) seen.add(String(s2.model)); } catch (_) {}
+    const unpriced = [...seen].filter((m) => !rows.some((r) => m.toLowerCase().includes(r.model.toLowerCase())) && !/claude|opus|sonnet|haiku|fable/i.test(m));
+    return sendJson(res, 200, { rows, unpriced });
+  }
+  if (url === '/api/pricing-config' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !Array.isArray(body.rows)) return sendJson(res, 400, { error: 'rows array required' });
+    const next = {};
+    for (const r of body.rows) {
+      const key = String((r && r.model) || '').trim().toLowerCase();
+      if (!key) continue;
+      const v = { input: Math.max(0, Number(r.input) || 0), output: Math.max(0, Number(r.output) || 0) };
+      if (r.cacheRead !== undefined && r.cacheRead !== null && r.cacheRead !== '') v.cacheRead = Math.max(0, Number(r.cacheRead) || 0);
+      if (r.cacheWrite !== undefined && r.cacheWrite !== null && r.cacheWrite !== '') v.cacheWrite = Math.max(0, Number(r.cacheWrite) || 0);
+      next[key] = v;
+    }
+    cfg.pricing = next; saveConfig();
+    codexSig.clear();   // re-emit Codex tiles with the new prices on the next tick
+    console.log(`[pricing] ${Object.keys(next).length} model price override(s) saved`);
+    return sendJson(res, 200, { ok: true, rows: Object.entries(next).map(([model, v]) => ({ model, ...v })) });
+  }
   if (url === '/api/os-notify-config' && req.method === 'GET') {
     return sendJson(res, 200, { enabled: !!cfg.osNotify });
   }
