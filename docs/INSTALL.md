@@ -56,7 +56,7 @@ These are app-wide settings, configured from the dashboard's **⚙ Settings → 
 Prefer everything in one window? A thin **VS Code extension** in [`vscode-extension/`](../vscode-extension/) puts Gander in VS Code like any other extension:
 
 - **Goose icon in the Activity Bar** (the left rail) — click it to dock the live dashboard in the sidebar next to your code, with ↻ reload and ↗ open-as-tab buttons in its title bar.
-- **🚀 Gander** status-bar button / **"Gander: Open Dashboard"** command — the full dashboard as an editor tab (via the built-in Simple Browser), roomier for the Office floor and grid views.
+- **🚀 Gander** status-bar button / **"Gander: Open Dashboard (full tab)"** command — the full dashboard as an editor tab (via the built-in Simple Browser), roomier for the Office floor and grid views.
 - If the bridge isn't reachable, it can **autostart** it from the repo (`gander.autostart`).
 
 It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — browser users open `localhost:3131`, VS Code users see the identical app. Install the packaged `.vsix` (Extensions → ⋯ → *Install from VSIX…*), or open the folder and press **F5** to develop. See [vscode-extension/README.md](../vscode-extension/README.md).
@@ -113,10 +113,11 @@ Most knobs are set from **⚙ Settings**, which writes `bridge/aoc-config.json`.
 | `fleet` `{ peers, intervalMs }` | Fleet hub polling (see above). A Settings save keeps a hand-edited `intervalMs`. |
 | `pricing` · `testCmds` · `testCmd` · `allowRemote` · `accessToken` | See the rows above. |
 | `license` | Optional licence key (also `AOC_LICENSE`). |
+| `codex` [true] | Show OpenAI Codex sessions (read from `$CODEX_HOME`, default `~/.codex`) as tiles + a Cost-panel section. Price them with a `pricing` entry such as `"gpt-6"`. |
 
 Queue settings (`enabled`, `maxSlots`, `worktrees`, `testGate`, `review`) live in `bridge/aoc-queue.json` under `cfg` and are set from the 📋 panel. Project roots/known folders live in `bridge/aoc-projects.json`.
 
-**Environment overrides** (mostly for tests and unusual layouts): `AOC_PORT`, `AOC_ALLOW_REMOTE`, `AOC_TOKEN`, `AOC_TG_TOKEN` / `AOC_TG_CHAT` / `AOC_DASH_URL`, `AOC_SLACK_WEBHOOK`, `AOC_LICENSE`, `AOC_BOARD_FILE`, `AOC_QUEUE_FILE`, `GANDER_SETTINGS` (which `settings.json` the installer edits), `GANDER_SESSIONS_DIR` / `GANDER_TEAMS_DIR` / `GANDER_TASKS_DIR` (where Claude Code's session registry / team files are read from).
+**Environment overrides** (mostly for tests and unusual layouts): `AOC_PORT`, `AOC_ALLOW_REMOTE`, `AOC_TOKEN`, `AOC_TG_TOKEN` / `AOC_TG_CHAT` / `AOC_DASH_URL`, `AOC_SLACK_WEBHOOK`, `AOC_LICENSE`, `AOC_BOARD_FILE`, `AOC_QUEUE_FILE`, `GANDER_SETTINGS` (which `settings.json` the installer edits), `GANDER_SESSIONS_DIR` / `GANDER_TEAMS_DIR` / `GANDER_TASKS_DIR` (where Claude Code's session registry / team files are read from)), `GANDER_CODEX_HOME` (where Codex's `sessions/` + state live; defaults to `CODEX_HOME` or `~/.codex`).
 
 ## Using other models (claude-code-router)
 

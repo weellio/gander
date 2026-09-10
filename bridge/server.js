@@ -29,6 +29,7 @@ const projects = require('./projects.js');
 const git = require('./git.js');
 const peers = require('./peers');        // Claude Code session registry + cross-session inbox delivery
 const teams = require('./teams');        // Agent Teams files (~/.claude/teams + ~/.claude/tasks), experimental
+const codex = require('./codex');        // OpenAI Codex (CLI + Desktop) sessions, read from $CODEX_HOME
 const usage = require('./usage.js');
 const github = require('./github.js');
 const configmgr = require('./configmgr.js');
@@ -587,6 +588,8 @@ function upsert(ev) {
   if (ev.shirt !== undefined) existing.shirt = ev.shirt;
   if (ev.color !== undefined) existing.color = ev.color;   // agent's defined front-matter color
   if (ev.model !== undefined) existing.model = ev.model;   // agent's defined model
+  if (ev.tool !== undefined) existing.tool = ev.tool;      // runtime marker for non-Claude agents ('codex')
+  if (ev.codex !== undefined) existing.codex = ev.codex;   // Codex session facts (tokens, turns, originator…)
   if (ev.awaitMsg !== undefined) existing.awaitMsg = ev.awaitMsg;   // why it's waiting on you
   if (ev.goal !== undefined && ev.goal) existing.goal = ev.goal;    // current task (last substantive prompt)
   if (ev.parentId !== undefined) existing.parentId = String(ev.parentId);
@@ -1619,6 +1622,42 @@ function queueChain(cwd, prompt, doneWhen) {
 // Every 10s: settle finished queue tasks, then start the next queued goal if a
 // slot is free (see bridge/queue.js for the rules). Uses dispatch when it's on,
 // the classic terminal launch when it's off.
+// ── OpenAI Codex sessions on the floor ──────────────────────────────────────
+// bridge/codex.js tails $CODEX_HOME rollouts; here we turn them into agent
+// upserts, but only when something CHANGED (state/log/cost) so the activity
+// feed doesn't fill with 3-second heartbeats. Pricing comes from cfg.pricing
+// (case-insensitive substring keys, USD per million tokens) — an unpriced model
+// is $0, Gander's rule for non-Claude models.
+function codexPriceFor(model) {
+  const m = String(model || '').toLowerCase();
+  if (!m || !cfg.pricing || typeof cfg.pricing !== 'object') return null;
+  for (const [k, v] of Object.entries(cfg.pricing)) if (k && m.includes(String(k).toLowerCase()) && v && typeof v === 'object') return { input: Number(v.input) || 0, output: Number(v.output) || 0, cacheRead: v.cacheRead !== undefined ? Number(v.cacheRead) : undefined };
+  return null;
+}
+const codexSig = new Map();   // agentId -> last state|log|cost signature
+function codexTick() {
+  if (cfg.codex === false) return;
+  let r;
+  try { r = codex.tick({ priceFor: codexPriceFor, liveWindowMs: (Number(cfg.retireIdleSec) || 1500) * 1000 * 1.2, idleAfterMs: 90e3 }); } catch (e) { return; }
+  for (const ev of r.events) {
+    const sig = `${ev.state}|${ev.log}|${(ev.costUSD || 0).toFixed(4)}|${ev.codex.tokens.total}`;
+    const prev = codexSig.get(ev.agentId);
+    if (prev === sig) continue;
+    const first = !codexSig.has(ev.agentId);
+    codexSig.set(ev.agentId, sig);
+    const stateChanged = !prev || prev.split('|')[0] !== ev.state;
+    const logChanged = !prev || prev.split('|')[1] !== ev.log;
+    const e = { ...ev };
+    if (!stateChanged) delete e.state;               // quiet update: cost/tokens only
+    if (!logChanged) delete e.log;
+    if (first) e.log = e.log || `codex session · ${ev.codex.originator || 'codex'}`;
+    const res = upsert(e);
+    if (res && res.error) console.log(`[codex] upsert ${ev.agentId}: ${res.error}`);
+  }
+}
+setInterval(codexTick, 3000);
+setTimeout(codexTick, 1500);
+
 function queueTick() {
   try {
     queue.tick({
@@ -2411,6 +2450,12 @@ Allow / Deny it in the dashboard rail.`);
     if (body && body.enabled !== undefined) { cfg.dispatch = !!body.enabled; saveConfig(); console.log(`[dispatch] ${cfg.dispatch ? 'enabled' : 'disabled — falling back to terminal launch + window automation'}`); }
     if (body && body.inboxDeliver !== undefined) { cfg.inboxDeliver = !!body.inboxDeliver; saveConfig(); console.log(`[inbox] delivery ${cfg.inboxDeliver ? 'on' : 'off — replies queue for the next turn'}`); }
     return sendJson(res, 200, { ok: true, enabled: !!cfg.dispatch, inboxDeliver: cfg.inboxDeliver !== false });
+  }
+  // OpenAI Codex sessions: history, tokens/cost, goals, queued follow-ups (read from $CODEX_HOME)
+  if (url === '/api/codex' && req.method === 'GET') {
+    const cu = new URL(req.url, 'http://localhost');
+    try { return sendJson(res, 200, codex.summary({ priceFor: codexPriceFor, days: Math.max(1, Math.min(90, Number(cu.searchParams.get('days')) || 7)) })); }
+    catch (e) { return sendJson(res, 500, { error: String(e.message || e) }); }
   }
   // Agent Teams (experimental): whatever Claude wrote under ~/.claude/teams + ~/.claude/tasks
   if (url === '/api/teams' && req.method === 'GET') {

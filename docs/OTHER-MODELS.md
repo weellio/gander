@@ -6,6 +6,19 @@ Gander is built around **Claude Code** — but a lot of it is tool-agnostic, and
 
 If what you want is a different **model** (DeepSeek, Gemini, OpenRouter, local Ollama…) rather than a different CLI, route Claude Code itself with [claude-code-router](https://github.com/musistudio/claude-code-router). The hooks still fire and transcripts are still written, so **every Gander feature works unchanged** — floor, analytics, Dispatch, queue, all of it. Setup + pricing config: [INSTALL.md → Using other models](INSTALL.md#using-other-models-claude-code-router).
 
+## 1½. OpenAI Codex — native, nothing to wrap
+
+Codex (the CLI **and** the Codex desktop app) writes every session to disk, so Gander reads it the same way it reads Claude's transcripts: **no wrapper, no hook, no config**.
+
+- **Where it looks:** `$CODEX_HOME` (default `~/.codex`) → `sessions/YYYY/MM/DD/rollout-*.jsonl`. Override with `GANDER_CODEX_HOME` if you keep it elsewhere.
+- **What you get:** a tile per live Codex session with the project, live state (thinking / coding / reading / testing / searching / awaiting when Codex asks to run something), the last message, model, turns, tool calls, token counts, and cost. Tiles carry a **Codex** chip; the modal shows the session facts (read-only — reply in Codex).
+- **Cost:** Codex tokens are priced through the same `pricing` map as any other model, e.g. `{ "pricing": { "gpt-6": { "input": 2.0, "output": 8.0 } } }` in `bridge/aoc-config.json`. Unpriced = $0, never silently charged Claude rates.
+- **📊 Cost panel → Codex:** sessions today, tokens, $ by project, the last sessions, and Codex's own **goals** when one is `usage_limited` / `budget_limited` / `blocked`, plus how many follow-ups sit in its queue (read from Codex's SQLite state through Node's built-in driver — still zero dependencies).
+- **Off switch:** `{ "codex": false }`.
+
+Not covered (Codex has no outside channel for them): replying into a Codex session, or approving its permission prompts — the tile goes **awaiting** so you know to switch over.
+
+
 ## 2. Any other agent CLI — `gander-wrap`
 
 Codex CLI, Gemini CLI, Grok, aider, your own scripts — anything you can run in a terminal can appear on the floor. Claude Code reports itself through hooks; for everything else there's a zero-dependency wrapper:
