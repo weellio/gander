@@ -27,15 +27,30 @@ The firmware builds for any ESP8266 or ESP32 without edits. Set two defines and 
 |---|---|---|---|---|
 | **ESP32-C3 SuperMini** | usually yes | `8` | $2 – $4 | Cheapest complete lamp |
 | **Wemos D1 mini (ESP8266)** | no | `4` (pin D2) | $2 – $4 | Fine, needs a strip |
-| **ESP32-S3-DevKitC-1** | yes | `48`, or `38` on some revisions | $8 – $15 | Overkill, but great if you own one |
+| **ESP32-S3-DevKitC-1** | yes | `48`, or `38` on some revisions | $8 – $15, but often within ~$1 of the C3 on Amazon | **Best headroom.** Buy this if the gap is small |
 | **ESP32 DevKit / S2 / C6** | varies | check pinout | $4 – $10 | Works the same |
 
-Already have an **ESP32-S3-DevKitC-1** in a drawer? Use it. It is more board than this needs, but the cost is zero and the onboard addressable LED means no wiring at all. Set `LED_PIN 48` and `LED_COUNT 1`.
+**Which to buy:** on AliExpress the C3 SuperMini is the value pick. On Amazon the two are often within a dollar of each other, and at that gap the **S3-DevKitC-1 is the better buy** — same zero wiring, far more room to grow (see below). Set `LED_PIN 48` and `LED_COUNT 1`.
 
 Two things specific to that board:
 
 - It has **two USB ports**. Flash through the one marked **UART**. That is the least fussy path.
 - If you use the port marked **USB** instead, turn on **Tools → USB CDC On Boot** or the Serial Monitor stays empty.
+
+### What the extra headroom buys you
+
+The alert payload carries more than a colour. It also has `project`, `agent`, `reason` and `state`. A bigger board can act on all of it, using endpoints the bridge already serves:
+
+| Idea | What it needs | API that already exists |
+|---|---|---|
+| **A small screen** showing *which* project needs you and why | ST7789 or SSD1306, a few GPIO | `GET /api/statusline` returns `needsYou`, `queued`, `running`, `review`, `escalations`, `gems` — built for a one-line display |
+| **Physical Allow / Deny buttons** for permission prompts | 2 buttons | `GET /api/permissions` lists what's waiting; `POST /api/permissions/answer` with `{sessionId, requestId, behavior}` answers it |
+| **An approve-the-merge button** | 1 button | `POST /api/queue/action` with `approve` or `request-changes` |
+| **Sound instead of light** | I2S amp | any of the above events |
+
+That is the real argument for the S3: it stops being an output-only lamp and can become the thing you press to answer the rail without touching the keyboard. The C3 can do a cut-down version; the S3 has the pins and the RAM to do all of it at once.
+
+None of that is built yet. The lamp firmware here is the starting point.
 
 ### Cheapest possible version
 
