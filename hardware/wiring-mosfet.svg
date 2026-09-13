@@ -33,7 +33,7 @@
 
   <polyline points="505,206 505,250 455,250 455,285" fill="none" stroke="#15202B" stroke-width="2.5"/>
   <text x="513" y="220" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11.5" fill="#15202B">−</text>
-  <text x="480" y="243" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11.5" text-anchor="middle" fill="#15202B">to drain</text>
+  <text x="445" y="270" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11.5" text-anchor="end" fill="#15202B">to drain</text>
 
   <polyline points="605,94 605,110 730,110 730,400" fill="none" stroke="#15202B" stroke-width="2.5"/>
   <text x="722" y="300" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11.5" text-anchor="end" fill="#15202B">supply GND</text>
@@ -60,5 +60,4 @@
   <text x="420" y="424" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" letter-spacing="1.2" text-anchor="middle" fill="#C0431C">COMMON GROUND</text>
   <text x="420" y="440" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11" text-anchor="middle" fill="#66727F">board GND · MOSFET source · supply GND all land here</text>
 
-  <text x="590" y="228" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11" text-anchor="middle" fill="#C0431C">12V never touches the board</text>
 </svg>
