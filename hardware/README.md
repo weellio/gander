@@ -64,6 +64,8 @@ It is small, so it works best as a desk-edge indicator rather than a room light.
 
 ## Wiring an addressable (WS2812) strip
 
+![Board and WS2812 strip joined by three wires: 5V, ground, and data from a GPIO pin](wiring-addressable.svg)
+
 | Strip pin | Board pin |
 |---|---|
 | 5V / VCC | `5V` (D1 mini) or `5V` / `VBUS` (C3) |
@@ -102,6 +104,10 @@ A ready-made **"MOSFET trigger switch module"** is the easy path. Wire in, wire 
 Building it from a bare part instead? Use a **logic-level** MOSFET such as an IRLB8721 or AO3400. A standard IRF540 will not switch properly from 3.3V.
 
 ### Wiring
+
+![Board on USB switching a 12V strip through a MOSFET, with board ground, MOSFET source and supply ground meeting on one common ground rail](wiring-mosfet.svg)
+
+The MOSFET sits in the strip's **negative** leg, so the board switches the roll without ever carrying its current. The two supplies meet at exactly one place: the ground rail.
 
 | From | To |
 |---|---|
