@@ -62,7 +62,7 @@ It is small, so it works best as a desk-edge indicator rather than a room light.
 
 ---
 
-## Wiring (only if you add a strip)
+## Wiring an addressable (WS2812) strip
 
 | Strip pin | Board pin |
 |---|---|
@@ -73,6 +73,64 @@ It is small, so it works best as a desk-edge indicator rather than a room light.
 Keep `MAX_BRIGHTNESS` at 70 or below. A USB port supplies 500 mA, and 8 LEDs at full white would draw close to that on their own.
 
 If the LEDs flicker, the 3.3V data line is marginal. Put one ordinary diode (1N4148) in the strip's 5V line. That drops it to about 4.4V and the strip then reads 3.3V data cleanly.
+
+---
+
+## Using single-colour strips you already own
+
+Have spare rolls of plain one-colour strip? The firmware drives those too. Set `MONO_PIN` to a free GPIO and it runs the same patterns on a PWM output.
+
+You can run both at once: the onboard RGB for detail at the desk, the roll for a wash across the room.
+
+### The power part matters
+
+**A 12V roll cannot run from USB.** Five metres of 5050 at 60 LEDs/m pulls roughly 6A at 12V, about 72W. A USB port gives 2.5W.
+
+So: **the board stays on USB, the strip gets its own 12V supply.** That is the only safe split.
+
+If your rolls happen to be **5V**, a short piece of about 20 to 30cm can share the USB supply. Longer than that and you are over budget again.
+
+### What to add
+
+| Part | Why | Cost |
+|---|---|---|
+| Logic-level N-MOSFET module | GPIO pins cannot switch amps | $1 – $2 |
+| 12V power brick | feeds the strip | often already in the box |
+
+A ready-made **"MOSFET trigger switch module"** is the easy path. Wire in, wire out, signal pin. No component theory.
+
+Building it from a bare part instead? Use a **logic-level** MOSFET such as an IRLB8721 or AO3400. A standard IRF540 will not switch properly from 3.3V.
+
+### Wiring
+
+| From | To |
+|---|---|
+| 12V supply **+** | strip **+** |
+| strip **−** | MOSFET **drain** |
+| MOSFET **source** | **GND** |
+| MOSFET **gate** | your `MONO_PIN` GPIO, through ~150Ω |
+| gate → GND | 10kΩ resistor, keeps it off during boot |
+
+**Two rules that matter:**
+
+1. **Tie the grounds together.** The 12V supply ground and the board ground must be the same ground, or nothing switches.
+2. **Never feed 12V into the board.** The 12V goes to the strip only. The board stays on USB.
+
+### Pick patterns that don't collide
+
+A single colour cannot say *which* alert fired. Only the pattern can. And the defaults collide: `awaiting` and `done` are both **pulse**.
+
+So set these in **Settings → Ambient alerts** to keep all five distinct:
+
+| Event | Pattern on a mono strip |
+|---|---|
+| `awaiting` | pulse |
+| `error` | blink |
+| `runaway` | strobe |
+| `done` | breathe |
+| `clear` | colour `off` |
+
+Colour still works normally for the RGB LED, so you can set both and each output uses what it can. On the mono channel the brightest colour channel simply becomes brightness, so anything lit reads as on and only `off` goes dark.
 
 ---
 

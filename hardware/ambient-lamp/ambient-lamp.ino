@@ -46,6 +46,13 @@ const char* WIFI_PASS = "your-password";
 #define MAX_BRIGHTNESS 70   // 0-255. Keep ≤70 for 8 LEDs on a 500 mA USB port.
 #define HOSTNAME       "gander-lamp"
 
+// ── Optional: a plain SINGLE-COLOUR strip (the 12V rolls everyone has spare) ──
+// Drive it through a logic-level N-MOSFET; see hardware/README.md for wiring.
+// The strip needs its OWN supply — a 12V roll is far beyond what USB can give.
+// Patterns work exactly the same; colour becomes brightness (see renderEffect).
+#define MONO_PIN   -1       // GPIO driving the MOSFET gate. -1 = not used.
+#define MONO_MAX   255      // 0-255 ceiling, in case the roll is blinding
+
 Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // current alert
@@ -109,39 +116,75 @@ void showSolid(uint8_t r, uint8_t g, uint8_t b) {
   strip.show();
 }
 
+// ── mono strip PWM (no-ops entirely when MONO_PIN is -1) ────────────────────
+// The PWM call moved between ESP32 core 2.x and 3.x, so both are handled.
+void monoSetup() {
+#if MONO_PIN >= 0
+  #if defined(ESP8266)
+    analogWriteRange(255);
+    pinMode(MONO_PIN, OUTPUT);
+  #elif defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+    ledcAttach(MONO_PIN, 1000, 8);
+  #else
+    ledcSetup(0, 1000, 8);
+    ledcAttachPin(MONO_PIN, 0);
+  #endif
+#endif
+}
+
+void monoWrite(uint8_t v) {
+#if MONO_PIN >= 0
+  uint8_t out = (uint16_t)v * MONO_MAX / 255;
+  #if defined(ESP8266)
+    analogWrite(MONO_PIN, out);
+  #elif defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+    ledcWrite(MONO_PIN, out);
+  #else
+    ledcWrite(0, out);
+  #endif
+#else
+  (void)v;
+#endif
+}
+
 // ── effect engine — non-blocking so the HTTP server stays responsive ────────
 void renderEffect() {
   uint32_t t = millis();
 
-  if (curR == 0 && curG == 0 && curB == 0) { showSolid(0, 0, 0); return; }
+  // "off" colour → dark, whatever the pattern says
+  if (curR == 0 && curG == 0 && curB == 0) { showSolid(0, 0, 0); monoWrite(0); return; }
 
-  if (curEffect == "blink") {
-    bool on = (t / 500) % 2 == 0;
-    showSolid(on ? curR : 0, on ? curG : 0, on ? curB : 0);
-
-  } else if (curEffect == "strobe") {
-    bool on = (t / 80) % 2 == 0;
-    showSolid(on ? curR : 0, on ? curG : 0, on ? curB : 0);
-
-  } else if (curEffect == "pulse" || curEffect == "breathe") {
-    uint32_t period = (curEffect == "breathe") ? 4000 : 1400;   // breathe is slower + calmer
-    float phase = (t % period) / (float)period;                 // 0..1
-    float level = (1.0f - cosf(phase * 2.0f * PI)) * 0.5f;      // smooth 0..1..0
-    float floorLvl = (curEffect == "breathe") ? 0.12f : 0.05f;  // never fully dark
-    level = floorLvl + level * (1.0f - floorLvl);
-    showSolid((uint8_t)(curR * level), (uint8_t)(curG * level), (uint8_t)(curB * level));
-
-  } else if (curEffect == "rainbow") {
+  if (curEffect == "rainbow") {
     uint16_t base = (t / 6) % 65536;
     for (int i = 0; i < LED_COUNT; i++) {
       uint16_t hue = base + (uint32_t)i * (65536 / LED_COUNT);
       strip.setPixelColor(i, strip.gamma32(strip.ColorHSV(hue, 255, 255)));
     }
     strip.show();
-
-  } else {   // "solid" and anything unknown
-    showSolid(curR, curG, curB);
+    // a single-colour strip has no hue to cycle, so it breathes instead
+    float lv = (1.0f - cosf(((t % 2400) / 2400.0f) * 2.0f * PI)) * 0.5f;
+    monoWrite((uint8_t)(255 * (0.15f + lv * 0.85f)));
+    return;
   }
+
+  float level;   // 0..1 brightness for this instant — one curve, both outputs
+  if (curEffect == "blink")       level = ((t / 500) % 2 == 0) ? 1.0f : 0.0f;
+  else if (curEffect == "strobe") level = ((t /  80) % 2 == 0) ? 1.0f : 0.0f;
+  else if (curEffect == "pulse" || curEffect == "breathe") {
+    uint32_t period = (curEffect == "breathe") ? 4000 : 1400;   // breathe is slower + calmer
+    float phase = (t % period) / (float)period;                 // 0..1
+    float lv = (1.0f - cosf(phase * 2.0f * PI)) * 0.5f;         // smooth 0..1..0
+    float floorLvl = (curEffect == "breathe") ? 0.12f : 0.05f;  // never fully dark
+    level = floorLvl + lv * (1.0f - floorLvl);
+  }
+  else level = 1.0f;   // "solid" and anything unknown
+
+  showSolid((uint8_t)(curR * level), (uint8_t)(curG * level), (uint8_t)(curB * level));
+
+  // Mono strip can't show hue, so the brightest channel becomes its brightness.
+  // Any lit colour reads as "on"; only "off" goes dark. Pattern carries the meaning.
+  uint8_t peak = curR > curG ? (curR > curB ? curR : curB) : (curG > curB ? curG : curB);
+  monoWrite((uint8_t)(peak * level));
 }
 
 // ── HTTP ────────────────────────────────────────────────────────────────────
@@ -193,6 +236,8 @@ void setup() {
   delay(200);
   strip.begin();
   strip.setBrightness(MAX_BRIGHTNESS);
+  monoSetup();
+  monoWrite(0);
   showSolid(0, 0, 40);                       // dim blue = booting / connecting
 
   WiFi.mode(WIFI_STA);
@@ -210,8 +255,10 @@ void setup() {
   server.begin();
 
   showSolid(0, 40, 0);                       // brief green = ready
+  monoWrite(40);
   delay(600);
   curR = curG = curB = 0;                    // then idle/dark until the first alert
+  monoWrite(0);
 }
 
 void loop() {
