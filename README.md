@@ -79,6 +79,7 @@ Full setup — scoped installs, ⚡ Dispatch, Telegram, budgets, smart lights, t
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the hooks wire up, file layout, event API, manual/headless control, contributing |
 | [docs/FAQ.md](docs/FAQ.md) | Common questions — also in-app under the **?** button |
 | [docs/REMOTE.md](docs/REMOTE.md) | Phone (PWA), Tailscale/cloudflared, multi-machine fleet, access tokens |
+| [hardware/README.md](hardware/README.md) | Build a **$4 USB-powered ambient alert lamp** — parts, wiring, firmware |
 
 ## Platform support
 
