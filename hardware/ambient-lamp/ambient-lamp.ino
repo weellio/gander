@@ -35,7 +35,11 @@
 // ── EDIT THESE THREE ────────────────────────────────────────────────────────
 const char* WIFI_SSID = "your-wifi";
 const char* WIFI_PASS = "your-password";
-#define LED_PIN    4        // D1 mini: GPIO4 == pin "D2".  ESP32-C3 SuperMini onboard RGB: 8
+// Onboard-RGB pins by board:  D1 mini (ESP8266) has none, use GPIO4 == pin "D2" for a strip.
+//   ESP32-C3 SuperMini ....... 8
+//   ESP32-S3-DevKitC-1 ....... 48   (some revisions wire it to 38 — try 48 first, then 38)
+//   ESP32-S2 Saola / others .. check the board's pinout for "RGB" or "WS2812"
+#define LED_PIN    4
 // ────────────────────────────────────────────────────────────────────────────
 
 #define LED_COUNT      8    // 1 for an onboard RGB, 8 for a stick, 16 for a ring

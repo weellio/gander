@@ -19,6 +19,24 @@ Powered by **one USB port**. No hub, no cloud, no account.
 
 **Total: about $4** from AliExpress, **about $12** from Amazon (same parts, faster).
 
+### Boards that work
+
+The firmware builds for any ESP8266 or ESP32 without edits. Set two defines and upload.
+
+| Board | Onboard RGB | `LED_PIN` | Cost | Verdict |
+|---|---|---|---|---|
+| **ESP32-C3 SuperMini** | usually yes | `8` | $2 – $4 | Cheapest complete lamp |
+| **Wemos D1 mini (ESP8266)** | no | `4` (pin D2) | $2 – $4 | Fine, needs a strip |
+| **ESP32-S3-DevKitC-1** | yes | `48`, or `38` on some revisions | $8 – $15 | Overkill, but great if you own one |
+| **ESP32 DevKit / S2 / C6** | varies | check pinout | $4 – $10 | Works the same |
+
+Already have an **ESP32-S3-DevKitC-1** in a drawer? Use it. It is more board than this needs, but the cost is zero and the onboard addressable LED means no wiring at all. Set `LED_PIN 48` and `LED_COUNT 1`.
+
+Two things specific to that board:
+
+- It has **two USB ports**. Flash through the one marked **UART**. That is the least fussy path.
+- If you use the port marked **USB** instead, turn on **Tools → USB CDC On Boot** or the Serial Monitor stays empty.
+
 ### Cheapest possible version
 
 Buy the **ESP32-C3 SuperMini alone (~$3)**. Most of them have an RGB LED on board (GPIO8).
