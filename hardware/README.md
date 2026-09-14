@@ -103,6 +103,24 @@ A ready-made **"MOSFET trigger switch module"** is the easy path. Wire in, wire 
 
 Building it from a bare part instead? Use a **logic-level** MOSFET such as an IRLB8721 or AO3400. A standard IRF540 will not switch properly from 3.3V.
 
+### Checking a MOSFET you already have
+
+Two numbers in the datasheet settle it:
+
+| Look for | Good | Bad |
+|---|---|---|
+| `R_DS(on)` quoted at **V_GS = 4.5V** | listed, in milliohms | only quoted at V_GS = 10V |
+| `V_GS(th)` max | about 1 to 2V | 3V or more |
+
+If on-resistance is only given at 10V of gate drive, a 3.3V pin cannot turn the part on properly. And on-resistance in **ohms** rather than **milliohms** means it drops voltage and makes heat even when it does switch.
+
+Two parts that commonly turn up in a drawer, and why neither works here:
+
+- **2SK3067** — no. A 600V 2A switching-supply part: threshold 2 to 4V, and `R_DS(on)` of **4.2Ω**. That is roughly 260 times the resistance of an IRLB8721. Even driven at a full 10V it would drop several volts across itself and turn the difference into heat.
+- **MBR2045CT** — not a switch at all. It is a Schottky **rectifier**: two diodes sharing a cathode, no gate, nothing to control. Keep it for reverse-polarity protection on the 12V input if you like. It cannot switch anything.
+
+Anything whose part number starts `MBR`, `SB`, `1N` or `BAT` is a diode, not a transistor. A Schottky also drops *less* than the 1N4148 mentioned above, so it is not a substitute in the data-line trick either.
+
 ### Wiring
 
 ![Board on USB switching a 12V strip through a MOSFET, with board ground, MOSFET source and supply ground meeting on one common ground rail](wiring-mosfet.svg)
