@@ -32,17 +32,28 @@
   WebServer server(80);
 #endif
 
-// ── EDIT THESE THREE ────────────────────────────────────────────────────────
+// ── 1. PICK YOUR BOARD — uncomment ONE line, comment out the rest ───────────
+#define BOARD_ESP32_S3         // YD-ESP32-S3 or ESP32-S3-DevKitC-1 — onboard RGB, no wiring
+//#define BOARD_C3_SUPERMINI   // ESP32-C3 SuperMini — onboard RGB, no wiring
+//#define BOARD_D1_MINI        // Wemos D1 mini (ESP8266) + a WS2812 strip on the pin marked D2
+
+// ── 2. YOUR WIFI — 2.4 GHz only. These chips cannot see a 5 GHz network. ────
 const char* WIFI_SSID = "your-wifi";
 const char* WIFI_PASS = "your-password";
-// Onboard-RGB pins by board:  D1 mini (ESP8266) has none, use GPIO4 == pin "D2" for a strip.
-//   ESP32-C3 SuperMini ....... 8
-//   ESP32-S3-DevKitC-1 ....... 48   (some revisions wire it to 38 — try 48 first, then 38)
-//   ESP32-S2 Saola / others .. check the board's pinout for "RGB" or "WS2812"
-#define LED_PIN    4
 // ────────────────────────────────────────────────────────────────────────────
 
-#define LED_COUNT      8    // 1 for an onboard RGB, 8 for a stick, 16 for a ring
+#if defined(BOARD_ESP32_S3)
+  #define LED_PIN    48   // a few S3 revisions wire it to 38 instead — try that if it stays dark
+  #define LED_COUNT  1
+#elif defined(BOARD_C3_SUPERMINI)
+  #define LED_PIN    8
+  #define LED_COUNT  1
+#elif defined(BOARD_D1_MINI)
+  #define LED_PIN    4    // the pin marked D2
+  #define LED_COUNT  8
+#else
+  #error "Uncomment exactly one BOARD_ line above."
+#endif
 #define MAX_BRIGHTNESS 70   // 0-255. Keep ≤70 for 8 LEDs on a 500 mA USB port.
 #define HOSTNAME       "gander-lamp"
 

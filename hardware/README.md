@@ -163,7 +163,7 @@ Colour still works normally for the RGB LED, so you can set both and each output
 1. Install the **Arduino IDE**.
 2. Boards Manager → add **esp8266** or **esp32**, then pick your board.
 3. Library Manager → install **Adafruit NeoPixel**. That is the only library.
-4. Open `ambient-lamp/ambient-lamp.ino` and edit the three lines at the top: WiFi name, WiFi password, `LED_PIN`.
+4. Open `ambient-lamp/ambient-lamp.ino`. Uncomment the one `BOARD_` line that matches your board, then fill in your WiFi name and password. That is all the editing there is.
 5. Upload. Open the Serial Monitor at **115200** to see the address it got.
 
 ---
