@@ -219,6 +219,7 @@ GET  /api/fleet-config    -> { peers:[{name, url, hasToken}], intervalMs, status
 POST /api/fleet-config    -> { peers:[{name, url, token?}], intervalMs? } -> { ok, intervalMs, peers }   a blank token keeps the saved one
 GET  /api/peers           -> { peers:[{pid, sessionId, cwd, name, kind, entrypoint, startedAt, version, inbox}], inboxDeliver }   Claude Code's own session registry
 GET  /api/teams           -> { teams:[...] }   Agent Teams read from ~/.claude/teams + tasks
+GET  /api/subagents  -> { subagents, totals, byType }   every sub-agent ever run: name, tokens, cost, duration
 
 # Misc
 GET  /api/processes       -> { processes:[...], generatedAt }   attributed long-running / port-holding processes (shared cache with /api/state's procs; Windows)

@@ -30,6 +30,7 @@ const git = require('./git.js');
 const peers = require('./peers');        // Claude Code session registry + cross-session inbox delivery
 const teams = require('./teams');        // Agent Teams files (~/.claude/teams + ~/.claude/tasks), experimental
 const codex = require('./codex');        // OpenAI Codex (CLI + Desktop) sessions, read from $CODEX_HOME
+const subagents = require('./subagents'); // sub-agent names + spend, read from ~/.claude/projects/**/subagents
 const usage = require('./usage.js');
 const github = require('./github.js');
 const configmgr = require('./configmgr.js');
@@ -590,6 +591,7 @@ function upsert(ev) {
   if (ev.model !== undefined) existing.model = ev.model;   // agent's defined model
   if (ev.tool !== undefined) existing.tool = ev.tool;      // runtime marker for non-Claude agents ('codex')
   if (ev.codex !== undefined) existing.codex = ev.codex;   // Codex session facts (tokens, turns, originator…)
+  if (ev.sub !== undefined) existing.sub = ev.sub;         // sub-agent facts (type, tokens, duration, tool uses)
   if (ev.awaitMsg !== undefined) existing.awaitMsg = ev.awaitMsg;   // why it's waiting on you
   if (ev.goal !== undefined && ev.goal) existing.goal = ev.goal;    // current task (last substantive prompt)
   if (ev.parentId !== undefined) existing.parentId = String(ev.parentId);
@@ -1893,6 +1895,22 @@ function toolState(name, input) {
   return 'thinking';
 }
 
+// A sub-agent's REAL task name ("Write teams.js unit tests") plus its own spend.
+// Claude Code writes agent-<id>.meta.json next to the parent transcript at spawn,
+// so this needs no correlation guessing even when a batch is spawned at once.
+// Before that file lands, fall back to the generic type; the next event retries.
+function subInfo(p) {
+  try {
+    const d = subagents.describe(p.agent_id, p.transcript_path, (m) => usage.rateFor(m, cfg.pricing || {}));
+    if (!d || !d.name) return {};
+    return {
+      name: d.name,
+      sub: { agentType: d.agentType, background: d.background, tokens: d.tokens, model: d.model, durationMs: d.durationMs, toolUses: d.toolUses },
+      costUSD: d.costUSD || undefined,
+    };
+  } catch (_) { return {}; }
+}
+
 function mapHookToEvents(p) {
   const project = projectFromCwd(p.cwd);
   const sessionId = p.session_id || 'unknown';
@@ -1933,7 +1951,7 @@ function mapHookToEvents(p) {
       const id = sub ? subId : rootId;
       const out = [];
       // sub-agents carry their latest narration live (emit.js tails the sub-agent transcript)
-      if (sub) out.push({ ...base, agentId: id, parentId: rootId, name: p.agent_type || ('sub-' + String(p.agent_id).slice(0, 6)), lastMessage: p._lastMessage, ...projects.agentMeta(p.cwd, p.agent_type) });
+      if (sub) out.push({ ...base, agentId: id, parentId: rootId, name: p.agent_type || ('sub-' + String(p.agent_id).slice(0, 6)), lastMessage: p._lastMessage, ...projects.agentMeta(p.cwd, p.agent_type), ...subInfo(p) });
       else out.push({ ...base, agentId: id, root: true, name: project });
       out.push({ ...base, agentId: id, state: toolState(p.tool_name, p.tool_input), log: (p.tool_name || 'tool') + toolDetail(p) });
       return out;
@@ -1941,17 +1959,17 @@ function mapHookToEvents(p) {
     case 'PostToolUseFailure': {
       const id = sub ? subId : rootId;
       const out = [];
-      if (sub) out.push({ ...base, agentId: id, parentId: rootId, name: p.agent_type || ('sub-' + String(p.agent_id).slice(0, 6)), ...projects.agentMeta(p.cwd, p.agent_type) });
+      if (sub) out.push({ ...base, agentId: id, parentId: rootId, name: p.agent_type || ('sub-' + String(p.agent_id).slice(0, 6)), ...projects.agentMeta(p.cwd, p.agent_type), ...subInfo(p) });
       else out.push({ ...base, agentId: id, root: true, name: project });
       out.push({ ...base, agentId: id, state: 'error', log: (p.tool_name || 'tool') + ' failed' });
       return out;
     }
     case 'SubagentStart':
-      return [{ ...base, agentId: subId, parentId: rootId, name: p.agent_type || 'subagent', state: 'spawning', log: 'subagent started', ...projects.agentMeta(p.cwd, p.agent_type) }];
+      return [{ ...base, agentId: subId, parentId: rootId, name: p.agent_type || 'subagent', state: 'spawning', log: 'subagent started', ...projects.agentMeta(p.cwd, p.agent_type), ...subInfo(p) }];
     case 'SubagentStop':
       // The SubagentStop payload carries the sub-agent's own final text + its agent_id,
       // so this is correctly attributed even across a parallel swarm (verified empirically).
-      return [{ ...base, agentId: subId, state: 'done', log: 'subagent finished', lastMessage: p.last_assistant_message }];
+      return [{ ...base, agentId: subId, state: 'done', log: 'subagent finished', lastMessage: p.last_assistant_message, ...subInfo(p) }];
     case 'Notification': {
       // Prefer the structured notification_type (permission_prompt · idle_prompt ·
       // auth_success · elicitation_dialog/complete) over grepping the message text.
@@ -2450,6 +2468,19 @@ Allow / Deny it in the dashboard rail.`);
     if (body && body.enabled !== undefined) { cfg.dispatch = !!body.enabled; saveConfig(); console.log(`[dispatch] ${cfg.dispatch ? 'enabled' : 'disabled — falling back to terminal launch + window automation'}`); }
     if (body && body.inboxDeliver !== undefined) { cfg.inboxDeliver = !!body.inboxDeliver; saveConfig(); console.log(`[inbox] delivery ${cfg.inboxDeliver ? 'on' : 'off — replies queue for the next turn'}`); }
     return sendJson(res, 200, { ok: true, enabled: !!cfg.dispatch, inboxDeliver: cfg.inboxDeliver !== false });
+  }
+  // Every sub-agent this machine has run: real task name, tokens, cost, duration.
+  // Read from ~/.claude/projects/**/subagents, so it covers finished ones too.
+  if (url === '/api/subagents' && req.method === 'GET') {
+    const su2 = new URL(req.url, 'http://localhost');
+    const days = su2.searchParams.get('days');
+    try {
+      return sendJson(res, 200, subagents.roster({
+        days: days === 'all' ? 0 : Math.max(0, Math.min(365, Number(days) || 14)),
+        limit: Math.max(1, Math.min(2000, Number(su2.searchParams.get('limit')) || 400)),
+        priceFor: (m) => usage.rateFor(m, cfg.pricing || {}),
+      }));
+    } catch (e) { return sendJson(res, 500, { error: String(e.message || e) }); }
   }
   // OpenAI Codex sessions: history, tokens/cost, goals, queued follow-ups (read from $CODEX_HOME)
   if (url === '/api/codex' && req.method === 'GET') {

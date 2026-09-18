@@ -471,4 +471,4 @@ function summary() {
   return _cache || emptyShape();
 }
 
-module.exports = { summary, summaryAsync, PRICING };
+module.exports = { summary, summaryAsync, PRICING, rateFor };
