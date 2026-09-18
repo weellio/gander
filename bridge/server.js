@@ -32,6 +32,7 @@ const teams = require('./teams');        // Agent Teams files (~/.claude/teams +
 const codex = require('./codex');        // OpenAI Codex (CLI + Desktop) sessions, read from $CODEX_HOME
 const subagents = require('./subagents'); // sub-agent names + spend, read from ~/.claude/projects/**/subagents
 const version = require('./version');    // is the CLI Gander launches out of date?
+const sessionmeta = require('./sessionmeta'); // title / mode / artifacts / files, from the transcript
 const usage = require('./usage.js');
 const github = require('./github.js');
 const configmgr = require('./configmgr.js');
@@ -593,6 +594,7 @@ function upsert(ev) {
   if (ev.tool !== undefined) existing.tool = ev.tool;      // runtime marker for non-Claude agents ('codex')
   if (ev.codex !== undefined) existing.codex = ev.codex;   // Codex session facts (tokens, turns, originator…)
   if (ev.sub !== undefined) existing.sub = ev.sub;         // sub-agent facts (type, tokens, duration, tool uses)
+  if (ev.transcriptPath !== undefined) existing.transcriptPath = ev.transcriptPath;
   if (ev.awaitMsg !== undefined) existing.awaitMsg = ev.awaitMsg;   // why it's waiting on you
   if (ev.goal !== undefined && ev.goal) existing.goal = ev.goal;    // current task (last substantive prompt)
   if (ev.parentId !== undefined) existing.parentId = String(ev.parentId);
@@ -1808,6 +1810,7 @@ function snapshot() {
   try { for (const p of peers.readRegistry()) regBySid.set(p.sessionId, p); } catch (_) {}
   for (const a of list) {
     if (!a.root || !a.sessionId) continue;
+    if (a.transcriptPath) { try { Object.assign(a, sessionmeta.forTile(a.transcriptPath)); } catch (_) {} }
     const reg = regBySid.get(a.sessionId);
     if (reg) {
       a.peerName = reg.name || undefined;                       // the name other sessions use to message it
@@ -1919,7 +1922,7 @@ function mapHookToEvents(p) {
   const rootId = 'sess:' + sessionId;              // each session is its own root node
   const sub = p.agent_id && p.agent_id !== p.session_id;
   const subId = 'agent:' + p.agent_id;
-  const base = { project, sessionId, cwd: p.cwd };
+  const base = { project, sessionId, cwd: p.cwd, transcriptPath: p.transcript_path };
   switch (p.hook_event_name) {
     case 'SessionStart':
       return [{ ...base, agentId: rootId, name: project, root: true, state: 'thinking', log: 'session started · ' + project }];
@@ -1966,6 +1969,49 @@ function mapHookToEvents(p) {
       out.push({ ...base, agentId: id, state: 'error', log: (p.tool_name || 'tool') + ' failed' });
       return out;
     }
+    // ── newer Claude Code events ──────────────────────────────────────────
+    case 'PreCompact':
+      return [{ ...base, agentId: rootId, root: true, log: 'compacting context…' + (p.reason ? ' (' + String(p.reason).slice(0, 40) + ')' : '') }];
+    case 'PostCompact': {
+      const saved = Number(p.tokensSaved || p.tokens_saved || 0);
+      return [{ ...base, agentId: rootId, root: true, log: 'context compacted' + (saved ? ' · freed ~' + Math.round(saved / 1000) + 'k tokens' : '') }];
+    }
+    case 'PermissionDenied': {
+      const what = String(p.tool_name || p.tool || '').slice(0, 40);
+      const why = String(p.reason || p.message || '').slice(0, 80);
+      return [{ ...base, agentId: sub ? subId : rootId, root: !sub, log: `⛔ denied: ${what}${why ? ' — ' + why : ''}` }];
+    }
+    case 'StopFailure': {
+      const err = String(p.error || p.lastError || p.message || 'the turn ended with an error').slice(0, 120);
+      return [{ ...base, agentId: rootId, root: true, state: 'error', log: 'turn failed: ' + err }];
+    }
+    case 'Elicitation': {
+      const who = String(p.server || p.mcp_server || 'an MCP server').slice(0, 40);
+      const ask = String(p.prompt || p.message || p.question || '').slice(0, 100);
+      return [{ ...base, agentId: rootId, root: true, state: 'awaiting', awaitMsg: `${who} is asking: ${ask || 'needs your input'}`, log: `${who} needs input` }];
+    }
+    case 'ElicitationResult':
+      return [{ ...base, agentId: rootId, root: true, state: 'thinking', log: 'answered the MCP prompt' }];
+    case 'WorktreeCreate':
+      return [{ ...base, agentId: rootId, root: true, log: '⎇ worktree created' + (p.branch ? ' · ' + String(p.branch).slice(0, 50) : '') }];
+    case 'WorktreeRemove':
+      return [{ ...base, agentId: rootId, root: true, log: '⎇ worktree removed' + (p.branch ? ' · ' + String(p.branch).slice(0, 50) : '') }];
+    case 'PreModelSwitch':
+      return [{ ...base, agentId: rootId, root: true, log: 'switching model → ' + String(p.toModel || p.to_model || p.newModel || '?').slice(0, 40) }];
+    case 'PostModelSwitch': {
+      const to = String(p.toModel || p.to_model || p.newModel || p.model || '').slice(0, 60);
+      return [{ ...base, agentId: rootId, root: true, model: to || undefined, log: 'model is now ' + (to || 'changed') }];
+    }
+    case 'CwdChanged': {
+      const to = String(p.newCwd || p.new_cwd || p.to || p.cwd || '');
+      if (!to) return [];
+      return [{ ...base, agentId: rootId, root: true, cwd: to, name: projectFromCwd(to), log: 'moved to ' + projectFromCwd(to) }];
+    }
+    case 'DirectoryAdded':
+      return [{ ...base, agentId: rootId, root: true, log: '+ dir ' + String(p.directory || p.path || '').split(/[\/]/).pop().slice(0, 40) }];
+    case 'ConfigChange':
+      return [{ ...base, agentId: rootId, root: true, log: 'config changed' + (p.filePath ? ' · ' + String(p.filePath).split(/[\/]/).pop().slice(0, 40) : '') }];
+
     case 'SubagentStart':
       return [{ ...base, agentId: subId, parentId: rootId, name: p.agent_type || 'subagent', state: 'spawning', log: 'subagent started', ...projects.agentMeta(p.cwd, p.agent_type), ...subInfo(p) }];
     case 'SubagentStop':
@@ -2470,6 +2516,16 @@ Allow / Deny it in the dashboard rail.`);
     if (body && body.enabled !== undefined) { cfg.dispatch = !!body.enabled; saveConfig(); console.log(`[dispatch] ${cfg.dispatch ? 'enabled' : 'disabled — falling back to terminal launch + window automation'}`); }
     if (body && body.inboxDeliver !== undefined) { cfg.inboxDeliver = !!body.inboxDeliver; saveConfig(); console.log(`[inbox] delivery ${cfg.inboxDeliver ? 'on' : 'off — replies queue for the next turn'}`); }
     return sendJson(res, 200, { ok: true, enabled: !!cfg.dispatch, inboxDeliver: cfg.inboxDeliver !== false });
+  }
+  // Everything the transcript already knew about a session: real title, permission
+  // mode, artifacts it published, files it touched.
+  if (url === '/api/session-meta' && req.method === 'GET') {
+    const mu = new URL(req.url, 'http://localhost');
+    const sid = String(mu.searchParams.get('session') || '');
+    const a = agents.get('sess:' + sid) || Array.from(agents.values()).find((x) => x.sessionId === sid);
+    if (!a || !a.transcriptPath) return sendJson(res, 404, { error: 'unknown session' });
+    const m = sessionmeta.read(a.transcriptPath);
+    return sendJson(res, m ? 200 : 404, m || { error: 'no transcript' });
   }
   // Is the CLI Gander launches behind the published one? Drives the Update button.
   if (url === '/api/claude-version' && req.method === 'GET') {

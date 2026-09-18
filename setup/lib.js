@@ -69,6 +69,22 @@ function buildHooks() {
     TeammateIdle: [evt()],
     TaskCreated: [evt()],
     TaskCompleted: [evt()],
+    // Newer events, all state-carrying. Deliberately NOT wired: MessageDisplay,
+    // FileChanged, PostToolBatch, UserPromptExpansion, Setup, InstructionsLoaded —
+    // they fire constantly and would drown the activity feed.
+    PreCompact: [evt()],
+    PostCompact: [evt()],
+    PermissionDenied: [evt()],
+    StopFailure: [evt()],
+    Elicitation: [evt()],
+    ElicitationResult: [evt()],
+    WorktreeCreate: [evt()],
+    WorktreeRemove: [evt()],
+    PreModelSwitch: [evt()],
+    PostModelSwitch: [evt()],
+    CwdChanged: [evt()],
+    DirectoryAdded: [evt()],
+    ConfigChange: [evt()],
   };
 }
 

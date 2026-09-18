@@ -85,7 +85,7 @@
   });
 
   onMount(() => {
-    refresh().then(() => { loadInfo(); loadCost(); loadGithub(); loadProcs(); });
+    refresh().then(() => { loadInfo(); loadCost(); loadGithub(); loadProcs(); loadMeta(); });
     const t = setInterval(refresh, 1200);
     return () => clearInterval(t);
   });
@@ -216,6 +216,28 @@
       else showFlash('✗ ' + ((j && j.error) || 'failed'));
     } catch (_) { showFlash('✗ Failed — is the bridge running?'); }
   }
+  // Bookkeeping Claude Code already writes into the transcript: the artifacts this
+  // session published and how many files it touched. Fetched lazily — only for a
+  // session that actually published something. A failed fetch renders nothing extra.
+  let meta = $state(null);
+  let metaFailed = $state(false);
+  let artifacts = $derived(meta && Array.isArray(meta.artifacts) ? meta.artifacts : []);
+  let fileCount = $derived((meta && meta.fileCount) || (agent && agent.fileCount) || 0);
+  async function loadMeta() {
+    if (!sid || !agent || !(agent.artifactCount > 0)) return;
+    try {
+      const r = await fetch('/api/session-meta?session=' + encodeURIComponent(sid));
+      const j = await r.json();
+      if (j && !j.error) meta = j; else metaFailed = true;
+    } catch (_) { metaFailed = true; }
+  }
+  // An artifact's title can be empty — fall back to the last segment of its URL.
+  function artName(a) {
+    if (a && a.title) return a.title;
+    const u = String((a && a.url) || '');
+    const seg = u.split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop();
+    return seg || u || 'artifact';
+  }
   // Processes this session spawned and left running (dev servers, node, python…).
   let procs = $state([]);
   async function loadProcs() {
@@ -252,9 +274,11 @@
         {#if gh?.url}<a class="ghlink" href={gh.url} target="_blank" rel="noopener" title={'Open ' + gh.repo + ' on GitHub'}>GitHub ↗</a>{/if}
         <button class="x" onclick={onClose} aria-label="Close">✕</button>
       </div>
+      {#if agent.title}<div class="stitle" title={agent.title}>{agent.title}</div>{/if}
       <div class="meta">
         {#if agent.machine}<span class="machine" title="Running on a fleet peer — commands are forwarded to that machine's bridge">🖥 {agent.machine}</span>{/if}
         {#if codex}<span class="machine codex" title="OpenAI Codex session — read-only (reply in Codex)">Codex</span>{/if}
+        {#if agent.permMode}<span class="permmode" title="This session runs with a non-default permission mode — it does not ask before edits or commands.">⚠ {agent.permMode}</span>{/if}
         {#if agent.project}<span>{agent.project}</span>{/if}
         {#if agent.sessionId}<span class="mono">· {String(agent.sessionId).slice(0, 8)}</span>{/if}
         {#if agent.parentId}<span>· sub-agent</span>{/if}
@@ -370,6 +394,23 @@
         </div>
       {/if}
 
+      {#if (agent.artifactCount > 0 && !metaFailed) || fileCount > 0}
+        <div class="sec">
+          {#if agent.artifactCount > 0 && !metaFailed}
+            <details class="arts">
+              <summary>🔗 Artifacts published ({agent.artifactCount})</summary>
+              {#each artifacts as a (a.url)}
+                <a class="art" href={a.url} target="_blank" rel="noopener noreferrer" title={a.url}>
+                  <span class="an">{artName(a)}</span>
+                  {#if a.at}<span class="aat mono">{rel(a.at)}</span>{/if}
+                </a>
+              {/each}
+            </details>
+          {/if}
+          {#if fileCount > 0}<div class="touched">📄 {fileCount} files touched</div>{/if}
+        </div>
+      {/if}
+
       {#if agent.logLines && agent.logLines.length}
         <div class="sec"><div class="lbl">Recent activity</div>
           <ul class="logs">{#each agent.logLines.slice(0, 6) as l, i (i)}<li>{l}</li>{/each}</ul>
@@ -473,7 +514,12 @@
   .ghlink { font-size: 10px; padding: 2px 8px; border-radius: 99px; white-space: nowrap; text-decoration: none;
     border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-secondary); }
   .ghlink:hover { color: var(--color-text-primary); border-color: var(--accent, #6366F1); }
+  /* the real session name Claude Code generated — wraps to two lines, never clips */
+  .stitle { font-size: 12px; font-weight: 400; line-height: 1.4; color: var(--color-text-secondary);
+    margin-top: -4px; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
   .meta { font-size: 11px; color: var(--color-text-secondary); display: flex; gap: 4px; flex-wrap: wrap; }
+  .permmode { font-size: 10px; font-weight: 600; padding: 0 7px; border-radius: 99px;
+    background: #F59E0B1a; border: 0.5px solid #F59E0B80; color: #F59E0B; white-space: nowrap; cursor: help; }
   .machine { font-size: 10px; font-weight: 600; padding: 0 7px; border-radius: 99px; background: #06B6D41a; border: 0.5px solid #06B6D466; color: #06B6D4; }
   .machine.codex { font-family: var(--font-mono); background: #14B8A61a; border-color: #14B8A680; color: #14B8A6; }
   .gauges .g.err { color: #EF4444; border-color: #EF444466; }
@@ -511,6 +557,18 @@
   .proc .pk { flex-shrink: 0; padding: 2px 9px; border-radius: 5px; cursor: pointer; font-size: 11px; font-weight: 600;
     background: #EF44441a; border: 0.5px solid #EF444455; color: #EF4444; }
   .proc .pk:hover { background: #EF4444; color: #fff; }
+  .arts > summary { font-size: 11px; color: var(--color-text-secondary); cursor: pointer; list-style: none; padding: 3px 0; }
+  .arts > summary::-webkit-details-marker { display: none; }
+  .arts > summary::before { content: '▸ '; color: var(--color-text-tertiary); }
+  .arts[open] > summary::before { content: '▾ '; }
+  .arts > summary:hover { color: var(--color-text-primary); }
+  .art { display: flex; align-items: baseline; gap: 8px; padding: 4px 8px; margin-top: 4px; border-radius: 6px;
+    text-decoration: none; background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); }
+  .art:hover { border-color: var(--accent, #6366F1); }
+  .art .an { flex: 1 1 auto; min-width: 0; font-size: 11.5px; color: var(--color-text-primary); word-break: break-word; }
+  .art:hover .an { text-decoration: underline; }
+  .art .aat { flex-shrink: 0; font-size: 10px; color: var(--color-text-tertiary); }
+  .touched { font-size: 11px; color: var(--color-text-secondary); margin-top: 4px; }
   .logs { margin: 0; padding-left: 16px; font-family: var(--font-mono); font-size: 10px; color: var(--color-text-secondary); }
   .chips { flex-direction: row; flex-wrap: wrap; gap: 6px; }
   .chip { font-size: 10px; background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary);
