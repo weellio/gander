@@ -27,7 +27,7 @@
     loading = false;
   }
 
-  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); loadFleet(); loadPricing(); loadAdvanced(); if (cwd) loadConfig(); }
+  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); loadFleet(); loadPricing(); loadAdvanced(); loadClaudeVersion(); if (cwd) loadConfig(); }
 
   // ── Fleet (multi-machine): peer bridges polled by this hub ──
   let flOpen = $state(false); let flPeers = $state([]); let flStatus = $state(''); let flHealth = $state([]);
@@ -66,6 +66,27 @@
   let clOpen = $state(false); let clCmd = $state(''); let clPerm = $state(''); let clFlags = $state(''); let clStatus = $state('');
   async function loadClaude() { try { const r = await fetch('/api/claude-config'); const j = await r.json(); clCmd = (j && j.cmd) || ''; clPerm = (j && j.permMode) || ''; clFlags = (j && j.flags) || ''; } catch (_) {} }
   async function saveClaude() { clStatus = 'Saving…'; const r = await post('/api/claude-config', { cmd: clCmd, permMode: clPerm, flags: clFlags }); clStatus = r && r.ok ? '✓ Saved' : 'Error'; }
+
+  // ── Claude CLI version — the binary the path above launches (a stale CLI silently misses newer hook events) ──
+  let cv = $state(null);   // { cmd, current, latest, behind, checkedAt } · null = lookup failed, render nothing rather than a false warning
+  let cvBusy = $state(false); let cvStatus = $state(''); let cvOut = $state('');
+  async function loadClaudeVersion(manual) {
+    if (manual) { cvBusy = true; cvStatus = 'Checking…'; cvOut = ''; }
+    try { const j = await (await fetch('/api/claude-version')).json(); cv = j && !j.error ? j : null; } catch (_) { cv = null; }
+    if (manual) { cvBusy = false; cvStatus = ''; }
+  }
+  function cvTrim(s) {   // CLI failures put the useful part on the last lines — keep it to one readable sentence
+    const t = String(s || '').split('\n').map((x) => x.trim()).filter(Boolean).slice(-3).join(' · ');
+    return t.length > 180 ? t.slice(0, 180) + '…' : t || 'update failed';
+  }
+  async function updateClaude() {
+    cvBusy = true; cvOut = ''; cvStatus = 'Updating… this can take a minute';
+    const r = await post('/api/claude-update', {});
+    cvOut = (r && r.output) || '';
+    if (r && r.ok) { await loadClaudeVersion(); cvStatus = '✓ Updated'; }
+    else cvStatus = '✗ ' + cvTrim(r && (r.error || r.output));
+    cvBusy = false;
+  }
 
   // ── idle-session nudge (the bridge runs it itself — no external task needed) ──
   let nzOpen = $state(false); let nzOn = $state(false); let nzInterval = $state(0); let nzStatus = $state('');
@@ -419,6 +440,7 @@
       <button class="collapser" onclick={() => (clOpen = !clOpen)}>
         <span class="caret">{clOpen ? '▾' : '▸'}</span> New session options
         {#if clPerm === 'bypass'}<span class="tg-state">· skip prompts</span>{:else if clCmd || clPerm || clFlags}<span class="tg-state">· custom</span>{/if}
+        {#if cv && cv.behind === true}<span class="pr-warn">update available</span>{/if}
       </button>
       {#if clOpen}
         <div class="tg-form">
@@ -430,6 +452,20 @@
           </select>
           <input class="in" placeholder="extra flags, e.g. --model sonnet" bind:value={clFlags} />
           <input class="in" placeholder="claude path (blank = 'claude' on PATH)" bind:value={clCmd} />
+          {#if cv}
+            <div class="cv-line" class:cv-behind={cv.behind === true}>
+              <span class="cv-ver">
+                {#if !cv.current}Claude CLI version unknown
+                {:else if cv.behind === true}Claude CLI {cv.current} · {cv.latest} available
+                {:else if cv.latest}Claude CLI {cv.current} · up to date
+                {:else}Claude CLI {cv.current}{/if}
+              </span>
+              <button class="mini" title="check again" aria-label="Re-check Claude CLI version" onclick={() => loadClaudeVersion(true)} disabled={cvBusy}>⟳</button>
+              {#if cv.behind === true}<button class="mini cv-up" onclick={updateClaude} disabled={cvBusy}>Update Claude</button>{/if}
+            </div>
+            {#if cvStatus}<div class="tg-status">{cvStatus}</div>{/if}
+            {#if cvOut}<details class="cv-out"><summary>update output</summary><pre class="raw mono">{cvOut}</pre></details>{/if}
+          {/if}
           <div class="tg-btns"><button class="select" onclick={saveClaude}>Save</button></div>
           {#if clStatus}<div class="tg-status">{clStatus}</div>{/if}
           <div class="tg-hint">Applies to ▶ Start and ＋ New task. <b>Skip ALL prompts</b> launches with <code>--dangerously-skip-permissions</code> — Claude won't ask before edits/commands, so only use it on projects you trust. The one-time <b>“trust this folder”</b> prompt has no bypass flag, but Claude remembers it per folder after you accept once. Set the path if Start says “'claude' is not recognized” (<code>where claude</code> / <code>which claude</code>).</div>
@@ -777,6 +813,18 @@
   @keyframes amb-blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.1; } }
   @keyframes amb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.22; } }
   @keyframes amb-rainbow { to { filter: hue-rotate(360deg); } }
+  /* Claude CLI version line — sits under the claude-path field it describes */
+  .cv-line { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--color-text-tertiary); padding: 2px 0; }
+  .cv-ver { flex: 1 1 auto; min-width: 0; }
+  .cv-line.cv-behind { color: var(--hm-warn, #f59e0b); background: color-mix(in srgb, var(--hm-warn, #f59e0b) 13%, transparent);
+    border: 0.5px solid color-mix(in srgb, var(--hm-warn, #f59e0b) 45%, transparent); border-radius: 8px; padding: 5px 8px; }
+  .cv-line.cv-behind .cv-ver { font-weight: 600; }
+  .cv-up { border-color: color-mix(in srgb, var(--hm-warn, #f59e0b) 60%, transparent); color: var(--color-text-primary); }
+  .cv-up:hover { border-color: var(--hm-warn, #f59e0b); }
+  .cv-line button:disabled { opacity: 0.5; cursor: default; }
+  .cv-out { font-size: 10px; color: var(--color-text-tertiary); }
+  .cv-out summary { cursor: pointer; }
+  .cv-out .raw { margin-top: 4px; max-height: 180px; white-space: pre-wrap; }
   /* Advanced — grouped bridge knobs */
   .adv-group { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-tertiary); margin-top: 8px; padding-top: 6px; border-top: 0.5px dashed var(--color-border-tertiary); }
   .adv-head, .adv-row { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 6px; align-items: center; }

@@ -31,6 +31,7 @@ const peers = require('./peers');        // Claude Code session registry + cross
 const teams = require('./teams');        // Agent Teams files (~/.claude/teams + ~/.claude/tasks), experimental
 const codex = require('./codex');        // OpenAI Codex (CLI + Desktop) sessions, read from $CODEX_HOME
 const subagents = require('./subagents'); // sub-agent names + spend, read from ~/.claude/projects/**/subagents
+const version = require('./version');    // is the CLI Gander launches out of date?
 const usage = require('./usage.js');
 const github = require('./github.js');
 const configmgr = require('./configmgr.js');
@@ -1217,13 +1218,14 @@ function doctorChecks() {
   const withTimeout = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r({ status: 'warn', detail: 'check timed out' }), ms))]);
   const checks = [];
 
-  // claude CLI resolvable?
+  // claude CLI resolvable, and is it the current build?
   checks.push(withTimeout(new Promise((resolve) => {
-    require('child_process').execFile(claudeCliRaw(), ['--version'], { timeout: 6000, windowsHide: true, shell: process.platform === 'win32' }, (err, stdout) => {
-      if (err) resolve({ status: 'fail', detail: `"${claudeCliRaw()}" not runnable`, hint: 'Install Claude Code or set the path under Settings → Claude command.' });
-      else resolve({ status: 'ok', detail: String(stdout || '').trim().split('\n')[0].slice(0, 60) });
+    version.check(claudeCliRaw(), (_e, v) => {
+      if (!v || !v.current) resolve({ status: 'fail', detail: '"' + claudeCliRaw() + '" not runnable', hint: 'Install Claude Code or set the path under Settings → Claude command.' });
+      else if (v.behind) resolve({ status: 'warn', detail: v.current + ' installed · ' + v.latest + ' available', hint: 'A stale CLI silently misses newer hook events. Settings → New session options → Update Claude.' });
+      else resolve({ status: 'ok', detail: v.latest ? v.current + ' · up to date' : v.current });
     });
-  }), 7000).then((r) => ({ id: 'cli', label: 'claude CLI', ...r })));
+  }), 12000).then((r) => ({ id: 'cli', label: 'claude CLI', ...r })));
 
   // events flowing?
   checks.push(Promise.resolve().then(() => {
@@ -2468,6 +2470,17 @@ Allow / Deny it in the dashboard rail.`);
     if (body && body.enabled !== undefined) { cfg.dispatch = !!body.enabled; saveConfig(); console.log(`[dispatch] ${cfg.dispatch ? 'enabled' : 'disabled — falling back to terminal launch + window automation'}`); }
     if (body && body.inboxDeliver !== undefined) { cfg.inboxDeliver = !!body.inboxDeliver; saveConfig(); console.log(`[inbox] delivery ${cfg.inboxDeliver ? 'on' : 'off — replies queue for the next turn'}`); }
     return sendJson(res, 200, { ok: true, enabled: !!cfg.dispatch, inboxDeliver: cfg.inboxDeliver !== false });
+  }
+  // Is the CLI Gander launches behind the published one? Drives the Update button.
+  if (url === '/api/claude-version' && req.method === 'GET') {
+    const info = await new Promise((r) => version.check(claudeCliRaw(), (_e, v) => r(v)));
+    return sendJson(res, 200, info);
+  }
+  // Runs the CLI's own updater (`claude update`). Slow, so the UI shows progress.
+  if (url === '/api/claude-update' && req.method === 'POST') {
+    const r0 = await new Promise((r) => version.update(claudeCliRaw(), (_e, v) => r(v)));
+    console.log('[update] claude update -> ' + (r0.ok ? 'ok' : 'failed'));
+    return sendJson(res, r0.ok ? 200 : 500, r0);
   }
   // Every sub-agent this machine has run: real task name, tokens, cost, duration.
   // Read from ~/.claude/projects/**/subagents, so it covers finished ones too.
