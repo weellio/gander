@@ -60,6 +60,18 @@
   let plans = $state([]);           // pending plans awaiting a go/veto
   let reviews = $state([]);         // queue branches held for review-before-merge
   let teams = $state([]);           // Agent Teams (experimental) read from ~/.claude/teams + tasks
+  // Real plan-limit percentages, reported by our status line — the only channel
+  // Claude Code exposes them on. Null until a status line renders.
+  let planLimits = $state(null);
+  let planPct = $derived(planLimits?.fiveHour?.pct ?? null);
+  let planHot = $derived(typeof planPct === 'number' && planPct >= 90);
+  let planWarm = $derived(typeof planPct === 'number' && planPct >= 75 && planPct < 90);
+  function resetsIn(sec) {
+    if (!sec) return '';
+    const s = Math.max(0, sec * 1000 - Date.now()) / 1000;
+    const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  }
   let boardPostsState = $state([]); // recent board posts → floor pin animation
   let boardProject = $state('');    // which project the Board panel opens on
   let online = $state(false);
@@ -136,6 +148,7 @@
       plans = d.plans || [];
       reviews = d.reviews || [];
       teams = d.teams || [];
+      planLimits = d.planLimits || null;
       boardPostsState = d.boardPosts || [];
       checkBuild(d.build);
       const nowAwaiting = new Set(agents.filter((a) => a.state === 'awaiting').map((a) => a.id));
@@ -576,6 +589,14 @@
         ⚡ 5h ${usage.window5h.costUSD.toFixed(2)}{#if rl?.resetsAt}&nbsp;· resets {rlResetIn}{/if}{#if rlBlocked}&nbsp;· LIMIT{/if}
       </span>
     {/if}
+    {#if planPct !== null}
+      <span class="cost plan" class:planhot={planHot} class:planwarm={planWarm}
+            title={'Your real plan limits, as Claude Code reports them to the status line. 5-hour window ' + planPct + '% used'
+              + (planLimits?.fiveHour?.resetsAt ? ', resets in ' + resetsIn(planLimits.fiveHour.resetsAt) : '')
+              + (planLimits?.sevenDay ? '. Weekly ' + planLimits.sevenDay.pct + '% used' : '')}>
+        ⚡ 5h {planPct}%{#if planLimits?.sevenDay}&nbsp;· 7d {planLimits.sevenDay.pct}%{/if}{#if planLimits?.fiveHour?.resetsAt}&nbsp;· resets {resetsIn(planLimits.fiveHour.resetsAt)}{/if}
+      </span>
+    {/if}
     {#if errorCount > 0}<button class="errchip" onclick={() => openP('feed')} title="Open the activity feed">⚠ {errorCount} error{errorCount === 1 ? '' : 's'}</button>{/if}
     {#each Object.entries(counts) as [state, n] (state)}
       <span class="cnt"><i style="background:{STATE_COLORS[state] || '#888'}"></i>{STATE_LABEL[state] || state} {n}</span>
@@ -679,6 +700,8 @@
   /* .select is styled globally in app.css for a consistent modern look */
   .statusbar { font-size: 11px; color: var(--color-text-secondary); flex-wrap: wrap; }
   .cnt { display: inline-flex; align-items: center; gap: 4px; }
+  .cost.plan.planwarm { color: #B45309; border-color: #F59E0B66; background: #F59E0B1a; }
+  .cost.plan.planhot { color: #B91C1C; border-color: #EF444477; background: #EF44441f; font-weight: 600; }
   .cost { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary); }
   .cost.rlhot { color: #EF4444; font-weight: 700; }
   .errchip { font-size: 11px; padding: 2px 9px; border-radius: 99px; cursor: pointer; border: 0.5px solid #EF4444;

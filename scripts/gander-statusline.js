@@ -46,14 +46,22 @@ function uninstall() {
   fs.writeFileSync(SETTINGS, JSON.stringify(s, null, 2));
 }
 
-function ganderBits(cwd) {
+// Claude hands the status line the one thing that exists nowhere on disk: the
+// real plan-limit percentages. We POST them to the bridge on every render so the
+// dashboard can show them too — this is the only supported way to get them out.
+function ganderBits(cwd, claude) {
+  const body = JSON.stringify({
+    cwd: cwd || '',
+    sessionId: (claude && claude.session_id) || '',
+    rateLimits: (claude && claude.rate_limits) || null,
+  });
   return new Promise((resolve) => {
-    const req = http.request({ host: '127.0.0.1', port: PORT, path: '/api/statusline?cwd=' + encodeURIComponent(cwd || ''), method: 'GET', timeout: 350 }, (res) => {
+    const req = http.request({ host: '127.0.0.1', port: PORT, path: '/api/statusline?cwd=' + encodeURIComponent(cwd || ''), method: 'POST', timeout: 350, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, (res) => {
       let b = ''; res.on('data', (d) => (b += d)); res.on('end', () => { try { resolve(JSON.parse(b)); } catch (_) { resolve(null); } });
     });
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
-    req.end();
+    req.end(body);
   });
 }
 
@@ -89,7 +97,7 @@ async function main() {
   process.stdin.on('end', async () => {
     let claude = null; try { claude = JSON.parse(data); } catch (_) {}
     const cwd = (claude && claude.workspace && claude.workspace.current_dir) || (claude && claude.cwd) || process.cwd();
-    const g = await ganderBits(cwd);
+    const g = await ganderBits(cwd, claude);
     process.stdout.write(compose(claude, g));
   });
   if (process.stdin.isTTY) { process.stdout.write(compose(null, await ganderBits(process.cwd())) + '\n'); process.exit(0); }

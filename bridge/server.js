@@ -297,6 +297,23 @@ async function checkBudget() {
 // cost over time so a stuck/looping agent shows a red "runaway" highlight on its
 // tile in real time. Threshold is $/min; demo/manual agents can set it directly.
 let BURN_ALERT = Number(cfg.burnAlert) > 0 ? Number(cfg.burnAlert) : 5.0; // $/min (sustained)
+// Plan limits as reported by the status line (five-hour + weekly, 0-100).
+// Null until a status line renders; never invented.
+let planLimits = null;
+let planAlerted = false;
+function checkPlanLimit() {
+  const pct = planLimits && planLimits.fiveHour && planLimits.fiveHour.pct;
+  const limit = cfg.usageAlertPct === undefined ? 90 : Number(cfg.usageAlertPct) || 0;
+  if (!limit || typeof pct !== 'number') return;
+  if (pct >= limit && !planAlerted) {
+    planAlerted = true;
+    const resets = planLimits.fiveHour.resetsAt ? ' · resets ' + new Date(planLimits.fiveHour.resetsAt * 1000).toLocaleTimeString() : '';
+    pushFeed({ ts: Date.now(), agentId: 'plan', agent: 'plan limit', project: '', sessionId: '', state: 'error', log: `⚡ 5-hour limit ${pct}% used${resets}`, error: false });
+    osNotify('Gander — plan limit', `${pct}% of your 5-hour window used${resets}`);
+    fireAmbient('limit', { project: '', name: 'plan limit', reason: `5-hour window ${pct}% used` });
+  } else if (pct < limit - 5) { planAlerted = false; }
+}
+
 const costSamples = new Map();   // sessionId -> { cost, ts, ema, streak }
 function sidOf(a) { return a.sessionId || (String(a.id).startsWith('sess:') ? String(a.id).slice(5) : null); }
 async function sampleBurn() {
@@ -1862,7 +1879,9 @@ function snapshot() {
     board: board.summary(),
     escalations: board.openEscalations(),
     plans: board.pendingPlans(),
-    teams: (() => { try { return teams.readTeams(); } catch (_) { return []; } })(),   // Agent Teams on the floor (empty unless Claude wrote team files)
+    teams: (() => { try { return teams.readTeams(); } catch (_) { return []; } })(),
+    planLimits,
+   // Agent Teams on the floor (empty unless Claude wrote team files)
     reviews: (() => { try { return (queue.list().items || []).filter((x) => x.status === 'review').map((x) => ({ id: x.id, project: x.project, cwd: x.cwd, prompt: x.prompt, branch: x.branch, gate: x.gate, reviewAt: x.reviewAt })); } catch (_) { return []; } })(),
     boardPosts: board.recent(Date.now() - 20000),   // last 20s — the floor animates a goose pinning a note
     procs: procsMod.decorate(procsMod.compact(procsCache.list), claudeSessionMap()),
@@ -2620,7 +2639,19 @@ Allow / Deny it in the dashboard rail.`);
   // ── Status line ───────────────────────────────────────────────────────────────
   // Gander's signals for the Claude Code status bar (scripts/gander-statusline.js).
   // Called often, so: in-memory only, no scans, no transcript reads.
-  if (url === '/api/statusline' && req.method === 'GET') {
+  // The status line is the ONLY place Claude Code exposes the real plan-limit
+  // percentages — they are not on disk and there is no CLI for them. Our status
+  // line POSTs them here on every render so the dashboard can show them too.
+  if (url === '/api/statusline' && (req.method === 'GET' || req.method === 'POST')) {
+    if (req.method === 'POST') {
+      const b = await readBody(req);
+      const rl = b && b.rateLimits;
+      if (rl && typeof rl === 'object') {
+        const pick = (o) => (o && typeof o === 'object' ? { pct: Number(o.used_percentage) || 0, resetsAt: Number(o.resets_at) || 0 } : null);
+        planLimits = { fiveHour: pick(rl.five_hour), sevenDay: pick(rl.seven_day), at: Date.now(), sessionId: b.sessionId || '' };
+        checkPlanLimit();
+      }
+    }
     const su = new URL(req.url, 'http://localhost');
     const proj = projectFromCwd(su.searchParams.get('cwd') || '');
     let needsYou = 0;
@@ -2892,6 +2923,7 @@ Allow / Deny it in the dashboard rail.`);
     burnAlert: Number(cfg.burnAlert) > 0 ? Number(cfg.burnAlert) : 5.0,
     longRunMinutes: Number(cfg.longRunMinutes) || 0,
     ctxAlertPct: cfg.ctxAlertPct === undefined ? 0.85 : Number(cfg.ctxAlertPct) || 0,
+    usageAlertPct: cfg.usageAlertPct === undefined ? 90 : Number(cfg.usageAlertPct) || 0,
     autoRetire: cfg.autoRetire !== false,
     retireDoneSec: Number(cfg.retireDoneSec) || 180, retireClosedSec: Number(cfg.retireClosedSec) || 60,
     retireIdleSec: Number(cfg.retireIdleSec) || 1500, retireStaleActiveSec: Number(cfg.retireStaleActiveSec) || 1800,
@@ -2912,6 +2944,7 @@ Allow / Deny it in the dashboard rail.`);
     if (body.burnAlert !== undefined) { cfg.burnAlert = num(body.burnAlert, 0, 10000, 5); BURN_ALERT = cfg.burnAlert > 0 ? cfg.burnAlert : 5.0; }
     if (body.longRunMinutes !== undefined) cfg.longRunMinutes = num(body.longRunMinutes, 0, 100000, 0);
     if (body.ctxAlertPct !== undefined) cfg.ctxAlertPct = num(body.ctxAlertPct, 0, 1, 0.85);
+    if (body.usageAlertPct !== undefined) cfg.usageAlertPct = num(body.usageAlertPct, 0, 100, 90);
     if (body.autoRetire !== undefined) { cfg.autoRetire = !!body.autoRetire; RETIRE.enabled = cfg.autoRetire; }
     for (const [k, rk, d] of [['retireDoneSec', 'done', 180], ['retireClosedSec', 'closed', 60], ['retireIdleSec', 'idle', 1500], ['retireStaleActiveSec', 'staleActive', 1800]]) {
       if (body[k] !== undefined) { cfg[k] = num(body[k], 10, 864000, d); RETIRE[rk] = cfg[k] * 1000; }

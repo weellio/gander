@@ -121,6 +121,7 @@
       retireIdleSec: Number(j.retireIdleSec) || 0, retireStaleActiveSec: Number(j.retireStaleActiveSec) || 0,
       testCmd: j.testCmd || '', codex: !!j.codex, allowRemote: !!j.allowRemote, fleetIntervalMs: Number(j.fleetIntervalMs) || 0,
       ctxAlertPct: j.ctxAlertPct === undefined ? 0.85 : Number(j.ctxAlertPct) || 0,
+      usageAlertPct: j.usageAlertPct === undefined ? 90 : Number(j.usageAlertPct) || 0,
     };
     advCtxPctUI = Math.round((adv.ctxAlertPct || 0) * 100);
     advTestRows = Object.entries(j.testCmds || {}).map(([project, cmd]) => ({ project, cmd }));
@@ -141,6 +142,7 @@
       retireIdleSec: Number(adv.retireIdleSec) || 0, retireStaleActiveSec: Number(adv.retireStaleActiveSec) || 0,
       testCmd: String(adv.testCmd || '').trim(), testCmds, codex: !!adv.codex, allowRemote: !!adv.allowRemote, fleetIntervalMs: Number(adv.fleetIntervalMs) || 0,
       ctxAlertPct: (Number(advCtxPctUI) || 0) / 100,
+      usageAlertPct: Number(adv.usageAlertPct) || 0,
     };
     // secrets: typed value → send it · "clear" pressed → send "" · otherwise omit (bridge keeps the stored one)
     if (advTgTokIn.trim()) body.telegramReplyToken = advTgTokIn.trim(); else if (advClear.telegramReplyToken) body.telegramReplyToken = '';
@@ -587,6 +589,7 @@
           <label class="cbrow">Runaway burn <input class="in num" type="number" min="0" step="0.01" bind:value={adv.burnAlert} /> $/min</label>
           <label class="cbrow">Long-run nudge <input class="in num" type="number" min="0" max="1440" bind:value={adv.longRunMinutes} /> minutes <span class="dim">(0 = off)</span></label>
           <label class="cbrow">Context alert at <input class="in num" type="number" min="0" max="100" bind:value={advCtxPctUI} onchange={() => (adv.ctxAlertPct = (Number(advCtxPctUI) || 0) / 100)} /> % full <span class="dim">(0 = off)</span></label>
+          <label class="cbrow">Plan-limit alert at <input class="in num" type="number" min="0" max="100" bind:value={adv.usageAlertPct} /> % of the 5-hour window <span class="dim">(needs the status line installed)</span></label>
 
           <div class="adv-group">Tiles</div>
           <label class="cbrow"><input type="checkbox" bind:checked={adv.autoRetire} /> Auto clock-out <span class="dim">— retire tiles on their own after the timers below</span></label>
