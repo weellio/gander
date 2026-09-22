@@ -68,7 +68,28 @@
       .filter((a) => a.state === 'awaiting' || a.state === 'error' || (a.state === 'idle' && a.stalled) || a.longRun || (a.state === 'done' && a.root))
       .sort((x, y) => (rank[stateOf(x)] - rank[stateOf(y)]) || ((x.updatedAt || 0) - (y.updatedAt || 0)));
   });
-  let count = $derived(items.length + escalations.length + plans.length + reviews.length + (budget?.overDaily ? 1 : 0));
+  // usage pressure — not "an agent is waiting on you", but "work is about to
+  // stop": the plan's rate-limit window, and sessions near auto-compact.
+  let now = $state(Date.now());
+  $effect(() => { const t = setInterval(() => (now = Date.now()), 30000); return () => clearInterval(t); });
+  const LIMIT_NAMES = { five_hour: '5-hour limit', seven_day: 'weekly limit', weekly: 'weekly limit', opus_weekly: 'weekly Opus limit', monthly: 'monthly limit' };
+  function limitName(t) { return LIMIT_NAMES[t] || (String(t || '').replace(/_/g, ' ').trim() || 'usage limit'); }
+  function resetIn(sec) {
+    const s = Math.max(0, Math.round((sec * 1000 - now) / 1000));
+    const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  }
+  function ctxColor(p) { return p >= 0.95 ? '#EF4444' : '#F59E0B'; }
+  const label = (a) => a.project || a.name || a.id;
+  let limited = $derived(
+    agents
+      .filter((a) => a.limited && a.limited.resetsAt && a.limited.resetsAt * 1000 > now)
+      .sort((x, y) => x.limited.resetsAt - y.limited.resetsAt)
+  );
+  let ctxFull = $derived(
+    agents.filter((a) => typeof a.ctxPct === 'number' && a.ctxPct >= 0.85).sort((x, y) => y.ctxPct - x.ctxPct)
+  );
+  let count = $derived(items.length + escalations.length + plans.length + reviews.length + limited.length + ctxFull.length + (budget?.overDaily ? 1 : 0));
   const KEYS = [['1', '1'], ['2', '2'], ['3', '3'], ['↑', '{UP}'], ['↓', '{DOWN}'], ['y', 'y'], ['n', 'n'], ['↵', '{ENTER}'], ['esc', '{ESC}']];
   function onKey(e) { if (e.key === 'Escape') open = false; }
 </script>
@@ -81,9 +102,28 @@
     <div class="nu-backdrop" onclick={() => (open = false)} role="presentation"></div>
     <div class="nu-panel" role="menu">
       <div class="nu-h">Needs you{#if count}<span class="dim"> · {count}</span>{/if}</div>
-      {#if !items.length && !escalations.length && !plans.length && !reviews.length && !budget?.overDaily}
+      {#if !items.length && !escalations.length && !plans.length && !reviews.length && !limited.length && !ctxFull.length && !budget?.overDaily}
         <div class="nu-empty">All clear — nothing needs you. ✨</div>
       {:else}
+        {#each limited as a (a.id)}
+          <div class="nu-item limited">
+            <span class="nu-ic">⛔</span>
+            <div class="nu-body">
+              <div class="nu-title">{label(a)} is rate limited</div>
+              <div class="nu-sub">{limitName(a.limited.type)} · resets in {resetIn(a.limited.resetsAt)}</div>
+            </div>
+          </div>
+        {/each}
+        {#each ctxFull as a (a.id)}
+          <div class="nu-item ctx">
+            <span class="nu-ic">🧠</span>
+            <div class="nu-body">
+              <div class="nu-title">{label(a)} context is {Math.round(a.ctxPct * 100)}% full</div>
+              <div class="nu-sub">Claude will auto-compact soon — /compact at a natural break to keep more of the thread.</div>
+              <div class="nu-bar"><div class="nu-fill" style="width:{Math.min(100, Math.round(a.ctxPct * 100))}%;background:{ctxColor(a.ctxPct)}"></div></div>
+            </div>
+          </div>
+        {/each}
         {#each escalations as e (e.id)}
           <div class="nu-item escalation">
             <span class="nu-ic">🙋</span>
@@ -184,6 +224,10 @@
   .nu-item.escalation { background: #F59E0B18; }
   .nu-item.plan { background: #6366F114; }
   .nu-item.review { background: #F59E0B14; }
+  .nu-item.limited { background: #EF444414; }
+  .nu-item.ctx { background: #F59E0B0f; }
+  .nu-bar { height: 5px; margin-top: 6px; border-radius: 3px; background: var(--color-background-secondary); overflow: hidden; }
+  .nu-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
   .nu-sub.dim { opacity: 0.7; font-size: 11px; }
   .diff { margin: 4px 0; }
   .diff summary { cursor: pointer; font-size: 11px; opacity: 0.8; }

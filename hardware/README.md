@@ -144,14 +144,15 @@ The MOSFET sits in the strip's **negative** leg, so the board switches the roll 
 
 A single colour cannot say *which* alert fired. Only the pattern can. And the defaults collide: `awaiting` and `done` are both **pulse**.
 
-So set these in **Settings → Ambient alerts** to keep all five distinct:
+So set these in **Settings → Ambient alerts** to keep them distinct. There are six scenarios and five usable mono patterns, so pick deliberately:
 
 | Event | Pattern on a mono strip |
 |---|---|
 | `awaiting` | pulse |
 | `error` | blink |
 | `runaway` | strobe |
-| `done` | breathe |
+| `done` | solid |
+| `limit` | breathe |
 | `clear` | colour `off` |
 
 Colour still works normally for the RGB LED, so you can set both and each output uses what it can. On the mono channel the brightest colour channel simply becomes brightness, so anything lit reads as on and only `off` goes dark.

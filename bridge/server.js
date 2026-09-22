@@ -332,6 +332,23 @@ async function sampleBurn() {
       }
       a.burnRate = Math.round(rec.ema * 100) / 100;
       a.burnStreak = rec.streak;
+
+      // Context pressure. Claude auto-compacts near the limit, which silently drops
+      // the older thread, so crossing the line is worth one nudge — not a stream of
+      // them, hence the latch that only re-arms once it drops back under.
+      if (typeof s.ctxPct === 'number') {
+        a.ctxPct = s.ctxPct;
+        const limit = cfg.ctxAlertPct === undefined ? 0.85 : Number(cfg.ctxAlertPct) || 0;
+        if (limit > 0 && s.ctxPct >= limit) {
+          if (!rec.ctxAlerted) {
+            rec.ctxAlerted = true;
+            const pctTxt = Math.round(s.ctxPct * 100) + '%';
+            pushFeed({ ts: now, agentId: a.id, agent: a.name || a.project, project: a.project, sessionId: sid, state: a.state, log: `🧠 context ${pctTxt} full — /compact at a natural break`, error: false });
+            osNotify('Gander — context nearly full', `${a.project}: ${pctTxt} of the window used`);
+            fireAmbient('limit', { project: a.project, name: a.name, reason: `context ${pctTxt} full` });
+          }
+        } else if (s.ctxPct < limit - 0.05) { rec.ctxAlerted = false; }   // hysteresis
+      }
     }
   } catch (_) {}
 }
@@ -1383,9 +1400,9 @@ async function gitAction(cwd, action, message, arg) {
 // Fire a webhook (POST JSON) and/or a shell command on key state changes, so a smart
 // light / script can signal "needs you", "error", etc. from across the room. Per-event,
 // operator-configured in Settings; best-effort and non-blocking (never affects hooks).
-const AMBIENT_EVENTS = ['awaiting', 'error', 'runaway', 'done', 'clear'];
-const AMBIENT_COLORS = { awaiting: 'amber', error: 'red', runaway: 'red', done: 'green', clear: 'off' };
-const AMBIENT_EFFECTS = { awaiting: 'pulse', error: 'blink', runaway: 'strobe', done: 'pulse', clear: 'solid' };
+const AMBIENT_EVENTS = ['awaiting', 'error', 'runaway', 'done', 'clear', 'limit'];
+const AMBIENT_COLORS = { awaiting: 'amber', error: 'red', runaway: 'red', done: 'green', clear: 'off', limit: 'orange' };
+const AMBIENT_EFFECTS = { awaiting: 'pulse', error: 'blink', runaway: 'strobe', done: 'pulse', clear: 'solid', limit: 'breathe' };
 function pickAmbient(a) { const o = {}; for (const k of AMBIENT_EVENTS) { const r = a[k] || {}; o[k] = { webhook: r.webhook || '', command: r.command || '', color: r.color || '', effect: r.effect || '' }; } return o; }
 // Bridge-native OS toast — zero-dep, cross-platform. Fires even with no browser open,
 // so a terminal user (e.g. living in `claude agents`) still gets pinged when they walk
@@ -2874,6 +2891,7 @@ Allow / Deny it in the dashboard rail.`);
     stallMinutes: cfg.stallMinutes === undefined ? 3 : Number(cfg.stallMinutes) || 0,
     burnAlert: Number(cfg.burnAlert) > 0 ? Number(cfg.burnAlert) : 5.0,
     longRunMinutes: Number(cfg.longRunMinutes) || 0,
+    ctxAlertPct: cfg.ctxAlertPct === undefined ? 0.85 : Number(cfg.ctxAlertPct) || 0,
     autoRetire: cfg.autoRetire !== false,
     retireDoneSec: Number(cfg.retireDoneSec) || 180, retireClosedSec: Number(cfg.retireClosedSec) || 60,
     retireIdleSec: Number(cfg.retireIdleSec) || 1500, retireStaleActiveSec: Number(cfg.retireStaleActiveSec) || 1800,
@@ -2893,6 +2911,7 @@ Allow / Deny it in the dashboard rail.`);
     if (body.stallMinutes !== undefined) { cfg.stallMinutes = num(body.stallMinutes, 0, 1440, 3); STALL_MS = cfg.stallMinutes * 60000; }
     if (body.burnAlert !== undefined) { cfg.burnAlert = num(body.burnAlert, 0, 10000, 5); BURN_ALERT = cfg.burnAlert > 0 ? cfg.burnAlert : 5.0; }
     if (body.longRunMinutes !== undefined) cfg.longRunMinutes = num(body.longRunMinutes, 0, 100000, 0);
+    if (body.ctxAlertPct !== undefined) cfg.ctxAlertPct = num(body.ctxAlertPct, 0, 1, 0.85);
     if (body.autoRetire !== undefined) { cfg.autoRetire = !!body.autoRetire; RETIRE.enabled = cfg.autoRetire; }
     for (const [k, rk, d] of [['retireDoneSec', 'done', 180], ['retireClosedSec', 'closed', 60], ['retireIdleSec', 'idle', 1500], ['retireStaleActiveSec', 'staleActive', 1800]]) {
       if (body[k] !== undefined) { cfg[k] = num(body[k], 10, 864000, d); RETIRE[rk] = cfg[k] * 1000; }

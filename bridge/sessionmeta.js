@@ -8,6 +8,11 @@
 //   { type:"mode",                mode:"normal" }                       (or bypassPermissions…)
 //   { type:"frame-link",          title:"Ambient Lamp Wiring", frameUrl:"https://…", timestamp }
 //   { type:"file-history-delta",  trackingPath:".gitignore", backup:{…}, timestamp }
+//   { …, quotaLimits:{ status:"rejected", rateLimitType:"five_hour", resetsAt } }
+//
+// quotaLimits is written ONLY when the API rejects a turn, so it is a "you are
+// blocked until X" fact, not a percentage gauge. Claude Code's own /usage panel
+// gets the 47%/100% figures from the server; they are not on disk anywhere.
 //
 // So: a real session NAME instead of a folder name, which permission mode it is
 // actually running in, every artifact it published (with titles), and which files
@@ -23,17 +28,25 @@ const MAX_FILES = 400;
 
 function blank() {
   return {
-    title: '', mode: '', artifacts: [], files: [],
+    title: '', mode: '', artifacts: [], files: [], quota: null,
     _seenUrl: new Set(), _seenFile: new Set(),
   };
 }
 
 function foldLine(s, line) {
   // cheap pre-filter: these four types are a tiny fraction of a transcript
-  if (line.indexOf('"ai-title"') < 0 && line.indexOf('"mode"') < 0
+  if (line.indexOf('"ai-title"') < 0 && line.indexOf('"mode"') < 0 && line.indexOf('"quotaLimits"') < 0
       && line.indexOf('"frame-link"') < 0 && line.indexOf('"file-history-delta"') < 0) return;
   let j;
   try { j = JSON.parse(line); } catch (_) { return; }
+  // a rejected turn carries the quota detail; keep the newest one seen
+  const q = j.quotaLimits || (j.message && j.message.quotaLimits);
+  if (q && typeof q === 'object' && q.status) {
+    const at = Date.parse(j.timestamp || '') || 0;
+    if (!s.quota || at >= (s.quota.at || 0)) {
+      s.quota = { status: String(q.status).slice(0, 30), type: String(q.rateLimitType || '').slice(0, 30), resetsAt: Number(q.resetsAt) || 0, overage: !!q.isUsingOverage, at };
+    }
+  }
   switch (j.type) {
     case 'ai-title':
       if (j.aiTitle) s.title = String(j.aiTitle).slice(0, 200);      // last one wins
@@ -105,6 +118,7 @@ function read(transcriptPath) {
   return {
     title: s.title,
     mode: s.mode,
+    quota: s.quota,
     artifacts: s.artifacts.slice().sort((a, b) => (b.at || 0) - (a.at || 0)),
     artifactCount: s.artifacts.length,
     files: s.files.slice(),
@@ -122,6 +136,10 @@ function forTile(transcriptPath) {
   if (m.mode && m.mode !== 'normal') out.permMode = m.mode;
   if (m.artifactCount) out.artifactCount = m.artifactCount;
   if (m.fileCount) out.fileCount = m.fileCount;
+  // only surface a block that is still in force — a spent reset time is history
+  if (m.quota && m.quota.status && m.quota.status !== 'allowed' && m.quota.resetsAt * 1000 > Date.now()) {
+    out.limited = { type: m.quota.type, resetsAt: m.quota.resetsAt };
+  }
   return out;
 }
 

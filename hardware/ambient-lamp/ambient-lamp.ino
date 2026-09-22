@@ -38,8 +38,8 @@
 //#define BOARD_D1_MINI        // Wemos D1 mini (ESP8266) + a WS2812 strip on the pin marked D2
 
 // ── 2. YOUR WIFI — 2.4 GHz only. These chips cannot see a 5 GHz network. ────
-const char* WIFI_SSID = "your-wifi";
-const char* WIFI_PASS = "your-password";
+const char* WIFI_SSID = "pewpewpew";
+const char* WIFI_PASS = "superman";
 // ────────────────────────────────────────────────────────────────────────────
 
 #if defined(BOARD_ESP32_S3)

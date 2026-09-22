@@ -108,6 +108,7 @@
   // ── Advanced (every remaining bridge/aoc-config.json knob — thresholds, tile retirement, test gate, integrations, remote access) ──
   let advOpen = $state(false); let advStatus = $state(''); let advRestart = $state(false); let advRestarting = $state(false);
   let adv = $state({ stallMinutes: 0, burnAlert: 0, longRunMinutes: 0, autoRetire: true, retireDoneSec: 0, retireClosedSec: 0, retireIdleSec: 0, retireStaleActiveSec: 0, testCmd: '', codex: false, allowRemote: false, fleetIntervalMs: 0 });
+  let advCtxPctUI = $state(85);   // shown as a percent, stored 0..1
   let advTestRows = $state([]);   // per-project test-command overrides: [{ project, cmd }]
   // secrets are never echoed by the bridge: we get { set, hint } and send a plain string only when the user types one ("" = clear)
   let advTgTok = $state({ set: false, hint: '' }), advLic = $state({ set: false, hint: '' }), advAcc = $state({ set: false, hint: '' });
@@ -119,7 +120,9 @@
       autoRetire: j.autoRetire !== false, retireDoneSec: Number(j.retireDoneSec) || 0, retireClosedSec: Number(j.retireClosedSec) || 0,
       retireIdleSec: Number(j.retireIdleSec) || 0, retireStaleActiveSec: Number(j.retireStaleActiveSec) || 0,
       testCmd: j.testCmd || '', codex: !!j.codex, allowRemote: !!j.allowRemote, fleetIntervalMs: Number(j.fleetIntervalMs) || 0,
+      ctxAlertPct: j.ctxAlertPct === undefined ? 0.85 : Number(j.ctxAlertPct) || 0,
     };
+    advCtxPctUI = Math.round((adv.ctxAlertPct || 0) * 100);
     advTestRows = Object.entries(j.testCmds || {}).map(([project, cmd]) => ({ project, cmd }));
     advTgTok = j.telegramReplyToken || { set: false, hint: '' }; advLic = j.license || { set: false, hint: '' }; advAcc = j.accessToken || { set: false, hint: '' };
     advTgTokIn = ''; advLicIn = ''; advAccIn = ''; advClear = { telegramReplyToken: false, license: false, accessToken: false };
@@ -137,6 +140,7 @@
       autoRetire: !!adv.autoRetire, retireDoneSec: Number(adv.retireDoneSec) || 0, retireClosedSec: Number(adv.retireClosedSec) || 0,
       retireIdleSec: Number(adv.retireIdleSec) || 0, retireStaleActiveSec: Number(adv.retireStaleActiveSec) || 0,
       testCmd: String(adv.testCmd || '').trim(), testCmds, codex: !!adv.codex, allowRemote: !!adv.allowRemote, fleetIntervalMs: Number(adv.fleetIntervalMs) || 0,
+      ctxAlertPct: (Number(advCtxPctUI) || 0) / 100,
     };
     // secrets: typed value → send it · "clear" pressed → send "" · otherwise omit (bridge keeps the stored one)
     if (advTgTokIn.trim()) body.telegramReplyToken = advTgTokIn.trim(); else if (advClear.telegramReplyToken) body.telegramReplyToken = '';
@@ -167,6 +171,7 @@
     ['error', 'Errored', 'red', 'blink', 'a tool failed / a session hit an error'],
     ['runaway', 'Runaway cost', 'red', 'strobe', 'a session is burning money fast (stuck/looping)'],
     ['done', 'Task done', 'limegreen', 'pulse', 'a session finished a turn'],
+    ['limit', 'Usage pressure', 'orange', 'breathe', 'context nearly full, or the session is rate limited'],
     ['clear', 'All clear', 'off', 'solid', 'you handled the thing — back to calm / light off'],
   ];
   const AMB_EFFECTS = ['solid', 'blink', 'pulse', 'breathe', 'strobe', 'rainbow'];
@@ -581,6 +586,7 @@
           <label class="cbrow">Stalled-session threshold <input class="in num" type="number" min="0" max="1440" bind:value={adv.stallMinutes} /> minutes <span class="dim">(0 = off)</span></label>
           <label class="cbrow">Runaway burn <input class="in num" type="number" min="0" step="0.01" bind:value={adv.burnAlert} /> $/min</label>
           <label class="cbrow">Long-run nudge <input class="in num" type="number" min="0" max="1440" bind:value={adv.longRunMinutes} /> minutes <span class="dim">(0 = off)</span></label>
+          <label class="cbrow">Context alert at <input class="in num" type="number" min="0" max="100" bind:value={advCtxPctUI} onchange={() => (adv.ctxAlertPct = (Number(advCtxPctUI) || 0) / 100)} /> % full <span class="dim">(0 = off)</span></label>
 
           <div class="adv-group">Tiles</div>
           <label class="cbrow"><input type="checkbox" bind:checked={adv.autoRetire} /> Auto clock-out <span class="dim">— retire tiles on their own after the timers below</span></label>
