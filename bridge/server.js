@@ -1747,15 +1747,29 @@ Approve or request changes in the dashboard rail.`);
 // snapshot() kicks a lazy refresh when the cache is >30s old, so the robots stay
 // current while the dashboard is open and nothing scans when it isn't.
 const procsCache = { at: 0, list: [], inflight: null };
+let procsFails = 0;
 function refreshProcs(cb) {
-  if (Date.now() - procsCache.at < 4000) { if (cb) cb(procsCache.list); return; }
+  // The scan shells out to PowerShell and takes ~9s on a busy machine, so a 4s
+  // TTL meant respawning it almost continuously — load that made it slower still.
+  if (Date.now() - procsCache.at < 15000) { if (cb) cb(procsCache.list); return; }
   if (procsCache.inflight) { if (cb) procsCache.inflight.push(cb); return; }
   procsCache.inflight = cb ? [cb] : [];
   execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(SCRIPTS_DIR, 'list-procs.ps1')],
-    { timeout: 12000, windowsHide: true, maxBuffer: 12e6 }, (err, stdout) => {
-      let data = { procs: [] };
-      try { data = JSON.parse(String(stdout || '{}')); } catch (_) {}
-      const all = Array.isArray(data.procs) ? data.procs : [];
+    { timeout: 30000, windowsHide: true, maxBuffer: 12e6 }, (err, stdout) => {
+      // A timed-out or unparseable scan must NOT read as "no processes" — that
+      // silently empties the server room. Keep the last good list and say so.
+      let data = null;
+      try { data = JSON.parse(String(stdout || '')); } catch (_) {}
+      if (err || !data || !Array.isArray(data.procs)) {
+        procsFails++;
+        if (procsFails === 1 || procsFails % 10 === 0) console.log(`[procs] scan failed (${err ? err.message.slice(0, 60) : 'unparseable output'}) — keeping the last ${procsCache.list.length} process(es)`);
+        procsCache.at = Date.now() - 10000;            // retry sooner than a full TTL
+        const cbs0 = procsCache.inflight || []; procsCache.inflight = null;
+        for (const f of cbs0) { try { f(procsCache.list); } catch (_) {} }
+        return;
+      }
+      procsFails = 0;
+      const all = data.procs;
       // each Gander-launched session's window pid → its descendant pids
       const children = new Map();
       for (const p of all) { if (!children.has(p.ppid)) children.set(p.ppid, []); children.get(p.ppid).push(p.pid); }
