@@ -11,12 +11,26 @@ export function fmtUp(ms) {
   return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
 }
 
+// "node, node, node, esbuild :5173" → "esbuild :5173, node ×3". A session that
+// moved a dozen processes to the server room otherwise gets a verdict pill far
+// wider than its group box. Named ports are kept — they are the useful part.
+function summarize(bots) {
+  const counts = new Map();
+  for (const b of bots) {
+    const k = String(b.name || '').replace(/\.exe$/i, '') + (b.ports?.[0] ? ' :' + b.ports[0] : '');
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  const parts = [...counts].sort((a, b) => b[1] - a[1]).map(([k, n]) => (n > 1 ? k + ' ×' + n : k));
+  return parts.length > 3 ? parts.slice(0, 3).join(', ') + ' +' + (parts.length - 3) + ' more' : parts.join(', ');
+}
+
 // Group processes by owner and stamp a verdict on each group:
 //   claude.exe cluster, sidecars only, parked >24h → "safe to close" (green)
 //   claude.exe cluster with real children           → "has live work" (cyan)
 //   young sidecar-only cluster                      → neutral (likely the window in use)
 //   project leftovers whose tile clocked out        → keep their project name
 //   no owner at all                                 → orphaned (amber, careful)
+export { summarize as _summarize };
 export function buildClusters(procs) {
   const byKey = new Map();
   for (const p of procs || []) {
@@ -41,14 +55,14 @@ export function buildClusters(procs) {
         key, claudePid: pid, bots, goal,
         title: `claude.exe ${pid}`, sub: `${proj ? proj + ' · ' : ''}up ~${fmtUp(up)}`,
         verdict: work.length
-          ? 'has live work: ' + work.map((b) => b.name.replace(/\.exe$/i, '') + (b.ports?.[0] ? ' :' + b.ports[0] : '')).join(', ')
+          ? 'has live work: ' + summarize(work)
           : (up > 86400e3 ? `parked ~${days}d · safe to close` : 'sidecars only — exits with its window'),
         tone: work.length ? 'work' : (up > 86400e3 ? 'close' : 'dim'),
       });
     } else if (key.startsWith('proj:')) {
       clusters.push({
         key, bots, title: key.slice(5), sub: 'left running',
-        verdict: bots.map((b) => b.name.replace(/\.exe$/i, '') + (b.ports?.[0] ? ' :' + b.ports[0] : '')).join(', '),
+        verdict: summarize(bots),
         tone: 'work',
       });
     } else if (key === 'other') {

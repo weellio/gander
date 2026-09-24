@@ -758,7 +758,7 @@
       const plist = procs || [];
       const roomBots = new Map();   // rootId -> [proc]
       const rackBots = [];
-      for (const d of desks.values()) d.botRows = 0;
+      for (const d of desks.values()) { d.botRows = 0; d.botCols = 0; d.botsAway = 0; }
       if (plist.length) {
         const rootBySid = new Map(), rootByProj = new Map();
         for (const r of tree.roots) {
@@ -774,9 +774,23 @@
           if (rootId && desks.get(rootId)?.teamRect) { if (!roomBots.has(rootId)) roomBots.set(rootId, []); roomBots.get(rootId).push(p); }
           else rackBots.push(p);
         }
+        // A room only holds as many bots as fit across its OWN width, in at most
+        // two rows. Six-per-row assumed a wide team room: a one-desk office fits
+        // ~3, so a session with 12 processes spilled across the neighbour's wall.
+        // Past the cap, the whole set moves to the server room (as one owner
+        // group — never split across two places) and the room gets a sign.
         for (const [rootId, bots] of roomBots) {
+          const d = desks.get(rootId);
           bots.sort((a, b) => a.pid - b.pid);
-          desks.get(rootId).botRows = Math.ceil(bots.length / 6);
+          const cols = roomBotCols(d.teamRect);
+          if (bots.length > cols * 2) {
+            for (const p of bots) rackBots.push(p);
+            roomBots.delete(rootId);
+            d.botsAway = bots.length;
+            continue;
+          }
+          d.botCols = cols;
+          d.botRows = Math.ceil(bots.length / cols);
         }
       }
 
@@ -1318,12 +1332,22 @@
       if (plist.length) {
         // in-room: rows of bots INSIDE the room's (grown) back-wall area
         for (const [rootId, bots] of roomBots) {
-          const r = desks.get(rootId).teamRect;
+          const rd = desks.get(rootId), r = rd.teamRect, cols = rd.botCols || 1;
+          const ix = r.x - roomPadX(r) + 18;   // first slot, inside the room's left wall
           bots.forEach((p, i) => {
-            const bx = r.x + 18 + (i % 6) * 34, by = r.y + r.h + 12 + Math.floor(i / 6) * 34;
+            const bx = ix + (i % cols) * 34, by = r.y + r.h + 12 + Math.floor(i / cols) * 34;
             drawRobot(ctx, bx, by, t, p);
             hitTargets.push({ id: 'proc:' + p.pid, x: bx, y: by, r: 13, proc: p });
           });
+        }
+        for (const rd of desks.values()) {
+          if (!rd.botsAway || !rd.teamRect) continue;
+          const r = rd.teamRect;
+          ctx.save();
+          ctx.font = '8px ui-sans-serif, system-ui, sans-serif'; ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgba(150,156,170,0.8)';
+          ctx.fillText('← ' + rd.botsAway + ' processes in the server room', r.x + r.w / 2, r.y + r.h + 14);
+          ctx.restore();
         }
         // server room: everything we can't pin to a visible tile, grouped by
         // OWNER with a verdict on each group — the triage is in the picture:
@@ -1441,6 +1465,15 @@
     }
   }
   let _lastFrameErr = null;
+
+  // Room geometry shared by the bot layout and the room walls (drawn in the
+  // rooms pass): solo offices get wider side padding so they read as square.
+  function roomPadX(r) { return r && r.team ? 12 : 34; }
+  function roomBotCols(r) {
+    if (!r) return 1;
+    const inner = r.w + roomPadX(r) * 2 - 36;   // 18px clear of each wall
+    return Math.max(1, Math.floor((inner - 26) / 34) + 1);   // a bot is ~26px; slots every 34
+  }
 
   function easeIO(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
   // Point on a quadratic bezier at p∈[0,1].
