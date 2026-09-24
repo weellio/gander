@@ -1,6 +1,17 @@
 # Gander on your phone (and other machines)
 
-Gander is a **PWA** — open the dashboard on your phone, add it to your home screen, and it installs as a standalone app: full-screen live floor, no browser chrome. This guide covers getting there **securely**.
+There are two ways to use Gander away from the desk. This guide covers getting to both **securely**.
+
+| | **Phone console** — `/phone` | **Full dashboard** — `/` |
+| --- | --- | --- |
+| Built for | a thumb, one-handed | a desk |
+| Shows | what needs you, and nothing else | the whole floor |
+| You can | answer permission prompts, approve held branches, reply to a stuck session | everything |
+| On a phone | the point | pinch-and-drag; the floor is not responsive |
+
+**Start with `/phone`.** It is a plain page that polls a single small endpoint, so it works on a weak signal and stops polling the moment you pocket the phone.
+
+The full dashboard is also a **PWA** — add it to your home screen and it installs as a standalone app.
 
 ## The security model
 
@@ -12,6 +23,8 @@ Gander is a **PWA** — open the dashboard on your phone, add it to your home sc
   - the `aoc_token` cookie (what the `?token=` load leaves behind).
 
   Requests from your own machine (loopback) are never challenged, so your local workflow is unchanged.
+
+**You don't have to edit any file for this.** Both switches live in **⚙ Settings → Advanced → Remote access**: the **Allow remote** checkbox and the **Access token** box. Saving there offers a one-click bridge restart, which is what makes them take effect.
 
 **Rule of thumb: ALWAYS set a token before flipping `allowRemote`.** A quick way to mint one:
 
@@ -52,10 +65,28 @@ It prints a `https://<random>.trycloudflare.com` URL — open that on your phone
 
 **Caveats, read them:** that URL is **public internet** — anyone who has it can reach your bridge, so the access token is **MANDATORY**, not optional. And the URL **rotates every run**, so you'll re-add the home-screen app (or re-enter the token) each time. Fine for a day out; use Tailscale for the permanent setup.
 
+## The phone console
+
+Open **`http://<host>:3131/phone?token=...`** once. The token sets a cookie, so afterwards the bare `/phone` is enough and you can bookmark it.
+
+Don't want to hunt for your LAN address? **⚙ Settings → Advanced → 📱 Phone console** lists every address the bridge can be reached on, with a copy button, and tells you plainly if remote access is still switched off. There's an **Open phone console** button there too, for trying it on the desktop first.
+
+What you get:
+
+- **How many things need you**, in one number you can read across a room
+- **Permission prompts** — the tool, the exact command, and **Allow** / **Deny**
+- **Held branches** — **Approve & merge** or **Request changes**
+- **Stuck sessions** — what it asked, and a box to answer it
+- **Plan usage** — your 5-hour and 7-day percentages, when the status line has reported them
+
+It polls one small endpoint every 4 seconds and stops entirely when the page is hidden.
+
 ## Add to home screen
 
-- **Android (Chrome):** open the dashboard → **⋮ menu → Add to Home screen** (or **Install app**) → **Install**. It launches standalone with the Gander icon.
-- **iOS (Safari):** open the dashboard → **Share** (the square-with-arrow) → **Add to Home Screen** → **Add**. Must be Safari — other iOS browsers can't install PWAs.
+Works for `/phone` and for the full dashboard — whichever you opened.
+
+- **Android (Chrome):** open the page → **⋮ menu → Add to Home screen** (or **Install app**) → **Install**. It launches standalone with the Gander icon.
+- **iOS (Safari):** open the page → **Share** (the square-with-arrow) → **Add to Home Screen** → **Add**. Must be Safari — other iOS browsers can't install PWAs.
 
 ## FAQ
 

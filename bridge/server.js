@@ -40,6 +40,7 @@ const history = require('./history.js');
 const routines = require('./routines.js');
 const projKeyOf = projects.keyOf;   // module ref (snapshot() has a local `projects` that shadows it)
 const health = require('./health.js');
+const setupcheck = require('./setupcheck.js');
 const transcript = require('./transcript.js');
 const search = require('./search.js');
 const dispatch = require('./dispatch.js');
@@ -2207,6 +2208,24 @@ function readBodyLarge(req, maxBytes = 14e6) {
 process.on('uncaughtException', (e) => console.error('[bridge] uncaught:', e && e.stack || e));
 process.on('unhandledRejection', (e) => console.error('[bridge] unhandled rejection:', e && e.stack || e));
 
+// Where the phone console can actually be reached. Settings shows this so no one
+// has to go hunting for a LAN IP — and says plainly when remote access is off,
+// which is the usual reason a phone sits there failing to connect.
+function phoneAccess() {
+  const urls = [];
+  try {
+    const ifaces = os.networkInterfaces();
+    for (const name of Object.keys(ifaces)) {
+      for (const ni of ifaces[name] || []) {
+        // IPv4 only: a link-local IPv6 URL is not something anyone types into a phone
+        if (ni.internal || !(ni.family === 'IPv4' || ni.family === 4)) continue;
+        urls.push('http://' + ni.address + ':' + argPort + '/phone');
+      }
+    }
+  } catch (_) {}
+  return { remote: !!ALLOW_REMOTE, tokenSet: !!ACCESS_TOKEN, urls: urls.slice(0, 6), port: argPort };
+}
+
 const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
   try {
@@ -2677,6 +2696,70 @@ Allow / Deny it in the dashboard rail.`);
     return sendJson(res, 200, { needsYou: needsYou + esc + plans + review, queued, running, review, paused, escalations: esc, gems: bs ? bs.gems : 0 });
   }
 
+  // ── Phone console ────────────────────────────────────────────────────────────
+  // Everything dashboard/phone.html needs, in one small payload. /api/state is
+  // the wrong shape for a phone: it carries every agent with its log ring and
+  // runs to tens of KB, which is a lot to pull down every few seconds over a
+  // patchy connection for three numbers and two buttons.
+  //
+  // needsYou is computed with the SAME predicate as /api/statusline on purpose —
+  // a phone that says 3 while the status line says 5 is worse than no phone.
+  if (url === '/api/phone' && req.method === 'GET') {
+    const now = Date.now();
+
+    const permissions = dispatch.pendingList().concat(hookPermPendingList()).slice(0, 20).map((p) => ({
+      sessionId: p.sessionId || '', requestId: p.requestId, project: p.project || '',
+      tool: p.tool || '', detail: String(p.detail || '').slice(0, 400),
+    }));
+
+    let queued = 0, running = 0, review = 0, paused = false;
+    const reviews = [];
+    try {
+      const q = queue.list();
+      paused = !!q.paused;
+      for (const it of q.items) {
+        if (it.status === 'queued') queued++;
+        else if (it.status === 'running') running++;
+        else if (it.status === 'review') {
+          review++;
+          if (reviews.length < 20) reviews.push({ id: it.id, project: it.project || '', prompt: String(it.prompt || '').slice(0, 400), branch: it.branch || '' });
+        }
+      }
+    } catch (_) {}
+
+    // isStalled() rather than the cached a.stalled: that flag is only refreshed
+    // by snapshot(), so a phone used while no dashboard tab is open would read a
+    // stale one — exactly the case this page exists for.
+    const attention = [];
+    for (const a of agents.values()) {
+      const stalled = a.state === 'idle' && isStalled(a, now);
+      if (a.state !== 'awaiting' && a.state !== 'error' && !stalled) continue;
+      attention.push({
+        agentId: a.id, name: a.name || '', project: a.project || '', state: a.state,
+        stalled: !!stalled, sessionId: a.sessionId || '',
+        log: String(a.awaitMsg || (a.logLines && a.logLines[0]) || a.goal || a.detail || '').slice(0, 300),
+      });
+    }
+
+    const esc2 = board.openEscalations().length, plans2 = board.pendingPlans().length;
+    return sendJson(res, 200, {
+      needsYou: attention.length + esc2 + plans2 + review,
+      queued, running, review, paused, escalations: esc2, plans: plans2,
+      permissions, reviews, attention: attention.slice(0, 30),
+      plan: planLimits && (planLimits.fiveHour || planLimits.sevenDay)
+        ? { fiveHour: planLimits.fiveHour, sevenDay: planLimits.sevenDay } : null,
+      at: now,
+    });
+  }
+
+  // Convenience: /phone → the phone console, so it can be typed on a keypad.
+  if (url === '/phone' && req.method === 'GET') {
+    const q = req.url.indexOf('?') >= 0 ? req.url.slice(req.url.indexOf('?')) : '';
+    res.writeHead(302, { Location: '/phone.html' + q });
+    res.end();
+    return;
+  }
+
   // ── Coordination board ───────────────────────────────────────────────────────
   // A per-project shared store agents post to (notes, findings, escalations) so a
   // swarm builds on each other's work instead of re-deriving it. Human-visible by
@@ -2892,7 +2975,14 @@ Allow / Deny it in the dashboard rail.`);
       version,
     };
     const doctor = await doctorChecks().catch(() => []);
-    return sendJson(res, 200, { bridge, doctor, ...health.report() });
+    // Your Claude Code setup, not Gander's: agent frontmatter, .mcp.json, and
+    // above all whether each hook command resolves to something runnable. Hooks
+    // fail SILENTLY — a missing binary means the event just never happens, with
+    // no error in any log — so nothing else would ever tell you.
+    let setup = null;
+    try { setup = setupcheck.scan({ projectDirs: projects.discover().map((p) => p.path).filter(Boolean).slice(0, 40) }); }
+    catch (e) { setup = { error: String(e && e.message || e) }; }
+    return sendJson(res, 200, { bridge, doctor, setup, ...health.report() });
   }
 
   if (url === '/api/editor' && req.method === 'GET') {
@@ -2946,6 +3036,7 @@ Allow / Deny it in the dashboard rail.`);
     telegramReplyToken: secretView(cfg.telegramReplyToken), license: secretView(cfg.license),
     allowRemote: !!cfg.allowRemote, accessToken: secretView(cfg.accessToken),
     fleetIntervalMs: Number(cfg.fleet && cfg.fleet.intervalMs) || 5000,
+    phone: phoneAccess(),
     restartNeeded: !!restartNeeded,
   });
   if (url === '/api/app-config' && req.method === 'GET') return sendJson(res, 200, appConfigView(false));

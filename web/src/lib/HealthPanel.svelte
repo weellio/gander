@@ -20,6 +20,18 @@
   function closePanel() { open = false; }
   function onKey(e) { if (e.key === 'Escape') closePanel(); }
 
+  // Setup check: a clean install has hundreds of passing checks, and a wall of
+  // ticks hides the one thing that is actually broken. Show the problems; keep
+  // the rest one click away.
+  let setupAll = $state(false);
+  const setupGroups = $derived((data && data.setup && data.setup.groups) || []);
+  const setupBad = $derived(
+    setupGroups.flatMap((g) => (g.checks || [])
+      .filter((c) => c.status === 'warn' || c.status === 'fail')
+      .map((c) => ({ ...c, group: g.label })))
+  );
+  function icon(s) { return s === 'ok' ? '✓' : s === 'off' ? '·' : s === 'warn' ? '⚠' : '✗'; }
+
   function fmtUptime(ms) {
     if (ms == null || isNaN(ms)) return '—';
     const s = Math.floor(ms / 1000);
@@ -79,6 +91,62 @@
                 </div>
               </div>
             {/each}
+          </div>
+        {/if}
+
+        <!-- ── Setup check: the user's own Claude Code components ── -->
+        {#if data.setup?.groups?.length}
+          <div class="section">
+            <div class="lbl">
+              Your Claude Code setup —
+              <span class="score" class:bad={data.setup.score?.pct < 100}>
+                {data.setup.score?.passed}/{data.setup.score?.total} ok
+              </span>
+              {#if setupBad.length}
+                <button class="linky" onclick={() => (setupAll = !setupAll)}>{setupAll ? 'problems only' : 'show all'}</button>
+              {/if}
+            </div>
+
+            {#if !setupBad.length}
+              <div class="doc">
+                <span class="docic ok">✓</span>
+                <div class="docbody"><span class="docdet">Agents, commands, skills, MCP servers and hook commands all check out.</span></div>
+              </div>
+            {/if}
+
+            {#if setupBad.length && !setupAll}
+              {#each setupBad as c (c.id)}
+                <div class="doc">
+                  <span class="docic {c.status}">{icon(c.status)}</span>
+                  <div class="docbody">
+                    <span class="field">{c.label}</span>
+                    <span class="docdet">{c.detail}</span>
+                    {#if c.hint}<div class="dochint">{c.hint}</div>{/if}
+                  </div>
+                </div>
+              {/each}
+            {/if}
+
+            {#if setupAll}
+              {#each setupGroups as g (g.id)}
+                <div class="subgrp"><span class="docic {g.status}">{icon(g.status)}</span> {g.label}</div>
+                {#each g.checks as c (c.id)}
+                  <div class="doc indent">
+                    <span class="docic {c.status}">{icon(c.status)}</span>
+                    <div class="docbody">
+                      <span class="field">{c.label}</span>
+                      <span class="docdet">{c.detail}</span>
+                      {#if c.hint && c.status !== 'ok'}<div class="dochint">{c.hint}</div>{/if}
+                    </div>
+                  </div>
+                {/each}
+              {/each}
+            {/if}
+          </div>
+        {:else if data.setup?.error}
+          <div class="section">
+            <div class="lbl">Your Claude Code setup</div>
+            <div class="doc"><span class="docic warn">⚠</span><div class="docbody"><span class="docdet">could not scan: {data.setup.error}</span></div></div>
           </div>
         {/if}
 
@@ -191,6 +259,13 @@
   .docic.warn { color: #F59E0B; }
   .docic.fail { color: #EF4444; }
   .docic.off { color: var(--color-text-tertiary); }
+  .score { color: #10B981; font-weight: 600; text-transform: none; letter-spacing: 0; }
+  .score.bad { color: #F59E0B; }
+  .linky { background: none; border: 0; padding: 0 0 0 6px; cursor: pointer; font: inherit;
+    color: var(--color-text-secondary); text-decoration: underline; text-transform: none; letter-spacing: 0; }
+  .subgrp { display: flex; gap: 4px; align-items: center; margin: 8px 0 2px;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-tertiary); }
+  .doc.indent { padding-left: 14px; }
   .docbody { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .docdet { font-size: 10.5px; color: var(--color-text-tertiary); word-break: break-word; }
   .dochint { font-size: 10px; color: var(--color-text-secondary); background: var(--color-background-secondary);

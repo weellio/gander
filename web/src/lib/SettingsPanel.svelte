@@ -114,6 +114,11 @@
   let advTgTok = $state({ set: false, hint: '' }), advLic = $state({ set: false, hint: '' }), advAcc = $state({ set: false, hint: '' });
   let advTgTokIn = $state(''), advLicIn = $state(''), advAccIn = $state('');
   let advClear = $state({ telegramReplyToken: false, license: false, accessToken: false });
+  let advPhone = $state({ remote: false, tokenSet: false, urls: [], port: 0 });
+  let phoneCopied = $state('');
+  async function copyPhone(u) {
+    try { await navigator.clipboard.writeText(u); phoneCopied = u; setTimeout(() => (phoneCopied = ''), 1600); } catch (_) {}
+  }
   function applyAdvanced(j) {
     adv = {
       stallMinutes: Number(j.stallMinutes) || 0, burnAlert: Number(j.burnAlert) || 0, longRunMinutes: Number(j.longRunMinutes) || 0,
@@ -127,6 +132,7 @@
     advTestRows = Object.entries(j.testCmds || {}).map(([project, cmd]) => ({ project, cmd }));
     advTgTok = j.telegramReplyToken || { set: false, hint: '' }; advLic = j.license || { set: false, hint: '' }; advAcc = j.accessToken || { set: false, hint: '' };
     advTgTokIn = ''; advLicIn = ''; advAccIn = ''; advClear = { telegramReplyToken: false, license: false, accessToken: false };
+    advPhone = j.phone || { remote: false, tokenSet: false, urls: [], port: 0 };
     advRestart = !!j.restartNeeded;
   }
   async function loadAdvanced() { try { const j = await (await fetch('/api/app-config')).json(); if (j && !j.error) applyAdvanced(j); } catch (_) {} }
@@ -633,6 +639,26 @@
             {#if advAcc.set && !advClear.accessToken}<button class="mini" onclick={() => (advClear.accessToken = true)}>clear</button>{/if}
           </div>
           {#if advClear.accessToken}<div class="tg-status">Access token will be cleared on Save</div>{/if}
+
+          <div class="adv-group">📱 Phone console</div>
+          <div class="tg-hint">A thumb-sized page for answering permission prompts, approving held branches and replying to a session that stopped on a question. Open it here to try it, or on a phone using one of the addresses below.</div>
+          <div class="tg-btns"><button class="select" onclick={() => window.open('/phone.html', '_blank', 'noopener')}>Open phone console</button></div>
+          {#if !advPhone.remote}
+            <div class="tg-hint adv-danger">Remote access is off, so only this machine can reach it. Tick <b>Allow remote</b> above (set an access token first) and restart the bridge.</div>
+          {:else if !advPhone.tokenSet}
+            <div class="tg-hint adv-danger">Remote access is on with <b>no access token</b> — anyone on this network can drive the bridge. Set one above.</div>
+          {:else if advPhone.urls.length}
+            <div class="tg-hint">Open one of these on the phone, adding <code>?token=…</code> once. The bridge then sets a cookie and you can bookmark it.</div>
+            {#each advPhone.urls as u}
+              <div class="amb-fields">
+                <input class="in grow" type="text" readonly value={u} />
+                <button class="mini" onclick={() => copyPhone(u)}>{phoneCopied === u ? 'copied' : 'copy'}</button>
+              </div>
+            {/each}
+          {:else}
+            <div class="tg-hint">No LAN address found — the machine may be on VPN only. Tailscale works well here; see <b>docs/REMOTE.md</b>.</div>
+          {/if}
+
           <label class="cbrow">Fleet poll interval <input class="in num wide-num" type="number" min="0" step="100" bind:value={adv.fleetIntervalMs} /> ms</label>
 
           <div class="tg-btns"><button class="select" onclick={saveAdvanced} disabled={advRestarting}>Save</button></div>
