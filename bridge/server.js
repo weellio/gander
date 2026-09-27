@@ -51,6 +51,7 @@ const replay = require('./replay.js');
 const fleet = require('./fleet.js');
 const desktop = require('./desktop.js');
 const patterns = require('./patterns.js');
+const lessons = require('./lessons.js');
 const forensics = require('./forensics.js');
 const procsMod = require('./procs.js');
 const STARTED = Date.now();
@@ -1152,6 +1153,22 @@ function patternsScan(days) {
   if (patternsCache.promise && patternsCache.days === days && now - patternsCache.at < PATTERNS_TTL) return patternsCache.promise;
   const p = patterns.scan({ days }).catch((e) => { if (patternsCache.promise === p) patternsCache = { at: 0, days: 0, promise: null }; throw e; });
   patternsCache = { at: now, days, promise: p };
+  return p;
+}
+
+// Improvement trend + lessons (lessons.js). Same shape as the patterns cache: the
+// scan is incremental and yields while it reads, the TTL only coalesces requests.
+// Warmed at boot so the first open of the panel is not a cold 10s read.
+const LESSONS_TTL = 30 * 1000;
+let lessonsCache = { at: 0, key: '', promise: null };
+setTimeout(() => { lessonsScan().then((d) => console.log(`[lessons] cache warm: ${d.totals.files} files, ${d.totals.parsed} parsed, ${d.totals.scanMs}ms`)).catch(() => {}); }, 8000);
+function lessonsScan(days, fresh) {
+  const now = Date.now();
+  const minCount = Number(cfg.lessonMinCount) >= 2 ? Number(cfg.lessonMinCount) : 3;
+  const key = (days || 60) + ':' + minCount;
+  if (!fresh && lessonsCache.promise && lessonsCache.key === key && now - lessonsCache.at < LESSONS_TTL) return lessonsCache.promise;
+  const p = lessons.scan({ days: days || 60, minCount }).catch((e) => { if (lessonsCache.promise === p) lessonsCache = { at: 0, key: '', promise: null }; throw e; });
+  lessonsCache = { at: now, key, promise: p };
   return p;
 }
 
@@ -2962,6 +2979,27 @@ Allow / Deny it in the dashboard rail.`);
     return sendJson(res, 200, await replay.build(body && body.sessionId));
   }
 
+  // ── Improvement: are the agents getting better? (📈 panel) ──────────────────
+  if (url === '/api/lessons' && req.method === 'GET') {
+    const lu = new URL(req.url, 'http://localhost');
+    try { return sendJson(res, 200, await lessonsScan(Number(lu.searchParams.get('days')) || 60)); }
+    catch (e) { return sendJson(res, 500, { error: String(e && e.message || e) }); }
+  }
+  if (url.startsWith('/api/lessons/') && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || typeof body !== 'object') return sendJson(res, 400, { error: 'invalid JSON' });
+    const act = url.slice('/api/lessons/'.length);
+    let r;
+    if (act === 'promote') {
+      if (body.target === 'project' && !assertCwd(res, body.cwd)) return;
+      r = lessons.promote(body);
+    } else if (act === 'retire') r = lessons.retire(body);
+    else if (act === 'dismiss') r = lessons.dismiss(body);
+    else return sendJson(res, 404, { error: 'unknown action' });
+    if (r && r.ok) { lessonsCache = { at: 0, key: '', promise: null }; console.log(`[lessons] ${act} ${body.sig || body.id || ''}`.slice(0, 160)); }
+    return sendJson(res, r && r.error ? 400 : 200, r);
+  }
+
   if (url === '/api/health' && req.method === 'GET') {
     let version = 'dev';
     try { version = require('../package.json').version || 'dev'; } catch (_) {}
@@ -3028,6 +3066,7 @@ Allow / Deny it in the dashboard rail.`);
     longRunMinutes: Number(cfg.longRunMinutes) || 0,
     ctxAlertPct: cfg.ctxAlertPct === undefined ? 0.85 : Number(cfg.ctxAlertPct) || 0,
     usageAlertPct: cfg.usageAlertPct === undefined ? 90 : Number(cfg.usageAlertPct) || 0,
+    lessonMinCount: Number(cfg.lessonMinCount) >= 2 ? Number(cfg.lessonMinCount) : 3,
     autoRetire: cfg.autoRetire !== false,
     retireDoneSec: Number(cfg.retireDoneSec) || 180, retireClosedSec: Number(cfg.retireClosedSec) || 60,
     retireIdleSec: Number(cfg.retireIdleSec) || 1500, retireStaleActiveSec: Number(cfg.retireStaleActiveSec) || 1800,
@@ -3050,6 +3089,7 @@ Allow / Deny it in the dashboard rail.`);
     if (body.longRunMinutes !== undefined) cfg.longRunMinutes = num(body.longRunMinutes, 0, 100000, 0);
     if (body.ctxAlertPct !== undefined) cfg.ctxAlertPct = num(body.ctxAlertPct, 0, 1, 0.85);
     if (body.usageAlertPct !== undefined) cfg.usageAlertPct = num(body.usageAlertPct, 0, 100, 90);
+    if (body.lessonMinCount !== undefined) cfg.lessonMinCount = num(body.lessonMinCount, 2, 50, 3);
     if (body.autoRetire !== undefined) { cfg.autoRetire = !!body.autoRetire; RETIRE.enabled = cfg.autoRetire; }
     for (const [k, rk, d] of [['retireDoneSec', 'done', 180], ['retireClosedSec', 'closed', 60], ['retireIdleSec', 'idle', 1500], ['retireStaleActiveSec', 'staleActive', 1800]]) {
       if (body[k] !== undefined) { cfg[k] = num(body[k], 10, 864000, d); RETIRE[rk] = cfg[k] * 1000; }

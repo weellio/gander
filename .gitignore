@@ -8,6 +8,8 @@ bridge/aoc-registry.json
 bridge/aoc-projects.json
 bridge/aoc-queue.json
 bridge/aoc-patterns.json
+bridge/aoc-lessons.json
+bridge/aoc-lessons-cache.json
 
 # Captured stream-json samples (regenerated on demand)
 samples/*.jsonl

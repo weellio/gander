@@ -107,7 +107,7 @@
 
   // ── Advanced (every remaining bridge/aoc-config.json knob — thresholds, tile retirement, test gate, integrations, remote access) ──
   let advOpen = $state(false); let advStatus = $state(''); let advRestart = $state(false); let advRestarting = $state(false);
-  let adv = $state({ stallMinutes: 0, burnAlert: 0, longRunMinutes: 0, autoRetire: true, retireDoneSec: 0, retireClosedSec: 0, retireIdleSec: 0, retireStaleActiveSec: 0, testCmd: '', codex: false, allowRemote: false, fleetIntervalMs: 0 });
+  let adv = $state({ stallMinutes: 0, burnAlert: 0, longRunMinutes: 0, autoRetire: true, retireDoneSec: 0, retireClosedSec: 0, retireIdleSec: 0, retireStaleActiveSec: 0, testCmd: '', codex: false, allowRemote: false, fleetIntervalMs: 0, lessonMinCount: 3 });
   let advCtxPctUI = $state(85);   // shown as a percent, stored 0..1
   let advTestRows = $state([]);   // per-project test-command overrides: [{ project, cmd }]
   // secrets are never echoed by the bridge: we get { set, hint } and send a plain string only when the user types one ("" = clear)
@@ -127,6 +127,7 @@
       testCmd: j.testCmd || '', codex: !!j.codex, allowRemote: !!j.allowRemote, fleetIntervalMs: Number(j.fleetIntervalMs) || 0,
       ctxAlertPct: j.ctxAlertPct === undefined ? 0.85 : Number(j.ctxAlertPct) || 0,
       usageAlertPct: j.usageAlertPct === undefined ? 90 : Number(j.usageAlertPct) || 0,
+      lessonMinCount: Number(j.lessonMinCount) || 3,
     };
     advCtxPctUI = Math.round((adv.ctxAlertPct || 0) * 100);
     advTestRows = Object.entries(j.testCmds || {}).map(([project, cmd]) => ({ project, cmd }));
@@ -149,6 +150,7 @@
       testCmd: String(adv.testCmd || '').trim(), testCmds, codex: !!adv.codex, allowRemote: !!adv.allowRemote, fleetIntervalMs: Number(adv.fleetIntervalMs) || 0,
       ctxAlertPct: (Number(advCtxPctUI) || 0) / 100,
       usageAlertPct: Number(adv.usageAlertPct) || 0,
+      lessonMinCount: Math.max(2, Number(adv.lessonMinCount) || 3),
     };
     // secrets: typed value → send it · "clear" pressed → send "" · otherwise omit (bridge keeps the stored one)
     if (advTgTokIn.trim()) body.telegramReplyToken = advTgTokIn.trim(); else if (advClear.telegramReplyToken) body.telegramReplyToken = '';
@@ -596,6 +598,7 @@
           <label class="cbrow">Long-run nudge <input class="in num" type="number" min="0" max="1440" bind:value={adv.longRunMinutes} /> minutes <span class="dim">(0 = off)</span></label>
           <label class="cbrow">Context alert at <input class="in num" type="number" min="0" max="100" bind:value={advCtxPctUI} onchange={() => (adv.ctxAlertPct = (Number(advCtxPctUI) || 0) / 100)} /> % full <span class="dim">(0 = off)</span></label>
           <label class="cbrow">Plan-limit alert at <input class="in num" type="number" min="0" max="100" bind:value={adv.usageAlertPct} /> % of the 5-hour window <span class="dim">(needs the status line installed)</span></label>
+          <label class="cbrow">Suggest a rule after <input class="in num" type="number" min="2" max="50" bind:value={adv.lessonMinCount} /> repeats of the same error <span class="dim">(📈 Improvement panel; also needs 2+ sessions)</span></label>
 
           <div class="adv-group">Tiles</div>
           <label class="cbrow"><input type="checkbox" bind:checked={adv.autoRetire} /> Auto clock-out <span class="dim">— retire tiles on their own after the timers below</span></label>

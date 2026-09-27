@@ -13,6 +13,7 @@
   import QueuePanel from './lib/QueuePanel.svelte';
   import DigestPanel from './lib/DigestPanel.svelte';
   import SubagentsPanel from './lib/SubagentsPanel.svelte';
+  import LessonsPanel from './lib/LessonsPanel.svelte';
   import ReplayPanel from './lib/ReplayPanel.svelte';
   import ActionImages from './lib/ActionImages.svelte';
   import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
@@ -198,7 +199,7 @@
   // Manage / Options menus + the panels they control
   let menuOpen = $state(false);
   let optsOpen = $state(false);
-  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false, skills: false, queue: false, digest: false, board: false, subagents: false });
+  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false, skills: false, queue: false, digest: false, board: false, subagents: false, lessons: false });
   function openP(k) { panels[k] = true; menuOpen = false; }
   // Settings/Config is one drawer with two scopes: 'app' (global: Telegram, budget,
   // sessions, nudge, editor) opened from Settings ▾, and 'project' (this project's
@@ -271,6 +272,7 @@
       { label: 'Task queue — line up goals, auto-start on free slots', sub: 'panel', action: () => openP('queue') },
       { label: 'Ship digest — sessions · commits · spend, last N days', sub: 'panel', action: () => openP('digest') },
       { label: 'Sub-agents — every agent your sessions spawned, with spend', sub: 'panel', action: () => openP('subagents') },
+      { label: 'Improvement — are the agents getting better? (trend + lessons)', sub: 'panel', action: () => openP('lessons') },
       { label: 'Routines & briefings', sub: 'panel', action: () => openP('routines') },
       { label: 'Take the tour', sub: 'walkthrough', action: () => (tourOpen = true) },
       { label: 'Export swarm snapshot', sub: 'Mermaid + PNG', action: exportSnapshot },
@@ -486,6 +488,7 @@
             <button class="select" onclick={() => openP('procs')}>Processes (stuck open?)</button>
             <button class="select" onclick={() => openP('skills')}>🧩 Skills (all projects)</button>
             <button class="select" onclick={() => openP('tune')}>💡 Tune (suggestions)</button>
+            <button class="select" onclick={() => openP('lessons')}>📈 Improvement (trend + lessons)</button>
             <button class="select" onclick={() => openP('health')}>Health / status</button>
           </div>
         {/if}
@@ -567,6 +570,7 @@
   <BoardPanel bind:open={panels.board} bind:project={boardProject} />
   <DigestPanel bind:open={panels.digest} />
   <SubagentsPanel bind:open={panels.subagents} />
+  <LessonsPanel bind:open={panels.lessons} />
   <HealthPanel bind:open={panels.health} />
   <ProcessesPanel bind:open={panels.procs} />
   <SuggestionsPanel bind:open={panels.tune} />
