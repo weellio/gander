@@ -285,9 +285,12 @@ async function scan(opts) {
       if (!row) continue;
       row.prompts += d.prompts; row.corrections += d.corrections; row.toolCalls += d.toolCalls; row.toolErrors += d.toolErrors;
     }
+    const seenHere = new Set();   // a session counts once per family, however many members it hit
     for (const [sig, s] of Object.entries(e.sigs)) {
-      let a = sigAgg.get(sig);
-      if (!a) sigAgg.set(sig, (a = { sig, n: 0, sessions: 0, projects: new Set(), d: {}, samples: [], first: '', last: '' }));
+      const fam = familyOf(sig);
+      const key = fam ? 'family:' + fam.id : sig;
+      let a = sigAgg.get(key);
+      if (!a) sigAgg.set(key, (a = { sig: key, family: fam ? fam.id : '', label: fam ? fam.label : '', n: 0, sessions: 0, projects: new Set(), d: {}, samples: [], members: new Map(), first: '', last: '' }));
       let inWindow = 0;
       for (const [dk, c] of Object.entries(s.d)) {
         if (!byDay.has(dk)) continue;
@@ -296,10 +299,17 @@ async function scan(opts) {
         if (!a.last || dk > a.last) a.last = dk;
       }
       if (!inWindow) continue;
-      a.n += inWindow; a.sessions++;
+      a.n += inWindow;
+      if (!seenHere.has(key)) { seenHere.add(key); a.sessions++; }
       if (e.proj) a.projects.add(e.proj);
-      if (a.samples.length < 2 && !a.samples.includes(s.sample)) a.samples.push(s.sample);
+      const m = a.members.get(sig) || { sig, n: 0, sample: s.sample };
+      m.n += inWindow; a.members.set(sig, m);
     }
+  }
+  for (const a of sigAgg.values()) {
+    const top = [...a.members.values()].sort((x, y) => y.n - x.n);
+    a.samples = top.slice(0, 2).map((m) => m.sample);
+    a.memberList = top.map((m) => ({ sig: m.sig, count: m.n }));
   }
   const series = [...byDay.values()];
 
@@ -310,7 +320,9 @@ async function scan(opts) {
     .sort((x, y) => y.n - x.n || y.sessions - x.sessions)
     .slice(0, 25)
     .map((a) => ({
-      sig: a.sig, tool: a.sig.split(':')[0], count: a.n, sessions: a.sessions,
+      sig: a.sig, family: a.family, label: a.label,
+      tool: a.family ? [...new Set(a.memberList.map((m) => m.sig.split(':')[0]))].join(' · ') : a.sig.split(':')[0],
+      members: a.memberList, count: a.n, sessions: a.sessions,
       projects: [...a.projects].slice(0, 6), first: a.first, last: a.last, samples: a.samples,
       draft: draftRule(a),
       spark: series.map((d) => a.d[d.date] || 0),
@@ -332,26 +344,48 @@ async function scan(opts) {
   };
 }
 
-// A starting point to edit, not a finished rule — the panel makes you read it.
-const DRAFTS = [
-  [/^Edit: string to replace not found/i, 'Before an Edit, Read the exact lines being replaced in this turn — never edit from memory of an earlier read.'],
-  [/file has not been read yet/i, 'Read a file in the current session before Write or Edit on it.'],
-  [/file has been modified since read/i, 'Re-read a file right before editing it if anything else may have touched it (a build, a formatter, another agent).'],
-  [/unicodeencodeerror: …charmap…/i, 'On Windows, run Python with PYTHONIOENCODING=utf-8 (or write output to a file) — the console is cp1252 and cannot print emoji or arrows.'],
-  [/command timed out/i, 'Run anything that may take over a minute in the background, and wait on its completion instead of blocking.'],
-  [/file does not exist\. note: your current working directory is/i, 'Use absolute paths for file tools — the working directory drifts after a `cd`.'],
-  [/unexpected eof while looking for matching/i, 'Do not inline multi-line scripts in a shell command; write them to a file first (quotes and backslashes get mangled).'],
-  [/cannot find module/i, 'Check the module path relative to the script (and that dependencies are installed) before running Node.'],
-  [/playwright.*timeout.*exceeded/i, 'Before driving Playwright, confirm the page is served (curl it first); use wait_until="domcontentloaded" and a short explicit timeout instead of the 30s default.'],
-  [/err_connection_refused/i, 'Start the server in the background and wait until it is actually listening before pointing a browser or curl at it.'],
-  [/unterminated string literal/i, 'Do not inline multi-line scripts in a shell command; write them to a file first (quotes and backslashes get mangled).'],
-  [/filenotfounderror|no such file or directory/i, 'Check a path exists (and use absolute paths) before reading it — the working directory drifts between commands.'],
-  [/is not recognized as (the name|an internal)/i, 'This is Windows: use the matching Windows/PowerShell command, not the Unix one.'],
+// ── families ─────────────────────────────────────────────────────────────────
+// One mistake often surfaces as several different error texts. Shell-quoting
+// damage alone showed up four ways on real data ("unexpected EOF" with ' and ",
+// "unterminated string literal", the f-string backslash error). Promoted one at a
+// time, each rule would be measured against a quarter of its own problem — so a
+// family is ONE candidate, ONE rule, measured against every member signature.
+// The draft is a starting point to edit, not a finished rule.
+const FAMILIES = [
+  { id: 'shell-inline', label: 'Inline scripts mangled by shell quoting',
+    re: /unexpected eof while looking for matching|unterminated string literal|f-string expression part cannot include a backslash|syntaxerror: invalid or unexpected token/i,
+    text: 'Never inline multi-line code or anything with nested quotes in a shell command (bash -c, python -c, node -e, heredocs with quotes): write it to a file in the scratchpad and run the file.' },
+  { id: 'browser-server', label: 'Browser checks against a page that is not up',
+    re: /playwright.*timeout.*exceeded|err_connection_refused/i,
+    text: 'Before pointing a browser or Playwright at a local page, confirm the server answers (curl it); then use wait_until="domcontentloaded" and a short explicit timeout, never the 30s default.' },
+  { id: 'cwd-paths', label: 'Relative paths after the working directory moved',
+    re: /file does not exist\. note: your current working directory|no such file or directory|cannot access/i,
+    text: 'Use absolute paths in every file and shell command; the working directory drifts after any cd.' },
+  { id: 'win-encoding', label: 'Windows cp1252 text encoding',
+    re: /unicode(en|de)codeerror/i,
+    text: 'On Windows, run Python with PYTHONIOENCODING=utf-8 and open text files with encoding="utf-8"; the console and default file encoding are cp1252.' },
+  { id: 'edit-stale', label: 'Editing from a stale read',
+    re: /^Edit: string to replace not found|file has not been read yet|file has been modified since read/i,
+    text: 'Read the exact lines in the current turn before an Edit; never edit from memory of an earlier read.' },
+  { id: 'timeout', label: 'Long commands run in the foreground',
+    re: /command timed out/i,
+    text: 'Run anything that may take over a minute in the background and wait on its completion instead of blocking.' },
+  { id: 'node-module', label: 'Node module path',
+    re: /cannot find module/i,
+    text: 'Check the module path relative to the script (and that dependencies are installed) before running Node.' },
+  { id: 'win-command', label: 'Unix command on Windows',
+    re: /is not recognized as (the name|an internal)/i,
+    text: 'This is Windows: use the matching Windows/PowerShell command, not the Unix one.' },
 ];
+const FAMILY_BY_ID = new Map(FAMILIES.map((f) => [f.id, f]));
+function familyOf(sig) {
+  const body = sig.slice(sig.indexOf(':') + 2);
+  return FAMILIES.find((f) => f.re.test(sig) || f.re.test(body)) || null;
+}
 function draftRule(a) {
-  const body = a.sig.slice(a.sig.indexOf(':') + 2);
-  for (const [re, text] of DRAFTS) if (re.test(a.sig) || re.test(body)) return text;
-  return `Avoid this recurring ${a.sig.split(':')[0]} failure (${a.n}× in ${a.sessions} sessions): "${a.samples[0] || body}".`;
+  const f = a.family && FAMILY_BY_ID.get(a.family);
+  if (f) return f.text;
+  return `Avoid this recurring ${a.sig.split(':')[0]} failure (${a.n}× in ${a.sessions} sessions): "${a.samples[0] || a.sig}".`;
 }
 
 // ── actions ──────────────────────────────────────────────────────────────────
@@ -428,4 +462,4 @@ function dismiss(body, opts) {
   return { ok: true };
 }
 
-module.exports = { scan, promote, retire, dismiss, signature, keyLine, measure, _reset: () => memo.clear() };
+module.exports = { FAMILIES, familyOf, scan, promote, retire, dismiss, signature, keyLine, measure, _reset: () => memo.clear() };

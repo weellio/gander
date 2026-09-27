@@ -233,3 +233,40 @@ describe('measuring a lesson', () => {
     assert.equal(L.measure(lesson, s, d).verdict, 'measuring');
   });
 });
+
+describe('families: one mistake, many error texts', () => {
+  test('four shell-quoting errors become ONE candidate measured across all of them', async () => {
+    const e = env();
+    session(e, 's1', [
+      ...call('Bash', "/usr/bin/bash: -c: line 3: unexpected EOF while looking for matching `''", NOW - DAY),
+      ...call('Bash', '/usr/bin/bash: eval: line 1: unexpected EOF while looking for matching `"\'', NOW - DAY),
+    ]);
+    session(e, 's2', [
+      ...call('PowerShell', '  File "<string>", line 2\nSyntaxError: unterminated string literal (detected at line 2)', NOW - DAY),
+      ...call('Bash', 'SyntaxError: f-string expression part cannot include a backslash', NOW - DAY),
+    ]);
+    const r = await L.scan(e.opts);
+    assert.equal(r.candidates.length, 1, JSON.stringify(r.candidates.map((c) => c.sig)));
+    const c = r.candidates[0];
+    assert.equal(c.sig, 'family:shell-inline');
+    assert.equal(c.count, 4);
+    assert.equal(c.sessions, 2, 'a session counts once per family, not once per member');
+    assert.equal(c.members.length, 4);
+    assert.match(c.draft, /write it to a file/);
+  });
+
+  test('a promoted family is measured against every member', async () => {
+    const e = env();
+    session(e, 's1', call('Bash', 'UnicodeEncodeError: \'charmap\' codec can\'t encode character', NOW - 3 * DAY));
+    session(e, 's2', call('Bash', 'UnicodeDecodeError: \'charmap\' codec can\'t decode byte 0x9d', NOW - 3 * DAY));
+    session(e, 's3', call('Bash', 'UnicodeEncodeError: \'charmap\' codec can\'t encode character', NOW - 2 * DAY));
+    let r = await L.scan(e.opts);
+    const c = r.candidates.find((x) => x.family === 'win-encoding');
+    assert.ok(c && c.count === 3);
+    L.promote({ sig: c.sig, text: c.draft, target: 'global' }, { ...e.opts, now: NOW - 10 * DAY });
+    r = await L.scan(e.opts);
+    const l = r.lessons[0];
+    assert.equal(l.spark.reduce((a, b) => a + b, 0), 3, 'both Encode and Decode hits count toward the rule');
+    assert.ok(!r.candidates.some((x) => x.family === 'win-encoding'), 'promoted family stops being a candidate');
+  });
+});
