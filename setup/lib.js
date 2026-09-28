@@ -89,10 +89,17 @@ function buildHooks() {
 }
 
 // A hook group is "ours" if any of its commands points at this repo's emit/launch.
-function isOurs(group) {
-  const r = fwd(ROOT);
+// Windows paths are case-insensitive, and __dirname's drive letter takes whatever
+// case the repo was opened with — so a check that compared case-sensitively saw
+// "d:/Files/…" and "D:/Files/…" as two installs. Every event ended up wired
+// twice: two node processes per hook on every tool call, and two bridges racing
+// to start per session. Compare the way the OS does.
+function isOurs(group, root) {
+  const win = process.platform === 'win32';
+  const norm = (s) => { const f = fwd(String(s)); return win ? f.toLowerCase() : f; };
+  const r = norm(root || ROOT);
   return ((group && group.hooks) || []).some(
-    (h) => typeof h.command === 'string' && h.command.includes(r) && /(emit|launch)\.js/.test(h.command)
+    (h) => typeof h.command === 'string' && norm(h.command).includes(r) && /(emit|launch)\.js/.test(h.command)
   );
 }
 
@@ -137,7 +144,7 @@ function install(opts) {
   writeJson(sp, settings);
   console.log(`✓ Installed Gander hooks into ${sp}`);
   console.log(`  scope: ${opts.project ? 'this project' : 'global (all sessions on this machine)'}`);
-  installComponents(opts);
+  if (!opts.skipComponents) installComponents(opts);   // tests pass skipComponents: never write into the real ~/.claude
 }
 
 function uninstall(opts) {
@@ -160,4 +167,4 @@ function uninstall(opts) {
 // buildHooks is the single source of truth for which events Gander wires —
 // bridge/health.js verifies exactly this list, and test/hooks-parity.test.js
 // pins the plugin manifest (hooks/hooks.json) to it.
-module.exports = { install, uninstall, settingsPath, ROOT, buildHooks };
+module.exports = { install, uninstall, settingsPath, ROOT, buildHooks, isOurs };

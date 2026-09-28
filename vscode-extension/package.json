@@ -2,36 +2,80 @@
   "name": "gander-vscode",
   "displayName": "Gander — Claude Code NOC",
   "description": "The Gander dashboard inside VS Code — watch and control your Claude Code agents next to your editor and terminal. A thin wrapper around the same bridge the standalone web app uses (no app fork).",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "gander",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/weellio/gander.git", "directory": "vscode-extension" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/weellio/gander.git",
+    "directory": "vscode-extension"
+  },
   "homepage": "https://github.com/weellio/gander#readme",
-  "bugs": { "url": "https://github.com/weellio/gander/issues" },
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other", "Visualization"],
-  "keywords": ["claude", "claude code", "agents", "dashboard", "noc"],
-  "activationEvents": ["onStartupFinished"],
+  "bugs": {
+    "url": "https://github.com/weellio/gander/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "claude",
+    "claude code",
+    "agents",
+    "dashboard",
+    "noc"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./extension.js",
   "contributes": {
     "commands": [
-      { "command": "gander.open", "title": "Gander: Open Dashboard (full tab)", "icon": "$(link-external)" },
-      { "command": "gander.reload", "title": "Gander: Reload Dashboard", "icon": "$(refresh)" }
+      {
+        "command": "gander.open",
+        "title": "Gander: Open Dashboard (full tab)",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "gander.reload",
+        "title": "Gander: Reload Dashboard",
+        "icon": "$(refresh)"
+      }
     ],
     "viewsContainers": {
       "activitybar": [
-        { "id": "gander", "title": "Gander", "icon": "media/gander.svg" }
+        {
+          "id": "gander",
+          "title": "Gander",
+          "icon": "media/gander.svg"
+        }
       ]
     },
     "views": {
       "gander": [
-        { "type": "webview", "id": "gander.dashboard", "name": "Agent NOC", "icon": "media/gander.svg" }
+        {
+          "type": "webview",
+          "id": "gander.dashboard",
+          "name": "Agent NOC",
+          "icon": "media/gander.svg"
+        }
       ]
     },
     "menus": {
       "view/title": [
-        { "command": "gander.reload", "when": "view == gander.dashboard", "group": "navigation@1" },
-        { "command": "gander.open", "when": "view == gander.dashboard", "group": "navigation@2" }
+        {
+          "command": "gander.reload",
+          "when": "view == gander.dashboard",
+          "group": "navigation@1"
+        },
+        {
+          "command": "gander.open",
+          "when": "view == gander.dashboard",
+          "group": "navigation@2"
+        }
       ]
     },
     "configuration": {
@@ -56,6 +100,11 @@
           "type": "boolean",
           "default": false,
           "description": "Open the Gander panel automatically when VS Code starts."
+        },
+        "gander.statusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a live count of what needs you in the status bar (click opens the dashboard)."
         }
       }
     }

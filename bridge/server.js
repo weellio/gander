@@ -3708,6 +3708,19 @@ function tokenEq(a, b) {
 }
 if (ALLOW_REMOTE && !ACCESS_TOKEN) console.log('⚠ remote access is enabled with NO access token — anyone on the network can drive this bridge. Set "accessToken" in bridge/aoc-config.json (or AOC_TOKEN). See docs/REMOTE.md.');
 
+// Another bridge already owns the port: this one has no job, so it must QUIT.
+// Without this, the uncaughtException guard above (there to keep a LIVE bridge
+// up through a bad request) swallowed EADDRINUSE and the duplicate lived on
+// forever — still running its boot timers, transcript scans and state writes.
+// Six sessions opening at once left nine of these running for two days.
+server.on('error', (e) => {
+  if (e && e.code === 'EADDRINUSE') {
+    console.log(`[bridge] port ${argPort} is already in use — another Gander bridge is running; exiting`);
+    process.exit(0);
+  }
+  console.error('[bridge] server error:', e && e.stack || e);
+});
+
 server.listen(argPort, BIND_HOST, () => {
   console.log(`Gander bridge listening on http://localhost:${argPort}${ALLOW_REMOTE ? '  (⚠ remote access enabled — trusted networks only)' : ''}`);
   console.log(`Dashboard:  http://localhost:${argPort}/`);
