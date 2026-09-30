@@ -79,41 +79,66 @@ function foldLine(s, line) {
   }
 }
 
-const cache = new Map();   // transcriptPath -> { offset, tail, s }
+const cache = new Map();   // transcriptPath -> { offset, tail, s, catching }
 
-// { title, mode, artifacts:[{title,url,at}], files:[…], fileCount, artifactCount }
-function read(transcriptPath) {
-  const file = String(transcriptPath || '');
-  if (!file) return null;
-  let st; try { st = fs.statSync(file); } catch (_) { return null; }
+// Every tile asks for its metadata on every snapshot, on the bridge's one
+// thread. A cold read of a big transcript used to happen right there, all at
+// once: a 489 MB session took 5.8 s, the biggest eight 9.6 s, and while it ran
+// the bridge answered nothing — dashboards stalled 8–17 s after every restart
+// and hook POSTs (5 s timeout) were silently dropped. So a read is now bounded:
+// the normal live case (a few KB appended) is still done inline, and anything
+// bigger is caught up in the background, 1 MB at a time, yielding in between.
+const STEP = 1024 * 1024;
 
+function entry(file, st) {
   let c = cache.get(file);
   if (c && st.size < c.offset) c = null;                    // truncated/rotated → start over
-  if (!c) { c = { offset: 0, tail: '', s: blank() }; cache.set(file, c); }
+  if (!c) { c = { offset: 0, tail: '', s: blank(), catching: null }; cache.set(file, c); }
+  return c;
+}
 
-  if (st.size > c.offset) {
-    const fd = fs.openSync(file, 'r');
+// Fold at most `maxBytes` new bytes. Returns true when caught up to `size`.
+function advance(file, c, size, maxBytes) {
+  if (size <= c.offset) return true;
+  const fd = fs.openSync(file, 'r');
+  try {
+    const want = Math.min(size - c.offset, maxBytes);
+    const buf = Buffer.alloc(Math.min(want, STEP));
+    let pos = c.offset, left = want;
+    while (left > 0) {
+      const n = fs.readSync(fd, buf, 0, Math.min(buf.length, left), pos);
+      if (n <= 0) break;
+      pos += n; left -= n;
+      const lines = (c.tail + buf.toString('utf8', 0, n)).split('\n');
+      c.tail = lines.pop();
+      for (const l of lines) { if (l) foldLine(c.s, l); }
+    }
+    c.offset = pos;
+  } finally { fs.closeSync(fd); }
+  return c.offset >= size;
+}
+
+// Background catch-up: one pass at a time per file, yielding between steps.
+function catchUp(file, c) {
+  if (c.catching) return c.catching;
+  c.catching = (async () => {
     try {
-      const buf = Buffer.alloc(Math.min(st.size - c.offset, 8 * 1024 * 1024));
-      let pos = c.offset, left = st.size - c.offset;
-      while (left > 0) {
-        const n = fs.readSync(fd, buf, 0, Math.min(buf.length, left), pos);
-        if (n <= 0) break;
-        pos += n; left -= n;
-        const chunk = c.tail + buf.toString('utf8', 0, n);
-        const lines = chunk.split('\n');
-        c.tail = lines.pop();
-        for (const l of lines) { if (l) foldLine(c.s, l); }
+      for (;;) {
+        let st; try { st = fs.statSync(file); } catch (_) { return; }
+        if (advance(file, c, st.size, STEP)) return;
+        await new Promise((r) => setImmediate(r));
       }
-      c.offset = pos;
-    } finally { fs.closeSync(fd); }
-  }
+    } catch (_) { /* unreadable mid-way: keep what we have */ }
+    finally { c.catching = null; }
+  })();
+  return c.catching;
+}
 
+function view(c) {
   // A finished transcript's last line may lack a trailing newline, so it would sit
   // in `tail` forever. Folding it WITHOUT consuming it is safe here because every
   // fold is idempotent: title/mode are last-wins, artifacts/files dedupe by key.
   if (c.tail) foldLine(c.s, c.tail);
-
   const s = c.s;
   return {
     title: s.title,
@@ -124,6 +149,29 @@ function read(transcriptPath) {
     files: s.files.slice(),
     fileCount: s.files.length,
   };
+}
+
+// Bounded, synchronous: the live case (a little appended) is read inline; a big
+// backlog is handed to the background and the current partial picture returned.
+// `behind` says how many bytes are still to come.
+function read(transcriptPath) {
+  const file = String(transcriptPath || '');
+  if (!file) return null;
+  let st; try { st = fs.statSync(file); } catch (_) { return null; }
+  const c = entry(file, st);
+  if (st.size - c.offset <= STEP) advance(file, c, st.size, STEP);
+  else catchUp(file, c);
+  return { ...view(c), behind: Math.max(0, st.size - c.offset) };
+}
+
+// Complete, without blocking: for the session modal, which wants the whole list.
+async function readFull(transcriptPath) {
+  const file = String(transcriptPath || '');
+  if (!file) return null;
+  let st; try { st = fs.statSync(file); } catch (_) { return null; }
+  const c = entry(file, st);
+  await catchUp(file, c);
+  return { ...view(c), behind: 0 };
 }
 
 // What a live tile should carry. Kept small: the full file list stays behind the API.
@@ -143,4 +191,4 @@ function forTile(transcriptPath) {
   return out;
 }
 
-module.exports = { read, forTile, _reset: () => cache.clear() };
+module.exports = { read, readFull, forTile, _reset: () => cache.clear() };

@@ -19,6 +19,12 @@ Codex (the CLI **and** the Codex desktop app) writes every session to disk, so G
 Not covered (Codex has no outside channel for them): replying into a Codex session, or approving its permission prompts — the tile goes **awaiting** so you know to switch over.
 
 
+## 1¾. Local models — what Gander watches, and what it doesn't
+
+A local model (Ollama, LM Studio) isn't an agent on its own; an agent **program** drives it. Gander watches the program — Claude Code routed through claude-code-router gets everything (section 1), anything else via `gander-wrap` (section 2) — and marks tiles whose model is local with a violet 🖥 chip.
+
+What Gander adds for local models is the **GPU side**, in **Manage → 🎮 GPU & local models**: which models are loaded, how much video memory each holds, when each auto-unloads, an Unload button, and **Free the GPU** (unload everything, deprioritise Claude-started renders) for when you want the card for something else. The usual failure it catches: a model some background job loaded is still holding gigabytes of video memory, and everything else on the card — a game, a render, the next model — just gets slower with nothing saying why.
+
 ## 2. Any other agent CLI — `gander-wrap`
 
 Codex CLI, Gemini CLI, Grok, aider, your own scripts — anything you can run in a terminal can appear on the floor. Claude Code reports itself through hooks; for everything else there's a zero-dependency wrapper:

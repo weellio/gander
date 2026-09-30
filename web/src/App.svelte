@@ -14,6 +14,7 @@
   import DigestPanel from './lib/DigestPanel.svelte';
   import SubagentsPanel from './lib/SubagentsPanel.svelte';
   import LessonsPanel from './lib/LessonsPanel.svelte';
+  import GpuPanel from './lib/GpuPanel.svelte';
   import ReplayPanel from './lib/ReplayPanel.svelte';
   import ActionImages from './lib/ActionImages.svelte';
   import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
@@ -64,6 +65,15 @@
   // Real plan-limit percentages, reported by our status line — the only channel
   // Claude Code exposes them on. Null until a status line renders.
   let planLimits = $state(null);
+  // GPU chip: only shown when there is an NVIDIA card or a local-model runtime to talk about
+  let gpuInfo = $state(null);
+  async function pollGpu() {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    try { const j = await (await fetch('/api/gpu')).json(); if (!j.error) gpuInfo = j; } catch (_) {}
+  }
+  const gpuCard = $derived(gpuInfo?.nvidia?.gpus?.[0] || null);
+  const gpuModels = $derived((gpuInfo?.ollama?.loaded?.length || 0) + (gpuInfo?.lmstudio?.loaded?.length || 0));
+  const gpuVramPct = $derived(gpuCard ? gpuCard.vramUsedMB / gpuCard.vramTotalMB : 0);
   let planPct = $derived(planLimits?.fiveHour?.pct ?? null);
   let planHot = $derived(typeof planPct === 'number' && planPct >= 90);
   let planWarm = $derived(typeof planPct === 'number' && planPct >= 75 && planPct < 90);
@@ -199,7 +209,7 @@
   // Manage / Options menus + the panels they control
   let menuOpen = $state(false);
   let optsOpen = $state(false);
-  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false, skills: false, queue: false, digest: false, board: false, subagents: false, lessons: false });
+  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false, skills: false, queue: false, digest: false, board: false, subagents: false, lessons: false, gpu: false });
   function openP(k) { panels[k] = true; menuOpen = false; }
   // Settings/Config is one drawer with two scopes: 'app' (global: Telegram, budget,
   // sessions, nudge, editor) opened from Settings ▾, and 'project' (this project's
@@ -273,6 +283,7 @@
       { label: 'Ship digest — sessions · commits · spend, last N days', sub: 'panel', action: () => openP('digest') },
       { label: 'Sub-agents — every agent your sessions spawned, with spend', sub: 'panel', action: () => openP('subagents') },
       { label: 'Improvement — are the agents getting better? (trend + lessons)', sub: 'panel', action: () => openP('lessons') },
+      { label: 'GPU & local models — what is on the card, free it for a game', sub: 'panel', action: () => openP('gpu') },
       { label: 'Routines & briefings', sub: 'panel', action: () => openP('routines') },
       { label: 'Take the tour', sub: 'walkthrough', action: () => (tourOpen = true) },
       { label: 'Export swarm snapshot', sub: 'Mermaid + PNG', action: exportSnapshot },
@@ -324,7 +335,11 @@
     if (ttsAvailable) { loadVoices(); try { window.speechSynthesis.onvoiceschanged = loadVoices; } catch (_) {} }
     const uid = setInterval(() => { if ($autoUsage) pollUsage(); }, 60000);
     const bid = setInterval(pollBriefings, 60000);
-    return () => { clearInterval(uid); clearInterval(bid); };
+    pollGpu();
+    const gid = setInterval(pollGpu, 20000);
+    const onGpu = (e) => { if (e.detail && !e.detail.error) gpuInfo = e.detail; };
+    window.addEventListener('gander-gpu', onGpu);
+    return () => { clearInterval(uid); clearInterval(bid); clearInterval(gid); window.removeEventListener('gander-gpu', onGpu); };
   });
 
   // agent-state polling — cadence follows the "fast updates" option
@@ -489,6 +504,7 @@
             <button class="select" onclick={() => openP('skills')}>🧩 Skills (all projects)</button>
             <button class="select" onclick={() => openP('tune')}>💡 Tune (suggestions)</button>
             <button class="select" onclick={() => openP('lessons')}>📈 Improvement (trend + lessons)</button>
+            <button class="select" onclick={() => openP('gpu')}>🎮 GPU &amp; local models</button>
             <button class="select" onclick={() => openP('health')}>Health / status</button>
           </div>
         {/if}
@@ -571,6 +587,7 @@
   <DigestPanel bind:open={panels.digest} />
   <SubagentsPanel bind:open={panels.subagents} />
   <LessonsPanel bind:open={panels.lessons} />
+  <GpuPanel bind:open={panels.gpu} />
   <HealthPanel bind:open={panels.health} />
   <ProcessesPanel bind:open={panels.procs} />
   <SuggestionsPanel bind:open={panels.tune} />
@@ -600,6 +617,12 @@
               + (planLimits?.sevenDay ? '. Weekly ' + planLimits.sevenDay.pct + '% used' : '')}>
         ⚡ 5h {planPct}%{#if planLimits?.sevenDay}&nbsp;· 7d {planLimits.sevenDay.pct}%{/if}{#if planLimits?.fiveHour?.resetsAt}&nbsp;· resets {resetsIn(planLimits.fiveHour.resetsAt)}{/if}
       </span>
+    {/if}
+    {#if gpuCard || gpuModels}
+      <button class="cost gpuchip" class:planwarm={gpuVramPct >= 0.75 && gpuVramPct < 0.9} class:planhot={gpuVramPct >= 0.9} onclick={() => openP('gpu')}
+        title={(gpuCard ? gpuCard.name + ': ' + gpuCard.util + '% busy, ' + (gpuCard.vramUsedMB / 1024).toFixed(1) + ' of ' + (gpuCard.vramTotalMB / 1024).toFixed(0) + ' GB video memory used' : 'Local model runtime') + (gpuModels ? ' · ' + gpuModels + ' local model' + (gpuModels === 1 ? '' : 's') + ' loaded' : '') + ' — click for details'}>
+        🎮 {#if gpuCard}{gpuCard.util}% · {(gpuCard.vramUsedMB / 1024).toFixed(1)}/{(gpuCard.vramTotalMB / 1024).toFixed(0)} GB{/if}{#if gpuModels}&nbsp;· {gpuModels} model{gpuModels === 1 ? '' : 's'}{/if}
+      </button>
     {/if}
     {#if errorCount > 0}<button class="errchip" onclick={() => openP('feed')} title="Open the activity feed">⚠ {errorCount} error{errorCount === 1 ? '' : 's'}</button>{/if}
     {#each Object.entries(counts) as [state, n] (state)}
@@ -704,6 +727,9 @@
   /* .select is styled globally in app.css for a consistent modern look */
   .statusbar { font-size: 11px; color: var(--color-text-secondary); flex-wrap: wrap; }
   .cnt { display: inline-flex; align-items: center; gap: 4px; }
+  .gpuchip { cursor: pointer; font: inherit; }
+  .cost.gpuchip.planwarm { color: #B45309; border-color: #F59E0B66; background: #F59E0B1a; }
+  .cost.gpuchip.planhot { color: #B91C1C; border-color: #EF444477; background: #EF44441f; font-weight: 600; }
   .cost.plan.planwarm { color: #B45309; border-color: #F59E0B66; background: #F59E0B1a; }
   .cost.plan.planhot { color: #B91C1C; border-color: #EF444477; background: #EF44441f; font-weight: 600; }
   .cost { font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary); }

@@ -9,7 +9,7 @@
   async function load() {
     loading = true;
     try {
-      const r = await fetch('/api/health');
+      const r = await fetch('/api/health?setup=1');
       data = await r.json();
     } catch (_) {
       data = null;

@@ -41,6 +41,7 @@ const routines = require('./routines.js');
 const projKeyOf = projects.keyOf;   // module ref (snapshot() has a local `projects` that shadows it)
 const health = require('./health.js');
 const setupcheck = require('./setupcheck.js');
+const gpu = require('./gpu.js');
 const transcript = require('./transcript.js');
 const search = require('./search.js');
 const dispatch = require('./dispatch.js');
@@ -1156,6 +1157,47 @@ function patternsScan(days) {
   return p;
 }
 
+// GPU: which processes we lowered (so "restore" touches exactly those), the
+// configured runtime addresses, and a background sample every 20s so the
+// panel's history is there when you open it and tiles know the local models.
+// The setup scan walks every project's .claude folder: measured at 1.3 s to
+// find the projects plus 3.7 s to lint them, all synchronous file reads. Run on
+// the bridge's thread, that froze every dashboard and dropped hook POSTs for
+// five seconds each time Health opened. It runs in a worker thread now, and the
+// result is kept for two minutes.
+let setupCache = { at: 0, promise: null };
+function setupScan() {
+  if (setupCache.promise && Date.now() - setupCache.at < 120000) return setupCache.promise;
+  const { Worker } = require('worker_threads');
+  const p = new Promise((resolve) => {
+    const w = new Worker(`
+      const { parentPort } = require('worker_threads');
+      const projects = require(${JSON.stringify(path.join(__dirname, 'projects.js'))});
+      const setupcheck = require(${JSON.stringify(path.join(__dirname, 'setupcheck.js'))});
+      try {
+        const dirs = projects.discover().map((p) => p.path).filter(Boolean).slice(0, 40);
+        parentPort.postMessage(setupcheck.scan({ projectDirs: dirs }));
+      } catch (e) { parentPort.postMessage({ error: String(e && e.message || e) }); }
+    `, { eval: true });
+    const t = setTimeout(() => { w.terminate(); resolve({ error: 'setup scan timed out' }); }, 60000);
+    w.once('message', (m) => { clearTimeout(t); resolve(m); w.terminate(); });
+    w.once('error', (e) => { clearTimeout(t); resolve({ error: String(e && e.message || e) }); });
+  });
+  setupCache = { at: Date.now(), promise: p };
+  return p;
+}
+// projects.discover() is ~1.3 s of synchronous disk walking; Health only needs a count.
+let projectsCountCache = { at: 0, n: 0 };
+function projectsCount() {
+  if (Date.now() - projectsCountCache.at > 60000) projectsCountCache = { at: Date.now(), n: projects.discover().length };
+  return projectsCountCache.n;
+}
+
+let gpuLowered = [];
+const gpuOpts = () => ({ ollamaUrl: cfg.ollamaUrl || '', lmstudioUrl: cfg.lmstudioUrl || '' });
+setTimeout(() => { gpu.snapshot(gpuOpts()).catch(() => {}); }, 5000);
+setInterval(() => { gpu.snapshot(gpuOpts()).catch(() => {}); }, 20000);
+
 // Improvement trend + lessons (lessons.js). Same shape as the patterns cache: the
 // scan is incremental and yields while it reads, the TTL only coalesces requests.
 // Warmed at boot so the first open of the panel is not a cold 10s read.
@@ -1838,7 +1880,9 @@ function isStalled(a, now) {
 function snapshot() {
   const list = Array.from(agents.values());
   const now = Date.now();
+  const localNames = gpu.installedNames();
   for (const a of list) {
+    a.localModel = a.model && gpu.isLocalModel(a.model, localNames) ? true : undefined;
     const active = a.state !== 'idle' && a.state !== 'done';
     a.runaway = active && (a.runawayManual || ((Number(a.burnRate) || 0) >= BURN_ALERT && (a.burnStreak || 0) >= 2));
     if (a.runaway && !a._wasRunaway) fireAmbient('runaway', a);     // burn-rate flipped to runaway
@@ -2610,7 +2654,7 @@ Allow / Deny it in the dashboard rail.`);
     const sid = String(mu.searchParams.get('session') || '');
     const a = agents.get('sess:' + sid) || Array.from(agents.values()).find((x) => x.sessionId === sid);
     if (!a || !a.transcriptPath) return sendJson(res, 404, { error: 'unknown session' });
-    const m = sessionmeta.read(a.transcriptPath);
+    const m = await sessionmeta.readFull(a.transcriptPath);   // complete, but yields while it reads
     return sendJson(res, m ? 200 : 404, m || { error: 'no transcript' });
   }
   // Is the CLI Gander launches behind the published one? Drives the Update button.
@@ -2979,6 +3023,41 @@ Allow / Deny it in the dashboard rail.`);
     return sendJson(res, 200, await replay.build(body && body.sessionId));
   }
 
+  // ── GPU + local models (🎮 panel) ───────────────────────────────────────────
+  if (url === '/api/gpu' && req.method === 'GET') {
+    try { return sendJson(res, 200, { ...(await gpu.snapshot(gpuOpts())), lowered: gpuLowered.slice() }); }
+    catch (e) { return sendJson(res, 500, { error: String(e && e.message || e) }); }
+  }
+  if (url === '/api/gpu/unload' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (body && body.all) return sendJson(res, 200, { ok: true, results: await gpu.unloadAll(gpuOpts()) });
+    const r = await gpu.unloadOllama(body && body.model, gpuOpts());
+    if (r.ok) console.log('[gpu] unloaded ' + r.model);
+    return sendJson(res, r.error ? 400 : 200, r);
+  }
+  // "Free the GPU": unload every local model AND drop Claude-started heavy work
+  // (renders, encodes, Python jobs) to Idle priority. Nothing is stopped; restore
+  // puts exactly the processes we lowered back to Normal.
+  if (url === '/api/gpu/free' && req.method === 'POST') {
+    const body = await readBody(req);
+    const restore = body && body.mode === 'restore';
+    if (process.platform !== 'win32' && !restore) {
+      return sendJson(res, 200, { ok: true, unloaded: await gpu.unloadAll(gpuOpts()), lowered: [], note: 'priority lowering is Windows-only for now' });
+    }
+    const unloaded = restore ? [] : await gpu.unloadAll(gpuOpts());
+    const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(SCRIPTS_DIR, 'gpu-game-mode.ps1'), '-Mode', restore ? 'restore' : 'lower'];
+    if (restore) args.push('-Pids', gpuLowered.map((x) => x.pid).join(','));
+    execFile('powershell', args, { timeout: 30000, windowsHide: true }, (err, stdout) => {
+      let changed = [];
+      try { const j = JSON.parse(String(stdout || '').trim() || '[]'); changed = Array.isArray(j) ? j : [j]; } catch (_) {}
+      if (restore) gpuLowered = [];
+      else for (const c of changed) if (!gpuLowered.some((x) => x.pid === c.pid)) gpuLowered.push(c);
+      console.log(`[gpu] ${restore ? 'restored' : 'freed'}: ${unloaded.length} model(s) unloaded, ${changed.length} process(es) ${restore ? 'back to Normal' : 'set to Idle'}`);
+      sendJson(res, 200, { ok: true, unloaded, changed, lowered: gpuLowered.slice(), error: err && !changed.length ? String(err.message || err).slice(0, 200) : undefined });
+    });
+    return;
+  }
+
   // ── Improvement: are the agents getting better? (📈 panel) ──────────────────
   if (url === '/api/lessons' && req.method === 'GET') {
     const lu = new URL(req.url, 'http://localhost');
@@ -3009,17 +3088,20 @@ Allow / Deny it in the dashboard rail.`);
       port: argPort,
       eventsReceived,
       sessions,
-      projectsKnown: projects.discover().length,
+      projectsKnown: projectsCount(),
       version,
     };
-    const doctor = await doctorChecks().catch(() => []);
+    const hu = new URL(req.url, 'http://localhost');
     // Your Claude Code setup, not Gander's: agent frontmatter, .mcp.json, and
     // above all whether each hook command resolves to something runnable. Hooks
     // fail SILENTLY — a missing binary means the event just never happens, with
     // no error in any log — so nothing else would ever tell you.
-    let setup = null;
-    try { setup = setupcheck.scan({ projectDirs: projects.discover().map((p) => p.path).filter(Boolean).slice(0, 40) }); }
-    catch (e) { setup = { error: String(e && e.message || e) }; }
+    // Only the Health panel asks for it (?setup=1): every page load also hits
+    // /api/health, and the scan is seconds of file reads.
+    const [doctor, setup] = await Promise.all([
+      doctorChecks().catch(() => []),
+      hu.searchParams.get('setup') === '1' ? setupScan() : Promise.resolve(null),
+    ]);
     return sendJson(res, 200, { bridge, doctor, setup, ...health.report() });
   }
 
@@ -3067,6 +3149,7 @@ Allow / Deny it in the dashboard rail.`);
     ctxAlertPct: cfg.ctxAlertPct === undefined ? 0.85 : Number(cfg.ctxAlertPct) || 0,
     usageAlertPct: cfg.usageAlertPct === undefined ? 90 : Number(cfg.usageAlertPct) || 0,
     lessonMinCount: Number(cfg.lessonMinCount) >= 2 ? Number(cfg.lessonMinCount) : 3,
+    ollamaUrl: String(cfg.ollamaUrl || ''), lmstudioUrl: String(cfg.lmstudioUrl || ''),
     autoRetire: cfg.autoRetire !== false,
     retireDoneSec: Number(cfg.retireDoneSec) || 180, retireClosedSec: Number(cfg.retireClosedSec) || 60,
     retireIdleSec: Number(cfg.retireIdleSec) || 1500, retireStaleActiveSec: Number(cfg.retireStaleActiveSec) || 1800,
@@ -3090,6 +3173,12 @@ Allow / Deny it in the dashboard rail.`);
     if (body.ctxAlertPct !== undefined) cfg.ctxAlertPct = num(body.ctxAlertPct, 0, 1, 0.85);
     if (body.usageAlertPct !== undefined) cfg.usageAlertPct = num(body.usageAlertPct, 0, 100, 90);
     if (body.lessonMinCount !== undefined) cfg.lessonMinCount = num(body.lessonMinCount, 2, 50, 3);
+    for (const k of ['ollamaUrl', 'lmstudioUrl']) {
+      if (body[k] === undefined) continue;
+      const v = String(body[k] || '').trim().slice(0, 200);
+      if (v && !/^https?:\/\/[\w.\-[\]:]+(:\d+)?\/?$/i.test(v)) return sendJson(res, 400, { error: k + ' must look like http://host:port' });
+      cfg[k] = v.replace(/\/+$/, '');
+    }
     if (body.autoRetire !== undefined) { cfg.autoRetire = !!body.autoRetire; RETIRE.enabled = cfg.autoRetire; }
     for (const [k, rk, d] of [['retireDoneSec', 'done', 180], ['retireClosedSec', 'closed', 60], ['retireIdleSec', 'idle', 1500], ['retireStaleActiveSec', 'staleActive', 1800]]) {
       if (body[k] !== undefined) { cfg[k] = num(body[k], 10, 864000, d); RETIRE[rk] = cfg[k] * 1000; }

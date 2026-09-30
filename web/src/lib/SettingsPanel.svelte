@@ -107,7 +107,7 @@
 
   // ── Advanced (every remaining bridge/aoc-config.json knob — thresholds, tile retirement, test gate, integrations, remote access) ──
   let advOpen = $state(false); let advStatus = $state(''); let advRestart = $state(false); let advRestarting = $state(false);
-  let adv = $state({ stallMinutes: 0, burnAlert: 0, longRunMinutes: 0, autoRetire: true, retireDoneSec: 0, retireClosedSec: 0, retireIdleSec: 0, retireStaleActiveSec: 0, testCmd: '', codex: false, allowRemote: false, fleetIntervalMs: 0, lessonMinCount: 3 });
+  let adv = $state({ stallMinutes: 0, burnAlert: 0, longRunMinutes: 0, autoRetire: true, retireDoneSec: 0, retireClosedSec: 0, retireIdleSec: 0, retireStaleActiveSec: 0, testCmd: '', codex: false, allowRemote: false, fleetIntervalMs: 0, lessonMinCount: 3, ollamaUrl: '', lmstudioUrl: '' });
   let advCtxPctUI = $state(85);   // shown as a percent, stored 0..1
   let advTestRows = $state([]);   // per-project test-command overrides: [{ project, cmd }]
   // secrets are never echoed by the bridge: we get { set, hint } and send a plain string only when the user types one ("" = clear)
@@ -128,6 +128,7 @@
       ctxAlertPct: j.ctxAlertPct === undefined ? 0.85 : Number(j.ctxAlertPct) || 0,
       usageAlertPct: j.usageAlertPct === undefined ? 90 : Number(j.usageAlertPct) || 0,
       lessonMinCount: Number(j.lessonMinCount) || 3,
+      ollamaUrl: j.ollamaUrl || '', lmstudioUrl: j.lmstudioUrl || '',
     };
     advCtxPctUI = Math.round((adv.ctxAlertPct || 0) * 100);
     advTestRows = Object.entries(j.testCmds || {}).map(([project, cmd]) => ({ project, cmd }));
@@ -151,6 +152,7 @@
       ctxAlertPct: (Number(advCtxPctUI) || 0) / 100,
       usageAlertPct: Number(adv.usageAlertPct) || 0,
       lessonMinCount: Math.max(2, Number(adv.lessonMinCount) || 3),
+      ollamaUrl: String(adv.ollamaUrl || '').trim(), lmstudioUrl: String(adv.lmstudioUrl || '').trim(),
     };
     // secrets: typed value → send it · "clear" pressed → send "" · otherwise omit (bridge keeps the stored one)
     if (advTgTokIn.trim()) body.telegramReplyToken = advTgTokIn.trim(); else if (advClear.telegramReplyToken) body.telegramReplyToken = '';
@@ -599,6 +601,9 @@
           <label class="cbrow">Context alert at <input class="in num" type="number" min="0" max="100" bind:value={advCtxPctUI} onchange={() => (adv.ctxAlertPct = (Number(advCtxPctUI) || 0) / 100)} /> % full <span class="dim">(0 = off)</span></label>
           <label class="cbrow">Plan-limit alert at <input class="in num" type="number" min="0" max="100" bind:value={adv.usageAlertPct} /> % of the 5-hour window <span class="dim">(needs the status line installed)</span></label>
           <label class="cbrow">Suggest a rule after <input class="in num" type="number" min="2" max="50" bind:value={adv.lessonMinCount} /> repeats of the same error <span class="dim">(📈 Improvement panel; also needs 2+ sessions)</span></label>
+          <label class="cbrow">Ollama address <input class="in grow" type="text" placeholder="http://127.0.0.1:11434 (default)" bind:value={adv.ollamaUrl} /></label>
+          <label class="cbrow">LM Studio address <input class="in grow" type="text" placeholder="http://127.0.0.1:1234 (default)" bind:value={adv.lmstudioUrl} /></label>
+          <div class="tg-hint">For the 🎮 GPU panel. Leave blank unless the runtime is on another port or machine.</div>
 
           <div class="adv-group">Tiles</div>
           <label class="cbrow"><input type="checkbox" bind:checked={adv.autoRetire} /> Auto clock-out <span class="dim">— retire tiles on their own after the timers below</span></label>

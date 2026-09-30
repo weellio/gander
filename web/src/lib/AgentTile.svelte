@@ -32,7 +32,7 @@
       </span>
     {/if}
     {#if agent.machine}<span class="model machine" title="Running on fleet peer “{agent.machine}” — commands are forwarded there">🖥 {agent.machine}</span>{/if}
-    {#if agent.model && agent.model !== 'inherit'}<span class="model" title="Defined model">{agent.model}</span>{/if}
+    {#if agent.model && agent.model !== 'inherit'}<span class="model" class:local={agent.localModel} title={agent.localModel ? 'Runs on a local model (Ollama / LM Studio) — see 🎮 GPU for what it is holding' : 'Defined model'}>{agent.localModel ? '🖥 ' : ''}{agent.model}</span>{/if}
     <span class="badge">{awaiting ? '🔔 ' : ''}{STATE_LABEL[agent.state] || agent.state}</span>
   </div>
 
@@ -75,6 +75,7 @@
   .cost.hot { background: #EF4444; color: #fff; border-color: #EF4444; }
   .model { font-size: 9px; font-family: var(--font-mono); padding: 2px 6px; border-radius: 99px; white-space: nowrap;
     background: var(--color-background-secondary); color: var(--color-text-tertiary); border: 0.5px solid var(--color-border-tertiary); }
+  .model.local { color: #7C3AED; border-color: #7C3AED66; background: #7C3AED1a; font-weight: 600; }
   .model.machine { color: #06B6D4; border-color: #06B6D466; background: #06B6D41a; font-weight: 600; }
   /* Codex chip — teal so OpenAI sessions read at a glance in the grid */
   .model.codex { font-size: 10px; color: #14B8A6; border-color: #14B8A680; background: #14B8A61a; font-weight: 600; letter-spacing: 0.02em; }
