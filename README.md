@@ -25,6 +25,9 @@ A live, animated dashboard of your **Claude Code agents and sub-agents** — an 
 - **🪧 Coordination board** — a per-project shared store the agents post to so a swarm builds on each other's work instead of re-deriving it: notes + findings with build-on lineage, 💎 gems that carry to the next session, file claims, plan review, and escalations that ping you. Human-visible by default.
 - **⚡ Gander Dispatch** — host sessions inside the bridge: instant replies, real permission buttons, live plan-window telemetry. Your own `claude` login, plan quota, **no API key**.
 - **↯ Direct session inbox · status line · 👥 teams** — replies to plain terminal / VS Code sessions go **straight into Claude Code's own cross-session inbox** (no window typing); a one-line `statusLine` install shows needs-you / queue / review counts in every terminal; Agent Teams' roster, task list and mailboxes render as a **👥 Agent teams** strip when Claude runs one.
+- **📈 Improvement tracking**: are your agents actually getting better? Rework and tool-error rates over 60 days, the errors that keep repeating turned into draft CLAUDE.md rules, and every rule you add measured afterwards: working, no effect, or worse.
+- **🎮 GPU & local models**: what is on the graphics card, which Ollama / LM Studio models are holding video memory and when they unload, one-click Unload, and **Free the GPU** for when you want the card back. It leaves the driver alone while you game.
+- **🩺 Setup check**: lints your own Claude Code setup (agents, skills, MCP servers, settings files) and checks that every hook command points at something that exists. Hooks fail silently, so this is the only place you would hear about it.
 - **💸 Cost guardrails** — live per-session spend, `$/min` runaway alerts, daily/per-session budgets with an optional hard stop, and 5-hour plan-window pacing.
 - **📊 Session analytics + CLAUDE.md audit** — cache-hit %, context-window fill, a one-click `/compact` nudge, and a deterministic CLAUDE.md trimmer that flags secrets, dead paths, and stale prose.
 - **🔎 Spend forensics** — where your tokens went and whether it shipped: a *shipped %* (spend that landed a commit vs. exploratory), spend by activity, edit one-shot rate + cost-per-edit, and a waste scan (files re-read many times, unused MCP servers). Deterministic — no model calls.
@@ -33,7 +36,7 @@ A live, animated dashboard of your **Claude Code agents and sub-agents** — an 
 - **Projects control center** — skills, agents, commands, hooks, MCP, `settings.json`, git status/commit/push — for every project, in one place.
 - **Tune + Skills usage** — deterministic mining of your own transcripts: your prompting "turn tax" with copy-paste fixes, and which skills actually get used (never-used = context dead weight).
 - **🖥 Fleet + Claude Desktop** — all your machines' agents on one floor; a view-only tile for the Claude desktop app.
-- **📱 Anywhere** — installable PWA for your phone, **Telegram or Slack** two-way chat (reply to agents, `/task` queueing, alerts — Slack via Socket Mode, zero deps), native desktop toasts, smart-light ambient alerts.
+- **📱 Anywhere**: a thumb-sized **phone console** at `/phone` (Allow / Deny prompts, approve merges, reply to a stuck session), an installable PWA, **Telegram or Slack** two-way chat (reply to agents, `/task` queueing, alerts — Slack via Socket Mode, zero deps), native desktop toasts, smart-light ambient alerts.
 
 **The full feature reference, with every detail: [docs/FEATURES.md](docs/FEATURES.md).**
 
@@ -78,7 +81,7 @@ Full setup — scoped installs, ⚡ Dispatch, Telegram, budgets, smart lights, t
 | [docs/OTHER-MODELS.md](docs/OTHER-MODELS.md) | Other models (router = full experience) + other agent CLIs (Codex, Gemini, Grok, aider…) via `gander-wrap`, with the works-anywhere vs Claude-only matrix |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the hooks wire up, file layout, event API, manual/headless control, contributing |
 | [docs/FAQ.md](docs/FAQ.md) | Common questions — also in-app under the **?** button |
-| [docs/REMOTE.md](docs/REMOTE.md) | Phone (PWA), Tailscale/cloudflared, multi-machine fleet, access tokens |
+| [docs/REMOTE.md](docs/REMOTE.md) | The phone console, the PWA, Tailscale/cloudflared, multi-machine fleet, access tokens |
 | [hardware/README.md](hardware/README.md) | Build a **$4 USB-powered ambient alert lamp** — parts, wiring, firmware |
 
 ## Platform support

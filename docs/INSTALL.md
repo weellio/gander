@@ -114,6 +114,11 @@ It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — 
 | `fleet` `{ peers, intervalMs }` | Fleet hub polling (see above). A Settings save keeps a hand-edited `intervalMs`. |
 | `pricing` · `testCmds` · `testCmd` · `allowRemote` · `accessToken` | See the rows above. |
 | `license` | Optional licence key (also `AOC_LICENSE`). |
+| `ctxAlertPct` [0.85] · `usageAlertPct` [90] | Warn when a session's context is this full, and when the 5-hour plan window passes this %. |
+| `lessonMinCount` [3] | 📈 Improvement: how many times an error must repeat (across 2+ sessions) before it is suggested as a rule. |
+| `ollamaUrl` · `lmstudioUrl` [local defaults] | 🎮 GPU panel: where Ollama / LM Studio listen, if not the usual local ports. |
+| `gameNames` | 🎮 Extra game executables that pause GPU readings (Unreal Engine games and big titles are recognised already). |
+| `desktopWatch` [true] | Watch the Claude desktop app and show it as a view-only tile. |
 | `codex` [true] | Show OpenAI Codex sessions (read from `$CODEX_HOME`, default `~/.codex`) as tiles + a Cost-panel section. Price them with a `pricing` entry such as `"gpt-6"`. |
 
 Queue settings (`enabled`, `maxSlots`, `worktrees`, `testGate`, `review`) live in `bridge/aoc-queue.json` under `cfg` and are set from the 📋 panel. Project roots/known folders live in `bridge/aoc-projects.json`.

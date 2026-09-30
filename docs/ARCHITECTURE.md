@@ -6,7 +6,7 @@ Internals for developers. See also: [README](../README.md) · [FEATURES.md](FEAT
 
 | Hook | Effect on the dashboard |
 |------|-------------------------|
-| `SessionStart` | Runs `bridge/launch.js` (async, 10s timeout): starts the bridge and opens the dashboard once |
+| `SessionStart` | Runs `bridge/launch.js` (async, 10s timeout): starts the bridge and opens the dashboard once. A lock file makes sure only one launcher starts it, even when several sessions open at the same moment; a second bridge that finds the port taken exits. |
 | `UserPromptSubmit` | Orchestrator → thinking; a substantive prompt becomes the session's current goal |
 | `PreToolUse` | Maps to no state — it is only the return channel for the operator's stop/deny command |
 | `PostToolUse` | Maps the tool to a state (Read/Glob→reading, Write/Edit→coding, Bash→coding/testing, Task→spawning, …) |
@@ -57,7 +57,7 @@ bridge/
   replay.js            # session replay: transcript → timeline events with cumulative cost
   fleet.js             # multi-machine hub: poll peer bridges, merge their agents, forward commands
   desktop.js           # Claude Desktop watcher: process + MCP-log + agent-mode activity (view-only tile)
-  launch.js            # cross-platform idempotent launcher
+  launch.js            # cross-platform idempotent launcher (atomic lock: one bridge, however many sessions start at once)
   license.js           # optional Gumroad license verification
   projects.js          # project registry: discover projects + components, copy between them
   git.js               # per-project git status (branch/dirty/ahead/behind)
@@ -68,12 +68,21 @@ bridge/
   github.js            # PRs/issues via the gh CLI
   configmgr.js         # read/delete hooks + MCP servers in a project
   history.js           # recent resumable sessions
+  health.js            # hook-install checklist for the Health panel
+  setupcheck.js        # lints the user's own setup: agents, skills, MCP, settings, hook commands (run in a worker thread)
+  sessionmeta.js       # session title / mode / artifacts / files from transcripts (bounded reads, background catch-up)
+  subagents.js         # sub-agent task names, tokens and cost from the files beside each transcript
+  codex.js             # OpenAI Codex sessions from $CODEX_HOME
+  peers.js · teams.js  # cross-session inbox delivery · Agent Teams roster + tasks
+  version.js           # installed vs published Claude CLI (drives Update Claude)
+  lessons.js           # improvement trend + recurring-error families + before/after rule measurement
+  gpu.js               # nvidia-smi + Ollama / LM Studio; game detection keeps it off the driver while you play
 web/                   # Svelte 5 + Vite dashboard SOURCE
   src/App.svelte, src/lib/*.svelte, src/lib/*.js
   src/lib/{ProjectsSidebar,CostPanel,GithubPanel,SettingsPanel,HistoryPanel}.svelte  # control-center panels
   src/lib/procgroups.js  # shared server-room grouping (Office floor robots + Mosaic strip)
   -> `npm run build` outputs to dashboard/dist (what the bridge serves)
-dashboard/dist/        # built dashboard (shipped)
+dashboard/dist/        # built dashboard (shipped); phone.html is the phone console, copied from web/public/
 skills/                # copied into ~/.claude (or the project's .claude) by the installer — setup/lib.js COMPONENTS
   agent-ops/           # open/restart/reset Gander from any session
   autopilot/           # run a multi-step task to completion, sub-agent per step
@@ -84,7 +93,9 @@ agents/
   context-auditor.md   # clean-context specialist behind context-audit
 commands/
   gander.md            # /gander — open the dashboard + report whether the bridge is running
-install.js, uninstall.js   # merge/remove the hooks in settings.json (+ the components above)
+install.js, uninstall.js   # merge/remove the hooks in settings.json (+ the components above).
+                           # Re-running install is safe: it recognises its own hooks whatever the drive-letter case.
+scripts/gpu-game-mode.ps1  # lowers / restores the priority of heavy work Claude started (Free the GPU)
 ```
 
 The bridge + hooks stay small, readable Node (they run on every tool call on the user's machine); the dashboard is a compiled Svelte app.

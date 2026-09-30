@@ -2,7 +2,7 @@
 
 There are two ways to use Gander away from the desk. This guide covers getting to both **securely**.
 
-| | **Phone console** — `/phone` | **Full dashboard** — `/` |
+| | **Phone console** (`/phone`) | **Full dashboard** (`/`) |
 | --- | --- | --- |
 | Built for | a thumb, one-handed | a desk |
 | Shows | what needs you, and nothing else | the whole floor |
@@ -11,7 +11,7 @@ There are two ways to use Gander away from the desk. This guide covers getting t
 
 **Start with `/phone`.** It is a plain page that polls a single small endpoint, so it works on a weak signal and stops polling the moment you pocket the phone.
 
-The full dashboard is also a **PWA** — add it to your home screen and it installs as a standalone app.
+The full dashboard is also a **PWA**: add it to your home screen and it installs as a standalone app.
 
 ## The security model
 
@@ -74,10 +74,10 @@ Don't want to hunt for your LAN address? **⚙ Settings → Advanced → 📱 Ph
 What you get:
 
 - **How many things need you**, in one number you can read across a room
-- **Permission prompts** — the tool, the exact command, and **Allow** / **Deny**
-- **Held branches** — **Approve & merge** or **Request changes**
-- **Stuck sessions** — what it asked, and a box to answer it
-- **Plan usage** — your 5-hour and 7-day percentages, when the status line has reported them
+- **Permission prompts**: the tool, the exact command, and **Allow** / **Deny**
+- **Held branches**: **Approve & merge** or **Request changes**
+- **Stuck sessions**: what it asked, and a box to answer it
+- **Plan usage**: your 5-hour and 7-day percentages, when the status line has reported them
 
 It polls one small endpoint every 4 seconds and stops entirely when the page is hidden.
 
