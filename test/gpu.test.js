@@ -78,3 +78,35 @@ describe('is this agent running on a local model?', () => {
     assert.equal(g.isLocalModel('', installed), false);
   });
 });
+
+describe('games are recognised by process name (no driver call)', () => {
+  test('Unreal Engine games ship as <Name>-Win64-Shipping.exe', () => {
+    assert.equal(g.isGame('FortniteClient-Win64-Shipping.exe'), true);
+    assert.equal(g.isGame('VALORANT-Win64-Shipping.exe'), true);
+  });
+  test('well-known titles are built in', () => {
+    assert.equal(g.isGame('cs2.exe'), true);
+    assert.equal(g.isGame('RobloxPlayerBeta.exe'), true);
+  });
+  test('ordinary programs are not games', () => {
+    for (const n of ['chrome.exe', 'Code.exe', 'node.exe', 'explorer.exe', 'EpicGamesLauncher.exe', 'steamwebhelper.exe', 'Discord.exe']) assert.equal(g.isGame(n), false, n);
+  });
+  test('the user can add their own, with or without .exe, any case', () => {
+    assert.equal(g.isGame('MyIndieGame.exe', ['myindiegame']), true);
+    assert.equal(g.isGame('Other.EXE', ['other.exe']), true);
+    assert.equal(g.isGame('MyIndieGame.exe', []), false);
+  });
+});
+
+describe('launcher helpers are not games', () => {
+  test("Epic's overlay runs with no game open — it must not pause Gander (regression)", () => {
+    assert.equal(g.isGame('EOSOverlayRenderer-Win64-Shipping.exe'), false);
+    assert.equal(g.isGame('UnrealCEFSubProcess.exe'), false);
+    assert.equal(g.isGame('CrashReportClient.exe'), false);
+  });
+  test('a friendly name for the banner', () => {
+    assert.equal(g.gameLabel('FortniteClient-Win64-Shipping.exe'), 'Fortnite');
+    assert.equal(g.gameLabel('VALORANT-Win64-Shipping.exe'), 'VALORANT');
+    assert.equal(g.gameLabel('cs2.exe'), 'cs2');
+  });
+});

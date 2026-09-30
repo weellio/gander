@@ -107,7 +107,7 @@
 
   // ── Advanced (every remaining bridge/aoc-config.json knob — thresholds, tile retirement, test gate, integrations, remote access) ──
   let advOpen = $state(false); let advStatus = $state(''); let advRestart = $state(false); let advRestarting = $state(false);
-  let adv = $state({ stallMinutes: 0, burnAlert: 0, longRunMinutes: 0, autoRetire: true, retireDoneSec: 0, retireClosedSec: 0, retireIdleSec: 0, retireStaleActiveSec: 0, testCmd: '', codex: false, allowRemote: false, fleetIntervalMs: 0, lessonMinCount: 3, ollamaUrl: '', lmstudioUrl: '' });
+  let adv = $state({ stallMinutes: 0, burnAlert: 0, longRunMinutes: 0, autoRetire: true, retireDoneSec: 0, retireClosedSec: 0, retireIdleSec: 0, retireStaleActiveSec: 0, testCmd: '', codex: false, allowRemote: false, fleetIntervalMs: 0, lessonMinCount: 3, ollamaUrl: '', lmstudioUrl: '', gameNames: '' });
   let advCtxPctUI = $state(85);   // shown as a percent, stored 0..1
   let advTestRows = $state([]);   // per-project test-command overrides: [{ project, cmd }]
   // secrets are never echoed by the bridge: we get { set, hint } and send a plain string only when the user types one ("" = clear)
@@ -128,7 +128,7 @@
       ctxAlertPct: j.ctxAlertPct === undefined ? 0.85 : Number(j.ctxAlertPct) || 0,
       usageAlertPct: j.usageAlertPct === undefined ? 90 : Number(j.usageAlertPct) || 0,
       lessonMinCount: Number(j.lessonMinCount) || 3,
-      ollamaUrl: j.ollamaUrl || '', lmstudioUrl: j.lmstudioUrl || '',
+      ollamaUrl: j.ollamaUrl || '', lmstudioUrl: j.lmstudioUrl || '', gameNames: j.gameNames || '',
     };
     advCtxPctUI = Math.round((adv.ctxAlertPct || 0) * 100);
     advTestRows = Object.entries(j.testCmds || {}).map(([project, cmd]) => ({ project, cmd }));
@@ -152,7 +152,7 @@
       ctxAlertPct: (Number(advCtxPctUI) || 0) / 100,
       usageAlertPct: Number(adv.usageAlertPct) || 0,
       lessonMinCount: Math.max(2, Number(adv.lessonMinCount) || 3),
-      ollamaUrl: String(adv.ollamaUrl || '').trim(), lmstudioUrl: String(adv.lmstudioUrl || '').trim(),
+      ollamaUrl: String(adv.ollamaUrl || '').trim(), lmstudioUrl: String(adv.lmstudioUrl || '').trim(), gameNames: String(adv.gameNames || ''),
     };
     // secrets: typed value → send it · "clear" pressed → send "" · otherwise omit (bridge keeps the stored one)
     if (advTgTokIn.trim()) body.telegramReplyToken = advTgTokIn.trim(); else if (advClear.telegramReplyToken) body.telegramReplyToken = '';
@@ -604,6 +604,8 @@
           <label class="cbrow">Ollama address <input class="in grow" type="text" placeholder="http://127.0.0.1:11434 (default)" bind:value={adv.ollamaUrl} /></label>
           <label class="cbrow">LM Studio address <input class="in grow" type="text" placeholder="http://127.0.0.1:1234 (default)" bind:value={adv.lmstudioUrl} /></label>
           <div class="tg-hint">For the 🎮 GPU panel. Leave blank unless the runtime is on another port or machine.</div>
+          <label class="cbrow">Also treat as games <input class="in grow" type="text" placeholder="e.g. MyGame.exe, OtherGame.exe" bind:value={adv.gameNames} /></label>
+          <div class="tg-hint">While a game runs, Gander stops reading the graphics driver so it can't cause stutter. Unreal Engine games (Fortnite, Valorant…) and most big titles are recognised automatically — add any it misses here.</div>
 
           <div class="adv-group">Tiles</div>
           <label class="cbrow"><input type="checkbox" bind:checked={adv.autoRetire} /> Auto clock-out <span class="dim">— retire tiles on their own after the timers below</span></label>

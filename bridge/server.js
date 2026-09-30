@@ -1194,9 +1194,14 @@ function projectsCount() {
 }
 
 let gpuLowered = [];
-const gpuOpts = () => ({ ollamaUrl: cfg.ollamaUrl || '', lmstudioUrl: cfg.lmstudioUrl || '' });
-setTimeout(() => { gpu.snapshot(gpuOpts()).catch(() => {}); }, 5000);
-setInterval(() => { gpu.snapshot(gpuOpts()).catch(() => {}); }, 20000);
+const gameNamesCfg = () => (Array.isArray(cfg.gameNames) ? cfg.gameNames : String(cfg.gameNames || '').split(/[,\n]/)).map((x) => String(x).trim()).filter(Boolean);
+const gpuOpts = () => ({ ollamaUrl: cfg.ollamaUrl || '', lmstudioUrl: cfg.lmstudioUrl || '', gameNames: gameNamesCfg() });
+// No background GPU sampling: nvidia-smi holds the graphics driver ~150-190 ms
+// per call, and a background poll made games on the same card stutter on a
+// beat. Only the installed-model list is kept fresh (plain HTTP to Ollama), so
+// tiles can still be marked as running on a local model.
+setTimeout(() => { gpu.refreshInstalled(gpuOpts()).catch(() => {}); }, 5000);
+setInterval(() => { gpu.refreshInstalled(gpuOpts()).catch(() => {}); }, 60000);
 
 // Improvement trend + lessons (lessons.js). Same shape as the patterns cache: the
 // scan is incremental and yields while it reads, the TTL only coalesces requests.
@@ -3025,7 +3030,8 @@ Allow / Deny it in the dashboard rail.`);
 
   // ── GPU + local models (🎮 panel) ───────────────────────────────────────────
   if (url === '/api/gpu' && req.method === 'GET') {
-    try { return sendJson(res, 200, { ...(await gpu.snapshot(gpuOpts())), lowered: gpuLowered.slice() }); }
+    const gu = new URL(req.url, 'http://localhost');
+    try { return sendJson(res, 200, { ...(await gpu.snapshot(gpuOpts(), { panel: gu.searchParams.get('panel') === '1' })), lowered: gpuLowered.slice() }); }
     catch (e) { return sendJson(res, 500, { error: String(e && e.message || e) }); }
   }
   if (url === '/api/gpu/unload' && req.method === 'POST') {
@@ -3149,7 +3155,7 @@ Allow / Deny it in the dashboard rail.`);
     ctxAlertPct: cfg.ctxAlertPct === undefined ? 0.85 : Number(cfg.ctxAlertPct) || 0,
     usageAlertPct: cfg.usageAlertPct === undefined ? 90 : Number(cfg.usageAlertPct) || 0,
     lessonMinCount: Number(cfg.lessonMinCount) >= 2 ? Number(cfg.lessonMinCount) : 3,
-    ollamaUrl: String(cfg.ollamaUrl || ''), lmstudioUrl: String(cfg.lmstudioUrl || ''),
+    ollamaUrl: String(cfg.ollamaUrl || ''), lmstudioUrl: String(cfg.lmstudioUrl || ''), gameNames: gameNamesCfg().join(', '),
     autoRetire: cfg.autoRetire !== false,
     retireDoneSec: Number(cfg.retireDoneSec) || 180, retireClosedSec: Number(cfg.retireClosedSec) || 60,
     retireIdleSec: Number(cfg.retireIdleSec) || 1500, retireStaleActiveSec: Number(cfg.retireStaleActiveSec) || 1800,
@@ -3173,6 +3179,7 @@ Allow / Deny it in the dashboard rail.`);
     if (body.ctxAlertPct !== undefined) cfg.ctxAlertPct = num(body.ctxAlertPct, 0, 1, 0.85);
     if (body.usageAlertPct !== undefined) cfg.usageAlertPct = num(body.usageAlertPct, 0, 100, 90);
     if (body.lessonMinCount !== undefined) cfg.lessonMinCount = num(body.lessonMinCount, 2, 50, 3);
+    if (body.gameNames !== undefined) cfg.gameNames = String(body.gameNames || '').split(/[,\n]/).map((x) => x.trim()).filter(Boolean).slice(0, 50).map((x) => x.slice(0, 80));
     for (const k of ['ollamaUrl', 'lmstudioUrl']) {
       if (body[k] === undefined) continue;
       const v = String(body[k] || '').trim().slice(0, 200);

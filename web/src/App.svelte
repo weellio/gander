@@ -336,7 +336,7 @@
     const uid = setInterval(() => { if ($autoUsage) pollUsage(); }, 60000);
     const bid = setInterval(pollBriefings, 60000);
     pollGpu();
-    const gid = setInterval(pollGpu, 20000);
+    const gid = setInterval(pollGpu, 60000);   // the bridge reads the driver at most once a minute for the chip anyway
     const onGpu = (e) => { if (e.detail && !e.detail.error) gpuInfo = e.detail; };
     window.addEventListener('gander-gpu', onGpu);
     return () => { clearInterval(uid); clearInterval(bid); clearInterval(gid); window.removeEventListener('gander-gpu', onGpu); };
@@ -618,10 +618,10 @@
         ⚡ 5h {planPct}%{#if planLimits?.sevenDay}&nbsp;· 7d {planLimits.sevenDay.pct}%{/if}{#if planLimits?.fiveHour?.resetsAt}&nbsp;· resets {resetsIn(planLimits.fiveHour.resetsAt)}{/if}
       </span>
     {/if}
-    {#if gpuCard || gpuModels}
+    {#if gpuCard || gpuModels || gpuInfo?.game}
       <button class="cost gpuchip" class:planwarm={gpuVramPct >= 0.75 && gpuVramPct < 0.9} class:planhot={gpuVramPct >= 0.9} onclick={() => openP('gpu')}
         title={(gpuCard ? gpuCard.name + ': ' + gpuCard.util + '% busy, ' + (gpuCard.vramUsedMB / 1024).toFixed(1) + ' of ' + (gpuCard.vramTotalMB / 1024).toFixed(0) + ' GB video memory used' : 'Local model runtime') + (gpuModels ? ' · ' + gpuModels + ' local model' + (gpuModels === 1 ? '' : 's') + ' loaded' : '') + ' — click for details'}>
-        🎮 {#if gpuCard}{gpuCard.util}% · {(gpuCard.vramUsedMB / 1024).toFixed(1)}/{(gpuCard.vramTotalMB / 1024).toFixed(0)} GB{/if}{#if gpuModels}&nbsp;· {gpuModels} model{gpuModels === 1 ? '' : 's'}{/if}
+        🎮 {#if gpuInfo?.game}paused while gaming{:else if gpuCard}{gpuCard.util}% · {(gpuCard.vramUsedMB / 1024).toFixed(1)}/{(gpuCard.vramTotalMB / 1024).toFixed(0)} GB{/if}{#if gpuModels}&nbsp;· {gpuModels} model{gpuModels === 1 ? '' : 's'}{/if}
       </button>
     {/if}
     {#if errorCount > 0}<button class="errchip" onclick={() => openP('feed')} title="Open the activity feed">⚠ {errorCount} error{errorCount === 1 ? '' : 's'}</button>{/if}

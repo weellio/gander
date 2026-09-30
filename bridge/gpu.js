@@ -128,41 +128,122 @@ let cache = { at: 0, data: null, inflight: null };
 const history = [];
 let installedCache = { at: 0, names: [] };
 
-async function collect(o) {
+// ── when to touch the graphics driver ────────────────────────────────────────
+// nvidia-smi is not free: each call initialises NVML and holds the driver for
+// ~150–190 ms (measured on an RTX 3060 with a game running). The first version
+// of this module sampled it every 20 s in the background AND on every chip poll
+// — two calls every ~6 s while a dashboard was open — and a game on the same
+// card froze on a regular beat. So:
+//   - the driver is only queried when someone is looking: the GPU panel (full,
+//     including the per-program list) or the top-bar chip (stats only, at most
+//     once a minute);
+//   - while a game is running it is never queried at all — the panel shows the
+//     last reading and says why it is paused. Ollama / LM Studio are plain HTTP
+//     and keep working, so Unload and Free the GPU still do.
+const CHIP_DRIVER_MS = 60000;
+
+// Games are recognised by process name — no driver call needed. Unreal Engine
+// games all ship as "<Name>-Win64-Shipping.exe" (Fortnite, Valorant, and many
+// more); the rest is a short list of big titles, plus whatever the user adds.
+const GAME_DEFAULTS = [
+  /-win64-shipping\.exe$/i, /^cs2\.exe$/i, /^dota2\.exe$/i, /^rocketleague\.exe$/i, /^r5apex(_dx12)?\.exe$/i,
+  /^gta5\.exe$/i, /^gta5_enhanced\.exe$/i, /^eldenring\.exe$/i, /^overwatch\.exe$/i, /^league of legends\.exe$/i,
+  /^cod\.exe$/i, /^destiny2\.exe$/i, /^minecraft\.windows\.exe$/i, /^rdr2\.exe$/i, /^cyberpunk2077\.exe$/i,
+  /^starfield\.exe$/i, /^witcher3\.exe$/i, /^bg3(_dx11)?\.exe$/i, /^helldivers2\.exe$/i, /^robloxplayerbeta\.exe$/i,
+];
+// Launcher and overlay helpers built with Unreal share the "-Win64-Shipping"
+// suffix but run whenever the launcher is open, game or no game — Epic's
+// overlay (EOSOverlayRenderer) was the first thing the pattern matched, with
+// Fortnite closed. Treating them as games would pause Gander all day.
+const NOT_GAMES = /^(eosoverlayrenderer|epiconlineservices|unrealcefsubprocess|crashreportclient|epicwebhelper|epicgameslauncher)/i;
+function isGame(name, extra) {
+  const n = String(name || '').trim();
+  if (!n) return false;
+  const low = n.toLowerCase();
+  if ((extra || []).some((e) => { const x = String(e || '').trim().toLowerCase(); return x && (low === x || low === x + '.exe'); })) return true;
+  if (NOT_GAMES.test(n)) return false;
+  return GAME_DEFAULTS.some((re) => re.test(n));
+}
+// "FortniteClient-Win64-Shipping.exe" → "Fortnite"
+function gameLabel(name) {
+  return String(name || '').replace(/\.exe$/i, '').replace(/-Win64-Shipping$/i, '').replace(/Client$/, '') || String(name || '');
+}
+// tasklist is a plain process listing (no driver involved); cached 10 s.
+let gameCache = { at: 0, name: null, inflight: null };
+function runningGame(extra) {
+  if (process.platform !== 'win32') return Promise.resolve(null);
+  if (Date.now() - gameCache.at < 10000) return Promise.resolve(gameCache.name);
+  if (gameCache.inflight) return gameCache.inflight;
+  gameCache.inflight = new Promise((resolve) => {
+    execFile('tasklist', ['/FO', 'CSV', '/NH'], { timeout: 8000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, stdout) => {
+      let found = null;
+      if (!err) for (const line of String(stdout || '').split(/\r?\n/)) {
+        const name = (/^"([^"]+)"/.exec(line) || [])[1];
+        if (name && isGame(name, extra)) { found = name; break; }
+      }
+      gameCache = { at: Date.now(), name: found, inflight: null };
+      resolve(found);
+    });
+  });
+  return gameCache.inflight;
+}
+
+let lastDriver = { at: 0, gpus: [], apps: [], appsAt: 0, available: null };
+
+async function refreshInstalled(o) {
+  if (Date.now() - installedCache.at < 60000) return;
+  const tags = await getJson(ollamaBase(o), '/api/tags');
+  installedCache = { at: Date.now(), names: tags && Array.isArray(tags.models) ? tags.models.map((m) => m.name) : installedCache.names };
+}
+
+// opts.panel: the GPU panel is open (full picture, incl. per-program list).
+// Otherwise: the top-bar chip (stats at most once per CHIP_DRIVER_MS).
+async function collect(o, opts) {
+  const panel = !!(opts && opts.panel);
+  const game = await runningGame(o && o.gameNames);
+  const now = Date.now();
+  const driverDue = !game && (panel || now - lastDriver.at >= CHIP_DRIVER_MS);
   const [gq, aq, ops, ov, lm] = await Promise.all([
-    smi(['--query-gpu=index,name,utilization.gpu,utilization.memory,memory.used,memory.total,temperature.gpu,power.draw,power.limit,fan.speed,driver_version', '--format=csv,noheader,nounits']),
-    smi(['--query-compute-apps=pid,process_name,used_memory', '--format=csv,noheader']),
+    driverDue ? smi(['--query-gpu=index,name,utilization.gpu,utilization.memory,memory.used,memory.total,temperature.gpu,power.draw,power.limit,fan.speed,driver_version', '--format=csv,noheader,nounits']) : Promise.resolve(undefined),
+    driverDue && panel ? smi(['--query-compute-apps=pid,process_name,used_memory', '--format=csv,noheader']) : Promise.resolve(undefined),
     getJson(ollamaBase(o), '/api/ps'),
     getJson(ollamaBase(o), '/api/version'),
     getJson(lmBase(o), '/api/v0/models', 1200),
   ]);
-  if (Date.now() - installedCache.at > 60000) {
-    const tags = await getJson(ollamaBase(o), '/api/tags');
-    installedCache = { at: Date.now(), names: tags && Array.isArray(tags.models) ? tags.models.map((m) => m.name) : installedCache.names };
+  await refreshInstalled(o);
+  if (gq !== undefined) {
+    const gpus = gq == null ? [] : parseSmi(gq);
+    lastDriver = { ...lastDriver, at: now, gpus, available: gq != null && gpus.length > 0 };
+    const g0 = gpus[0];
+    if (g0) {
+      history.push({ at: now, util: g0.util, vramUsedMB: g0.vramUsedMB });
+      if (history.length > HISTORY) history.splice(0, history.length - HISTORY);
+    }
   }
-  const gpus = gq == null ? [] : parseSmi(gq);
-  const apps = aq == null ? [] : parseApps(aq);
-  const now = Date.now();
-  const g0 = gpus[0];
-  if (g0) {
-    history.push({ at: now, util: g0.util, vramUsedMB: g0.vramUsedMB });
-    if (history.length > HISTORY) history.splice(0, history.length - HISTORY);
-  }
+  if (aq !== undefined) lastDriver = { ...lastDriver, apps: aq == null ? [] : parseApps(aq), appsAt: now };
+  const apps = lastDriver.apps;
   return {
     at: now,
-    nvidia: { available: gq != null && gpus.length > 0, gpus, apps, perProcessVram: apps.some((a) => a.vramMB != null) },
+    game: game ? { running: true, name: game, label: gameLabel(game) } : null,
+    nvidia: {
+      available: !!lastDriver.available, gpus: lastDriver.gpus, apps, perProcessVram: apps.some((a) => a.vramMB != null),
+      readAt: lastDriver.at || null, paused: !!game,
+    },
     ollama: { available: !!ov, url: ollamaBase(o), version: ov && ov.version, loaded: ops ? parseOllamaPs(ops) : [], installed: installedCache.names.length },
     lmstudio: { available: !!lm, url: lmBase(o), loaded: lm ? parseLmStudio(lm) : [] },
     history: history.slice(),
   };
 }
 
-function snapshot(o) {
-  if (cache.data && Date.now() - cache.at < CACHE_MS) return Promise.resolve(cache.data);
-  if (cache.inflight) return cache.inflight;
-  cache.inflight = collect(o).then((d) => { cache = { at: Date.now(), data: d, inflight: null }; return d; })
+function snapshot(o, opts) {
+  const panel = !!(opts && opts.panel);
+  // a cached chip-grade picture can't answer a panel request (it lacks the program list)
+  if (cache.data && Date.now() - cache.at < CACHE_MS && (!panel || cache.panel)) return Promise.resolve(cache.data);
+  if (cache.inflight && (!panel || cache.inflightPanel)) return cache.inflight;
+  const p = collect(o, opts).then((d) => { cache = { at: Date.now(), data: d, inflight: null, panel }; return d; })
     .catch((e) => { cache.inflight = null; throw e; });
-  return cache.inflight;
+  cache.inflight = p; cache.inflightPanel = panel;
+  return p;
 }
 
 // The last known picture without doing any work — for annotating tiles.
@@ -194,7 +275,7 @@ async function unloadAll(o) {
 }
 
 module.exports = {
-  snapshot, unloadOllama, unloadAll, installedNames, lastLoaded,
+  snapshot, unloadOllama, unloadAll, installedNames, lastLoaded, refreshInstalled, runningGame, isGame, gameLabel,
   parseSmi, parseApps, parseOllamaPs, parseLmStudio, isLocalModel, normModel,
-  _reset: () => { cache = { at: 0, data: null, inflight: null }; history.length = 0; installedCache = { at: 0, names: [] }; },
+  _reset: () => { cache = { at: 0, data: null, inflight: null }; history.length = 0; installedCache = { at: 0, names: [] }; lastDriver = { at: 0, gpus: [], apps: [], appsAt: 0, available: null }; gameCache = { at: 0, name: null, inflight: null }; },
 };

@@ -16,7 +16,7 @@
 
   async function load() {
     try {
-      const r = await fetch('/api/gpu');
+      const r = await fetch('/api/gpu?panel=1');
       const j = await r.json();
       if (j.error) throw new Error(j.error);
       data = j; err = '';
@@ -123,6 +123,14 @@
       {:else}
         {#if flash}<div class="flash">{flash}</div>{/if}
 
+        {#if data.game}
+          <div class="paused">
+            <b>🎮 {data.game.label || data.game.name} is running — GPU readings are paused.</b>
+            Reading the graphics driver briefly interrupts it, which can make a game stutter, so Gander leaves it alone until the game closes.{#if data.nvidia.readAt}&nbsp;Numbers below are from {ago(data.nvidia.readAt)}.{/if}
+            Local models and <b>Free the GPU</b> still work.
+          </div>
+        {/if}
+
         <!-- ── the card, now ── -->
         <div class="section">
           {#if gpu}
@@ -141,6 +149,8 @@
               <div class="tile"><div class="tk">Temperature</div><div class="tv">{gpu.tempC ?? '—'}°C</div></div>
               <div class="tile"><div class="tk">Power</div><div class="tv">{gpu.powerW != null ? Math.round(gpu.powerW) : '—'}<span class="tu"> W{gpu.powerLimitW ? ' / ' + Math.round(gpu.powerLimitW) : ''}</span></div></div>
             </div>
+          {:else if data.game}
+            <div class="empty">No reading yet — the GPU is read again once the game closes.</div>
           {:else}
             <div class="empty">No NVIDIA GPU found (nvidia-smi isn't available). Local models below still show if Ollama or LM Studio is running.</div>
           {/if}
@@ -239,6 +249,7 @@
   .hdr { display: flex; align-items: center; gap: 8px; }
   .body { flex: 1 1 auto; overflow: auto; display: flex; flex-direction: column; }
   .muted { font-size: 11px; color: var(--color-text-tertiary); padding: 16px 14px; }
+  .paused { font-size: 11px; line-height: 1.5; padding: 10px 14px; color: var(--color-text-primary); background: #F59E0B1a; border-bottom: 0.5px solid #F59E0B66; }
   .flash { font-size: 11px; padding: 8px 14px; background: var(--color-background-secondary); border-bottom: 0.5px solid var(--color-border-tertiary); color: var(--color-text-secondary); }
   .section { padding: 12px 14px; border-bottom: 0.5px solid var(--color-border-tertiary); display: flex; flex-direction: column; gap: 8px; }
   .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-tertiary); }
