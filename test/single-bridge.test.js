@@ -96,3 +96,39 @@ describe('a duplicate bridge exits instead of lingering', () => {
     assert.match(out, /already in use/);
   });
 });
+
+describe('the launcher itself', () => {
+  // Regression: Claude Code kills a SessionStart hook after 10 s and takes its
+  // children with it. A launcher that waited for the bridge to answer was killed
+  // mid-boot — the new bridge died with it and no bridge ran at all.
+  test('exits well inside the hook timeout and leaves the bridge running', async () => {
+    const dir = tmp();
+    const pidFile = path.join(dir, 'fake.pid');
+    const fake = path.join(dir, 'fake-server.js');
+    // a stand-in bridge: answers /api/state after a slow 6 s "boot" (the old launcher waited for it and took 6.6 s; it must not wait), records its pid
+    fs.writeFileSync(fake, `
+      const http = require('http'); const fs = require('fs');
+      const port = Number(process.argv[process.argv.indexOf('--port') + 1]);
+      fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+      setTimeout(() => http.createServer((q, s) => s.end('{}')).listen(port, '127.0.0.1'), 6000);
+    `);
+    const port = await new Promise((r) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => r(p)); }); });
+    const t0 = Date.now();
+    const launcher = spawn(process.execPath, [path.join(__dirname, '..', 'bridge', 'launch.js')], {
+      stdio: 'ignore', env: { ...process.env, AOC_PORT: String(port), GANDER_NO_OPEN: '1', GANDER_SERVER_JS: fake },
+    });
+    const code = await new Promise((r) => launcher.on('exit', r));
+    const took = Date.now() - t0;
+    assert.equal(code, 0);
+    assert.ok(took < 5000, `launcher took ${took} ms; Claude Code kills the hook at 10 s`);
+    // the bridge it started must still come up after the launcher is gone
+    let up = false;
+    for (let i = 0; i < 40 && !up; i++) {
+      up = await new Promise((r) => { const q = require('http').get({ host: '127.0.0.1', port, path: '/api/state', timeout: 500 }, (s) => { s.resume(); r(true); }); q.on('error', () => r(false)); q.on('timeout', () => { q.destroy(); r(false); }); });
+      if (!up) await new Promise((r) => setTimeout(r, 300));
+    }
+    try { process.kill(Number(fs.readFileSync(pidFile, 'utf8'))); } catch (_) {}
+    try { fs.unlinkSync(require('../bridge/launch.js').lockPath(port)); } catch (_) {}
+    assert.equal(up, true, 'the bridge started by the launcher never answered');
+  });
+});

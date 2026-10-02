@@ -23,7 +23,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 const PORT = process.env.AOC_PORT || 3131;
-const SERVER = path.join(__dirname, 'server.js');
+const SERVER = process.env.GANDER_SERVER_JS || path.join(__dirname, 'server.js');   // override: tests only
 const URL = `http://localhost:${PORT}/`;
 const STALE_MS = 20000;
 const lockPath = (port) => path.join(os.tmpdir(), `gander-launch-${port}.lock`);
@@ -83,14 +83,15 @@ function main() {
       env: { ...process.env, CLAUDECODE: '' },
     });
     child.unref();
-    // Hold the lock until the bridge answers (or we give up), so a session that
-    // starts a few seconds later sees either the lock or a live bridge — never a gap.
-    const deadline = Date.now() + 15000;
-    const wait = () => ping((ok) => {
-      if (ok || Date.now() > deadline) { releaseLock(lock); if (ok) openBrowser(URL); process.exit(0); }
-      else setTimeout(wait, 400);
-    }, 1000);
-    setTimeout(wait, 600);
+    // EXIT FAST. Claude Code kills a SessionStart hook after its timeout (10 s)
+    // and takes the hook's child processes with it. An earlier version waited up
+    // to 15 s here for the bridge to answer before releasing the lock — so on a
+    // slow boot the hook was killed, the brand-new bridge died with it, and the
+    // lock was left behind: no bridge at all until something started one by hand.
+    // So: leave in under a second. The lock is NOT released; it simply goes stale
+    // after STALE_MS, which covers the bridge's boot — a session starting in that
+    // window sees the lock and steps aside, one starting later sees a live bridge.
+    setTimeout(() => { openBrowser(URL); process.exit(0); }, 900);
   });
 }
 
