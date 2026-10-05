@@ -19,7 +19,7 @@ $ids = @(); for ($i = 0; $i -lt $Workers; $i++) { $ids += "demo-w$i" }
 
 if ($Clear) {
   foreach ($id in $ids) { ev @{ agentId = $id; remove = $true } }
-  ev @{ agentId = $root; remove = $true }
+  ev @{ agentId = $root; remove = $true; force = $true }
   Write-Host "[demo] cleared"; exit 0
 }
 
@@ -47,5 +47,5 @@ while ((Get-Date) -lt $end) {
 }
 
 foreach ($id in $ids) { ev @{ agentId = $id; remove = $true } }
-ev @{ agentId = $root; remove = $true }
+ev @{ agentId = $root; remove = $true; force = $true }
 Write-Host "[demo] done + cleaned up"

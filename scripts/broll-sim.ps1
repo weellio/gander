@@ -31,7 +31,7 @@ $proj = 'gander-broll'
 function ev($h) {
   try { Invoke-RestMethod -Uri $base -Method Post -Body ($h | ConvertTo-Json -Compress) -ContentType 'application/json' -TimeoutSec 3 | Out-Null } catch {}
 }
-function RemoveAgent($id) { ev @{ agentId = $id; remove = $true } }
+function RemoveAgent($id) { ev @{ agentId = $id; remove = $true; force = $true } }   # force: it created these roots itself
 
 # ── the five concurrent sessions (orchestrator roots) + their swarm sizes ──────
 # Names read like real projects; all share one project tag so the filter + the

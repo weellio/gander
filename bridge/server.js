@@ -606,7 +606,11 @@ function upsert(ev) {
 
   if (ev.remove) {
     const cur = agents.get(id);
-    if (cur && cur.root) {           // keep session roots; just return them to idle
+    // Keep session roots; just return them to idle. `force` is for callers that
+    // created the root themselves (the demo/b-roll scripts): without it their
+    // -Clear could never remove its own fake orchestrator, which then sat on
+    // the floor until the idle clock-out ~25 minutes later.
+    if (cur && cur.root && !ev.force) {
       cur.state = 'idle'; cur.updatedAt = Date.now();
       saveRegistry();
       return { ok: true, kept: id };
