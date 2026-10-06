@@ -56,7 +56,7 @@ These are app-wide settings, configured from the dashboard's **⚙ Settings → 
 Prefer everything in one window? A thin **VS Code extension** in [`vscode-extension/`](../vscode-extension/) puts Gander in VS Code like any other extension:
 
 - **Goose icon in the Activity Bar** (the left rail) — click it to dock the live dashboard in the sidebar next to your code, with ↻ reload and ↗ open-as-tab buttons in its title bar.
-- **🚀 Gander** status-bar button / **"Gander: Open Dashboard (full tab)"** command — the full dashboard as an editor tab (via the built-in Simple Browser), roomier for the Office floor and grid views.
+- **Status bar**: a live count of what needs you. Click it, or run **"Gander: Open Dashboard (full tab)"**, for the full dashboard as an editor tab (via the built-in Simple Browser), roomier for the Office floor and grid views. Off switch: `gander.statusBar`.
 - If the bridge isn't reachable, it can **autostart** it from the repo (`gander.autostart`).
 
 It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — browser users open `localhost:3131`, VS Code users see the identical app. Install the packaged `.vsix` (Extensions → ⋯ → *Install from VSIX…*), or open the folder and press **F5** to develop. See [vscode-extension/README.md](../vscode-extension/README.md).
@@ -93,7 +93,7 @@ It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — 
 
 ### Every JSON key (for scripted / headless setups)
 
-**Every knob is in ⚙ Settings → App configuration** (the rare ones under **🛠 Advanced** — thresholds, tile clock-out timers, test-gate commands, Codex on/off, reply-bot token, licence, remote access, fleet interval — with a one-click **Restart bridge** for the few that bind at startup). You never need to edit a file. The table below is the on-disk reference for scripted setups, keys as the bridge reads them (defaults in brackets):
+**Every knob has a control in the dashboard**, so you never edit a file. Most are in **⚙ Settings → App configuration**; the danger guard and allow-rule suggestions are in **Manage → 🛡 Safety**, the queue in the 📋 panel. The rare ones sit under **🛠 Advanced** (thresholds, tile clock-out timers, test-gate commands, Codex on/off, reply-bot token, licence, remote access, fleet interval, quiet hours, GPU and game settings), with a one-click **Restart bridge** for the few that bind at startup. The table below is the on-disk reference for scripted setups, keys as the bridge reads them (defaults in brackets):
 
 | Key | What it does |
 |---|---|
