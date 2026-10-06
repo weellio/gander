@@ -15,6 +15,8 @@
   import SubagentsPanel from './lib/SubagentsPanel.svelte';
   import LessonsPanel from './lib/LessonsPanel.svelte';
   import GpuPanel from './lib/GpuPanel.svelte';
+  import SafetyPanel from './lib/SafetyPanel.svelte';
+  import AwayCard from './lib/AwayCard.svelte';
   import ReplayPanel from './lib/ReplayPanel.svelte';
   import ActionImages from './lib/ActionImages.svelte';
   import ProjectsSidebar from './lib/ProjectsSidebar.svelte';
@@ -61,6 +63,8 @@
   let escalations = $state([]);     // agents that asked for a human, via the coordination board
   let plans = $state([]);           // pending plans awaiting a go/veto
   let reviews = $state([]);         // queue branches held for review-before-merge
+  let dangers = $state([]);         // 🛡 commands the danger guard blocked or flagged
+  let collisions = $state([]);      // ⚠ two sessions editing the same file
   let teams = $state([]);           // Agent Teams (experimental) read from ~/.claude/teams + tasks
   // Real plan-limit percentages, reported by our status line — the only channel
   // Claude Code exposes them on. Null until a status line renders.
@@ -158,6 +162,8 @@
       escalations = d.escalations || [];
       plans = d.plans || [];
       reviews = d.reviews || [];
+      dangers = d.dangers || [];
+      collisions = d.collisions || [];
       teams = d.teams || [];
       planLimits = d.planLimits || null;
       boardPostsState = d.boardPosts || [];
@@ -209,7 +215,7 @@
   // Manage / Options menus + the panels they control
   let menuOpen = $state(false);
   let optsOpen = $state(false);
-  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false, skills: false, queue: false, digest: false, board: false, subagents: false, lessons: false, gpu: false });
+  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false, skills: false, queue: false, digest: false, board: false, subagents: false, lessons: false, gpu: false, safety: false });
   function openP(k) { panels[k] = true; menuOpen = false; }
   // Settings/Config is one drawer with two scopes: 'app' (global: Telegram, budget,
   // sessions, nudge, editor) opened from Settings ▾, and 'project' (this project's
@@ -284,6 +290,7 @@
       { label: 'Sub-agents — every agent your sessions spawned, with spend', sub: 'panel', action: () => openP('subagents') },
       { label: 'Improvement — are the agents getting better? (trend + lessons)', sub: 'panel', action: () => openP('lessons') },
       { label: 'GPU & local models — what is on the card, free it for a game', sub: 'panel', action: () => openP('gpu') },
+      { label: 'Safety — danger guard + stop asking me (allow-rule suggestions)', sub: 'panel', action: () => openP('safety') },
       { label: 'Routines & briefings', sub: 'panel', action: () => openP('routines') },
       { label: 'Take the tour', sub: 'walkthrough', action: () => (tourOpen = true) },
       { label: 'Export swarm snapshot', sub: 'Mermaid + PNG', action: exportSnapshot },
@@ -505,6 +512,7 @@
             <button class="select" onclick={() => openP('tune')}>💡 Tune (suggestions)</button>
             <button class="select" onclick={() => openP('lessons')}>📈 Improvement (trend + lessons)</button>
             <button class="select" onclick={() => openP('gpu')}>🎮 GPU &amp; local models</button>
+            <button class="select" onclick={() => openP('safety')}>🛡 Safety (danger guard)</button>
             <button class="select" onclick={() => openP('health')}>Health / status</button>
           </div>
         {/if}
@@ -564,7 +572,7 @@
         {/if}
       </div>
 
-      <NeedsYou {agents} {budget} {escalations} {plans} {reviews} onOpen={(id) => (tileModalId = id)} onFly={flyTo} onConfig={() => openP('config')} onBoard={openBoard} />
+      <NeedsYou {agents} {budget} {escalations} {plans} {reviews} {dangers} {collisions} onOpen={(id) => (tileModalId = id)} onFly={flyTo} onConfig={() => openP('config')} onBoard={openBoard} />
 
       <HelpPanel />
     </div>
@@ -588,6 +596,7 @@
   <SubagentsPanel bind:open={panels.subagents} />
   <LessonsPanel bind:open={panels.lessons} />
   <GpuPanel bind:open={panels.gpu} />
+  <SafetyPanel bind:open={panels.safety} />
   <HealthPanel bind:open={panels.health} />
   <ProcessesPanel bind:open={panels.procs} />
   <SuggestionsPanel bind:open={panels.tune} />
@@ -629,6 +638,8 @@
       <span class="cnt"><i style="background:{STATE_COLORS[state] || '#888'}"></i>{STATE_LABEL[state] || state} {n}</span>
     {/each}
   </div>
+
+  <AwayCard onFeed={() => openP('feed')} onQueue={() => openP('queue')} />
 
   {#if freshBrief}
     <div class="briefcard" onclick={openBrief} role="button" tabindex="0" onkeydown={(e) => e.key === 'Enter' && openBrief()}>

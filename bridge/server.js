@@ -42,6 +42,11 @@ const projKeyOf = projects.keyOf;   // module ref (snapshot() has a local `proje
 const health = require('./health.js');
 const setupcheck = require('./setupcheck.js');
 const gpu = require('./gpu.js');
+const collisions = require('./collisions.js');
+const quiet = require('./quiet.js');
+const away = require('./away.js');
+const guard = require('./guard.js');
+const permlearn = require('./permlearn.js');
 const transcript = require('./transcript.js');
 const search = require('./search.js');
 const dispatch = require('./dispatch.js');
@@ -96,7 +101,17 @@ function nextHurricane() { const list = HNAMES[hurricaneIdx % 26]; hurricaneIdx+
 
 // Rolling activity feed (newest-first ring buffer) for the event ticker / error spotlight.
 const feed = [];
-function pushFeed(e) { feed.unshift(e); if (feed.length > 300) feed.length = 300; }
+function pushFeed(e) {
+  feed.unshift(e); if (feed.length > 300) feed.length = 300;
+  // The feed keeps 300 entries, and a busy night pushes the early ones out before
+  // anyone is back to read them. The away summary only needs the turning points,
+  // so those go to a longer log of their own.
+  // (guard + collision lines have their own counters on the card; as "failed" they were counted twice)
+  if (e && e.agentId !== 'guard' && e.agentId !== 'collision' && (e.error || e.state === 'done' || e.state === 'error' || e.state === 'awaiting' || e.state === 'idle')) {
+    awayLog.unshift(e); if (awayLog.length > 2000) awayLog.length = 2000;
+  }
+}
+const awayLog = [];
 
 // Persist the registry so a bridge restart doesn't lose the picture. Entries
 // older than 12h are dropped on load (stale sessions from long-gone runs).
@@ -323,6 +338,7 @@ async function sampleBurn() {
   try {
     const u = await usage.summaryAsync();
     if (!u || !u.bySession) return;
+    try { queue.setCosts(u.bySession); } catch (_) {}   // 💲 cost per queue task
     const now = Date.now();
     for (const a of agents.values()) {
       if (a.costManual) continue;                       // explicit override (e.g. demo) wins
@@ -409,10 +425,34 @@ function sendSlack(text) {
 
 // Alert markers → mirrored to Slack. Conversational Telegram replies (queue
 // confirmations, "no active session…") stay in the Telegram chat only.
-const ALERTY = /^[🔔⚠✅🛑💸⏱]/u;
+const ALERTY = /^[🔔⚠✅🛑💸⏱🛡]/u;
+// 🌙 Quiet hours. Every outbound alert passes one of these gates; held ones are
+// counted so the "while you were away" card can say so. Conversational replies
+// (a Telegram answer to a command YOU just sent) are never held: they are not
+// alerts, and they don't start with an alert marker.
+const quietHeld = [];   // [{ at, channel, kind }]
+function quietCfg() { return quiet.normalize(cfg.quietHours || {}); }
+function quietAllows(channel, kind) {
+  let ok = true;
+  try { ok = quiet.shouldDeliver(channel, kind, quietCfg(), new Date()); } catch (_) { ok = true; }
+  if (!ok) { quietHeld.push({ at: Date.now(), channel, kind }); if (quietHeld.length > 2000) quietHeld.splice(0, quietHeld.length - 2000); }
+  return ok;
+}
+function alertKind(text) {
+  const t = String(text || '');
+  if (t.startsWith('💸')) return 'runaway';
+  if (t.startsWith('🛡')) return 'danger';
+  if (t.startsWith('⏱')) return 'limit';
+  if (t.startsWith('✅')) return 'done';
+  if (t.startsWith('🔔')) return /wants to run|permission/i.test(t) ? 'permission' : 'awaiting';
+  if (t.startsWith('⚠')) return /same file|collision/i.test(t) ? 'collision' : 'error';
+  return 'error';
+}
 function sendTelegram(text, cb) {
-  if (ALERTY.test(String(text))) sendSlack(text);   // fires even with no Telegram configured
+  const alerty = ALERTY.test(String(text));
+  if (alerty && quietAllows('slack', alertKind(text))) sendSlack(text);   // fires even with no Telegram configured
   if (!tg.token || !tg.chat) { if (cb) cb(null); return; }
+  if (alerty && !quietAllows('telegram', alertKind(text))) { if (cb) cb(null); return; }
   const payload = JSON.stringify({ chat_id: tg.chat, text, parse_mode: 'HTML', disable_web_page_preview: true });
   const req = https.request({
     host: 'api.telegram.org', path: `/bot${tg.token}/sendMessage`, method: 'POST',
@@ -1197,6 +1237,105 @@ function projectsCount() {
   return projectsCountCache.n;
 }
 
+// 🛡 Danger guard. PreToolUse sees every shell command before it runs. Sessions
+// often run in bypass mode, so nothing else stands between a destructive command
+// and the disk. A held command is DENIED (honoured in every permission mode) with
+// a reason telling Claude to wait; "Allow once" in the rail lets exactly that
+// command through on its next try.
+const guardLog = [];                // everything the guard flagged or held, newest first
+const guardPasses = new Map();      // sessionId + command -> expiry (Allow once)
+const guardDismissed = new Set();
+const guardMode = () => (['off', 'flag', 'critical', 'all'].includes(cfg.guardMode) ? cfg.guardMode : 'critical');
+const guardHow = () => (cfg.guardHow === 'ask' ? 'ask' : 'deny');
+const guardExtra = () => (Array.isArray(cfg.guardExtra) ? cfg.guardExtra : []);
+function guardCheck(body, project) {
+  const ti = body.tool_input || {};
+  let c = null;
+  try { c = guard.classify(body.tool_name, ti, { extra: guardExtra() }); } catch (_) { return null; }
+  if (!c) return null;
+  const act = guard.policy(c, guardMode());
+  if (act === 'allow') return null;
+  const cmd = String(ti.command || '').slice(0, 600);
+  const passKey = body.session_id + '\n' + cmd;
+  const pass = guardPasses.get(passKey);
+  if (pass && pass > Date.now()) {          // "Allow once": consumed by this run
+    guardPasses.delete(passKey);
+    const prior = guardLog.find((g) => g.passKey === passKey && g.allowed);
+    if (prior) prior.ranAt = Date.now();
+    console.log('[guard] allowed once: ' + cmd.slice(0, 100));
+    return null;
+  }
+  const hold = act === 'block';
+  const how = hold ? guardHow() : 'flag';
+  const entry = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: Date.now(), project, sessionId: body.session_id,
+    command: cmd.slice(0, 300), label: c.label, level: c.level, rule: c.rule, action: hold ? (how === 'ask' ? 'ask' : 'block') : 'flag', passKey,
+  };
+  guardLog.unshift(entry); if (guardLog.length > 300) guardLog.length = 300;
+  pushFeed({ ts: entry.at, agentId: 'guard', agent: 'danger guard', project, sessionId: body.session_id, state: hold ? 'error' : 'idle', log: (hold ? '🛡 held: ' : '🛡 flagged: ') + entry.command.slice(0, 120), error: hold });
+  if (hold) {
+    osNotify('Gander — blocked a risky command', project + ': ' + c.label, 'danger');
+    sendTelegram(`🛡 <b>${project}</b>: held a risky command\n${c.label}\n<code>${entry.command.replace(/[<&>]/g, '').slice(0, 300)}</code>\nAllow once in the Gander rail if you meant it.`);
+  }
+  console.log(`[guard] ${entry.action} (${c.level}/${c.rule}) ${project}: ${cmd.slice(0, 100)}`);
+  if (!hold) return null;
+  const text = `Gander's danger guard held this command (${c.label}). Do not work around it: no other spelling, no wrapper script, no splitting it up. Tell the user exactly what you were about to run and why, then wait. If they click "Allow once" in the Gander dashboard, you may run exactly this command again.`;
+  return how === 'ask' ? { kind: 'pretool-ask', text } : { kind: 'pretool-deny', text };
+}
+
+// ✅ "Stop asking me". A PermissionRequest followed by the tool actually running
+// means it was allowed; PermissionDenied (or a Deny in the rail) means it was not.
+// After enough allows and no denies, the Safety panel offers an allow-rule.
+const permLedger = permlearn.createLedger({ file: path.join(__dirname, 'aoc-permlearn.json') });
+const permAsked = new Map();        // session + tool + input -> { rule, example, project, at }
+const permAskKey = (sid, tool, input) => sid + '\n' + tool + '\n' + JSON.stringify(input || {}).slice(0, 2000);
+const globalSettingsPath = () => process.env.GANDER_SETTINGS || path.join(os.homedir(), '.claude', 'settings.json');
+function existingAllow() {
+  try { const j = JSON.parse(fs.readFileSync(globalSettingsPath(), 'utf8')); return (j && j.permissions && Array.isArray(j.permissions.allow)) ? j.permissions.allow : []; } catch (_) { return []; }
+}
+function notePermission(body, project) {
+  const ev = body.hook_event_name, sid = body.session_id;
+  if (!sid || !body.tool_name) return;
+  const k = permAskKey(sid, body.tool_name, body.tool_input);
+  if (ev === 'PermissionRequest') {
+    let rule = null; try { rule = permlearn.ruleFor(body.tool_name, body.tool_input || {}); } catch (_) {}
+    if (!rule) return;
+    const ti = body.tool_input || {};
+    permAsked.set(k, { rule, example: String(ti.command || ti.url || body.tool_name).slice(0, 140), project, at: Date.now(), tool: body.tool_name });
+    if (permAsked.size > 500) permAsked.delete(permAsked.keys().next().value);
+  } else if (ev === 'PostToolUse' || ev === 'PostToolUseFailure' || ev === 'PermissionDenied') {
+    const a = permAsked.get(k);
+    if (!a) return;
+    permAsked.delete(k);
+    if (Date.now() - a.at > 30 * 60 * 1000) return;
+    try { permLedger.record({ kind: ev === 'PermissionDenied' ? 'denied' : 'allowed', rule: a.rule, tool: a.tool, example: a.example, at: Date.now(), project: a.project }); } catch (_) {}
+  }
+}
+
+// ⚠ Same-file collisions: two sessions editing one file overwrite each other.
+const collisionTracker = collisions.createTracker({ windowMs: 15 * 60 * 1000 });
+const collisionLog = [];            // every collision seen, for the away summary
+const collisionDismissed = new Set();
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+function noteEdit(body, project) {
+  if (body.hook_event_name !== 'PostToolUse' || !EDIT_TOOLS.has(body.tool_name) || !body.session_id) return;
+  const ti = body.tool_input || {};
+  let file = ti.file_path || ti.notebook_path;
+  if (!file || typeof file !== 'string') return;
+  if (!path.isAbsolute(file) && body.cwd) file = path.join(body.cwd, file);
+  const root = agents.get('sess:' + body.session_id);
+  const hit = collisionTracker.record({ file, sessionId: body.session_id, project, name: (root && root.name) || project, tool: body.tool_name, at: Date.now() });
+  if (!hit) return;
+  collisionLog.unshift(hit); if (collisionLog.length > 500) collisionLog.length = 500;
+  const names = hit.sessions.map((x) => x.name || x.project);
+  const who = new Set(names).size < names.length ? `${names.length} ${names[0]} sessions` : names.join(' and ');
+  const short = String(hit.file).replace(/\\/g, '/').split('/').slice(-2).join('/');
+  pushFeed({ ts: Date.now(), agentId: 'collision', agent: 'collision', project, sessionId: body.session_id, state: 'error', log: `⚠ ${who} both edited ${short} within 15 min`, error: true });
+  osNotify('Gander — same file, two sessions', `${who} both edited ${short}`, 'collision');
+  sendTelegram(`⚠ <b>Two sessions edited the same file</b>\n${who}\n<code>${String(hit.file).slice(-160)}</code>\nOne may have overwritten the other. Check before committing.`);
+  console.log(`[collision] ${hit.file} <- ${hit.sessions.map((x) => x.sessionId.slice(0, 8)).join(', ')}`);
+}
+
 let gpuLowered = [];
 const gameNamesCfg = () => (Array.isArray(cfg.gameNames) ? cfg.gameNames : String(cfg.gameNames || '').split(/[,\n]/)).map((x) => String(x).trim()).filter(Boolean);
 const gpuOpts = () => ({ ollamaUrl: cfg.ollamaUrl || '', lmstudioUrl: cfg.lmstudioUrl || '', gameNames: gameNamesCfg() });
@@ -1493,7 +1632,11 @@ function pickAmbient(a) { const o = {}; for (const k of AMBIENT_EVENTS) { const 
 // Bridge-native OS toast — zero-dep, cross-platform. Fires even with no browser open,
 // so a terminal user (e.g. living in `claude agents`) still gets pinged when they walk
 // away. Strings are sanitised before they reach the shell.
-function osNotify(title, message) {
+function osNotify(title, message, kind) {
+  const k = kind || (/runaway/i.test(title) ? 'runaway' : /permission/i.test(title) ? 'permission' : /error/i.test(title) ? 'error'
+    : /needs you|quiet mid-goal/i.test(title) ? 'awaiting' : /same file|collision/i.test(title) ? 'collision' : /blocked|risky/i.test(title) ? 'danger'
+    : /limit|context/i.test(title) ? 'limit' : 'done');
+  if (!quietAllows('desktop', k)) return;
   try {
     const clean = (s, n) => String(s == null ? '' : s).replace(/["'`$%\r\n]/g, ' ').slice(0, n);
     const t = clean(title, 70) || 'Gander', m = clean(message, 180);
@@ -1515,6 +1658,8 @@ function fireAmbient(event, ctx) {
     }
     const a = cfg.ambient;
     if (!a || a.enabled === false) return;
+    // the light goes dark during quiet hours, but turning it OFF ('clear') is always fine
+    if (event !== 'clear' && !quietAllows('ambient', event)) return;
     const rule = a[event] || {};
     const lifxOn = !!(a.lifx && a.lifx.enabled && a.lifx.token);
     if (!rule.webhook && !rule.command && !lifxOn) return;   // nothing wired for this scenario
@@ -1963,6 +2108,9 @@ function snapshot() {
     queue: { queued: _qq, running: _qr },
     board: board.summary(),
     escalations: board.openEscalations(),
+    collisions: collisionTracker.active(Date.now()).filter((c) => !collisionDismissed.has(c.key)),
+    // only HELD commands need you; a flagged one already ran, so it lives in the Safety panel and the feed
+    dangers: guardLog.filter((g) => g.action !== 'flag' && !guardDismissed.has(g.id) && Date.now() - g.at < 6 * 3600e3).slice(0, 20).map(({ passKey, ...g }) => g),
     plans: board.pendingPlans(),
     teams: (() => { try { return teams.readTeams(); } catch (_) { return []; } })(),
     planLimits,
@@ -2390,9 +2538,13 @@ ${String((body.tool_input && (body.tool_input.command || body.tool_input.file_pa
 Allow / Deny it in the dashboard rail.`);
     }
     const project = projectFromCwd(body.cwd);
+    try { noteEdit(body, project); } catch (e) { console.error('[collision]', e && e.message); }
+    try { notePermission(body, project); } catch (_) {}
+    // the guard runs BEFORE the muted check: hiding a project from the floor must not switch off its safety net
+    const guardDeliver = body.hook_event_name === 'PreToolUse' && body.session_id ? guardCheck(body, project) : null;
     if (body.session_id) lastActiveSession = body.session_id;
     if (body.cwd) projects.noteKnown(body.cwd);   // auto-import the project
-    if (muted.has(project)) return sendJson(res, 200, { ok: true, muted: project, applied: 0 });
+    if (muted.has(project)) return sendJson(res, 200, { ok: true, muted: project, applied: 0, ...(guardDeliver ? { deliver: guardDeliver } : {}) });
     const rootKey = 'sess:' + (body.session_id || 'unknown');
     const prevState = agents.get(rootKey) && agents.get(rootKey).state;
     const evs = mapHookToEvents(body);
@@ -2427,13 +2579,13 @@ Allow / Deny it in the dashboard rail.`);
     if (evs.length) console.log(`[hook] ${body.hook_event_name} (${project}) -> ${evs.map(e => e.agentId + ':' + (e.state || '')).join(', ')}`);
 
     // Deliver any queued operator command through the hook return channel.
-    let deliver = null;
+    let deliver = guardDeliver;   // a held risky command wins over everything else
     const sid = body.session_id;
     if (sid) {
       if (body.hook_event_name === 'Stop') {
         const c = takeCommand(sid, (x) => x.type === 'message');
         if (c) deliver = { kind: 'stop-block', text: c.text };
-      } else if (body.hook_event_name === 'PreToolUse') {
+      } else if (body.hook_event_name === 'PreToolUse' && !deliver) {
         const c = takeCommand(sid, (x) => x.type === 'stop');
         if (c) deliver = { kind: 'pretool-deny', text: c.text || 'The operator requested STOP. Stop running tools, end your turn, and wait for further instructions.' };
       }
@@ -2683,11 +2835,11 @@ Allow / Deny it in the dashboard rail.`);
     const su2 = new URL(req.url, 'http://localhost');
     const days = su2.searchParams.get('days');
     try {
-      return sendJson(res, 200, subagents.roster({
-        days: days === 'all' ? 0 : Math.max(0, Math.min(365, Number(days) || 14)),
-        limit: Math.max(1, Math.min(2000, Number(su2.searchParams.get('limit')) || 400)),
-        priceFor: (m) => usage.rateFor(m, cfg.pricing || {}),
-      }));
+      const rdays = days === 'all' ? 0 : Math.max(0, Math.min(365, Number(days) || 14));
+      const priceFor = (m) => usage.rateFor(m, cfg.pricing || {});
+      const out = subagents.roster({ days: rdays, limit: Math.max(1, Math.min(2000, Number(su2.searchParams.get('limit')) || 400)), priceFor });
+      try { out.scorecard = subagents.scorecard({ days: rdays, priceFor }); } catch (e) { out.scorecard = []; }
+      return sendJson(res, 200, out);
     } catch (e) { return sendJson(res, 500, { error: String(e.message || e) }); }
   }
   // OpenAI Codex sessions: history, tokens/cost, goals, queued follow-ups (read from $CODEX_HOME)
@@ -2922,6 +3074,11 @@ Allow / Deny it in the dashboard rail.`);
   if (url === '/api/permissions/answer' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.sessionId || !body.requestId) return sendJson(res, 400, { error: 'sessionId and requestId required' });
+    try {   // ✅ learn from the answer (Dispatch prompts never pass through the PermissionRequest hook)
+      const pend = dispatch.pendingList().concat(hookPermPendingList()).find((x) => String(x.requestId) === String(body.requestId));
+      const rule = pend && permlearn.ruleFor(pend.tool, pend.input || {});
+      if (rule) permLedger.record({ kind: body.behavior === 'allow' ? 'allowed' : 'denied', rule, tool: pend.tool, example: String((pend.input && (pend.input.command || pend.input.url)) || pend.tool).slice(0, 140), at: Date.now(), project: pend.project || '' });
+    } catch (_) {}
     let r = dispatch.answerPermission(body.sessionId, body.requestId, { behavior: body.behavior, applySuggestions: !!body.applySuggestions, message: body.message });
     if (r.error && hookPerms.has(String(body.requestId))) r = hookPermAnswer(body.requestId, body.behavior, body.message);   // a hook-parked prompt, not a Dispatch one
     if (r.ok) console.log(`[permission] ${body.sessionId} ${r.behavior} ${body.requestId}`);
@@ -3027,9 +3184,103 @@ Allow / Deny it in the dashboard rail.`);
 
   // Session replay — the transcript rebuilt as a timeline (states, tools,
   // cumulative tokens/cost) for the ⏪ scrubber. Pure reads, no model calls.
+  // 🎬 the same replay as a self-contained, auto-playing page — screen-record it,
+  // or capture it at 1920x1080 for a launch video. Opens from the ⏪ panel.
+  if (url === '/api/replay/clip' && req.method === 'GET') {
+    const cu = new URL(req.url, 'http://localhost');
+    const sid = String(cu.searchParams.get('session') || '');
+    if (!/^[\w-]{6,80}$/.test(sid)) return sendJson(res, 400, { error: 'session required' });
+    try {
+      const rp = await replay.build(sid);
+      const a = agents.get('sess:' + sid) || Array.from(agents.values()).find((x) => x.sessionId === sid);
+      const html = require('./replayclip.js').renderClip(rp, {
+        title: (a && (a.title || a.goal)) || undefined, project: (a && a.project) || (rp && rp.project) || undefined,
+        model: (a && a.model) || undefined, seconds: Number(cu.searchParams.get('seconds')) || 30,
+      });
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(html);
+    } catch (e) { sendJson(res, 500, { error: String(e && e.message || e) }); }
+    return;
+  }
   if (url === '/api/replay' && req.method === 'POST') {
     const body = await readBody(req);
     return sendJson(res, 200, await replay.build(body && body.sessionId));
+  }
+
+  // ── 🛡 Safety: danger guard + "stop asking me" ───────────────────────────────
+  if (url === '/api/guard/allow' && req.method === 'POST') {
+    const body = await readBody(req);
+    const g = body && guardLog.find((x) => x.id === body.id);
+    if (!g) return sendJson(res, 404, { error: 'no such entry' });
+    guardPasses.set(g.passKey, Date.now() + 15 * 60 * 1000);   // the next try within 15 min goes through
+    g.allowed = true; g.allowedAt = Date.now();
+    console.log('[guard] allow once granted: ' + g.command.slice(0, 100));
+    return sendJson(res, 200, { ok: true });
+  }
+  if (url === '/api/guard/dismiss' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.id) return sendJson(res, 400, { error: 'id required' });
+    guardDismissed.add(String(body.id));
+    return sendJson(res, 200, { ok: true });
+  }
+  if (url === '/api/safety' && req.method === 'GET') {
+    const minAllows = Number(cfg.allowSuggestMin) >= 2 ? Number(cfg.allowSuggestMin) : 5;
+    const allowList = existingAllow();
+    let suggestions = [];
+    try { suggestions = permLedger.suggestions({ minAllows, existing: allowList }); } catch (_) {}
+    return sendJson(res, 200, {
+      guard: { mode: guardMode(), how: guardHow(), extra: guardExtra(), rules: guard.RULES, recent: guardLog.slice(0, 50).map(({ passKey, ...g }) => g) },
+      suggestions, minAllows, allowList,
+    });
+  }
+  if (url === '/api/safety/config' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || typeof body !== 'object') return sendJson(res, 400, { error: 'invalid JSON' });
+    if (body.mode !== undefined) { if (!['off', 'flag', 'critical', 'all'].includes(body.mode)) return sendJson(res, 400, { error: 'unknown mode' }); cfg.guardMode = body.mode; }
+    if (body.how !== undefined) cfg.guardHow = body.how === 'ask' ? 'ask' : 'deny';
+    if (body.extra !== undefined) cfg.guardExtra = (Array.isArray(body.extra) ? body.extra : []).map((x) => String(x).trim().slice(0, 120)).filter(Boolean).slice(0, 50);
+    if (body.allowSuggestMin !== undefined) cfg.allowSuggestMin = Math.max(2, Math.min(100, Number(body.allowSuggestMin) || 5));
+    saveConfig();
+    console.log('[guard] mode ' + guardMode() + ' / ' + guardHow() + ' · ' + guardExtra().length + ' extra');
+    return sendJson(res, 200, { ok: true, mode: guardMode(), how: guardHow(), extra: guardExtra() });
+  }
+  if (url === '/api/safety/apply' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.rule) return sendJson(res, 400, { error: 'rule required' });
+    // only a rule the ledger actually suggested may be written — the endpoint is not a general settings editor
+    const minAllows = Number(cfg.allowSuggestMin) >= 2 ? Number(cfg.allowSuggestMin) : 5;
+    const ok = permLedger.suggestions({ minAllows, existing: existingAllow() }).some((x) => x.rule === body.rule);
+    if (!ok) return sendJson(res, 400, { error: 'not a current suggestion' });
+    const file = globalSettingsPath();
+    const r = permlearn.applyRule(file, body.rule);
+    if (r.error) return sendJson(res, 400, r);
+    console.log('[permlearn] added ' + body.rule + ' to ' + file);
+    return sendJson(res, 200, { ...r, file });
+  }
+  if (url === '/api/safety/forget' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.rule) return sendJson(res, 400, { error: 'rule required' });
+    permLedger.forget(String(body.rule));
+    return sendJson(res, 200, { ok: true });
+  }
+
+  // ── ⚠ collisions · 🌙 while you were away ───────────────────────────────────
+  if (url === '/api/collisions/dismiss' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body || !body.key) return sendJson(res, 400, { error: 'key required' });
+    collisionDismissed.add(String(body.key));
+    return sendJson(res, 200, { ok: true });
+  }
+  if (url === '/api/away' && req.method === 'GET') {
+    const au = new URL(req.url, 'http://localhost');
+    const since = Number(au.searchParams.get('since')) || Date.now() - 8 * 3600e3;
+    const now = Date.now();
+    const sum = away.summarize({
+      since, now, feed: awayLog, agents: Array.from(agents.values()), queue: queue.list(),
+      collisions: collisionLog, dangers: typeof guardLog !== 'undefined' ? guardLog : [],
+    });
+    sum.held = quietHeld.filter((h) => h.at >= since).length;
+    return sendJson(res, 200, sum);
   }
 
   // ── GPU + local models (🎮 panel) ───────────────────────────────────────────
@@ -3160,6 +3411,7 @@ Allow / Deny it in the dashboard rail.`);
     usageAlertPct: cfg.usageAlertPct === undefined ? 90 : Number(cfg.usageAlertPct) || 0,
     lessonMinCount: Number(cfg.lessonMinCount) >= 2 ? Number(cfg.lessonMinCount) : 3,
     ollamaUrl: String(cfg.ollamaUrl || ''), lmstudioUrl: String(cfg.lmstudioUrl || ''), gameNames: gameNamesCfg().join(', '),
+    quietHours: quiet.normalize(cfg.quietHours || {}),
     autoRetire: cfg.autoRetire !== false,
     retireDoneSec: Number(cfg.retireDoneSec) || 180, retireClosedSec: Number(cfg.retireClosedSec) || 60,
     retireIdleSec: Number(cfg.retireIdleSec) || 1500, retireStaleActiveSec: Number(cfg.retireStaleActiveSec) || 1800,
@@ -3183,6 +3435,7 @@ Allow / Deny it in the dashboard rail.`);
     if (body.ctxAlertPct !== undefined) cfg.ctxAlertPct = num(body.ctxAlertPct, 0, 1, 0.85);
     if (body.usageAlertPct !== undefined) cfg.usageAlertPct = num(body.usageAlertPct, 0, 100, 90);
     if (body.lessonMinCount !== undefined) cfg.lessonMinCount = num(body.lessonMinCount, 2, 50, 3);
+    if (body.quietHours !== undefined && body.quietHours && typeof body.quietHours === 'object') cfg.quietHours = quiet.normalize(body.quietHours);
     if (body.gameNames !== undefined) cfg.gameNames = String(body.gameNames || '').split(/[,\n]/).map((x) => x.trim()).filter(Boolean).slice(0, 50).map((x) => x.slice(0, 80));
     for (const k of ['ollamaUrl', 'lmstudioUrl']) {
       if (body[k] === undefined) continue;

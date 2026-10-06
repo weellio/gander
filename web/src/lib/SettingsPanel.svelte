@@ -108,6 +108,10 @@
   // ── Advanced (every remaining bridge/aoc-config.json knob — thresholds, tile retirement, test gate, integrations, remote access) ──
   let advOpen = $state(false); let advStatus = $state(''); let advRestart = $state(false); let advRestarting = $state(false);
   let adv = $state({ stallMinutes: 0, burnAlert: 0, longRunMinutes: 0, autoRetire: true, retireDoneSec: 0, retireClosedSec: 0, retireIdleSec: 0, retireStaleActiveSec: 0, testCmd: '', codex: false, allowRemote: false, fleetIntervalMs: 0, lessonMinCount: 3, ollamaUrl: '', lmstudioUrl: '', gameNames: '' });
+  // 🌙 quiet hours: held alerts, critical kinds still get through
+  let quiet = $state({ enabled: false, start: '23:00', end: '08:00', critical: ['runaway', 'danger'] });
+  const QUIET_KINDS = [['runaway', '💸 Runaway cost'], ['danger', '🛡 Blocked risky command'], ['error', '⚠ Errors'], ['permission', '🔔 Permission prompts'], ['awaiting', '🔔 A session needs you'], ['collision', '⚠ File collisions'], ['done', '✅ Finished tasks'], ['limit', '⏱ Plan limits']];
+  function toggleCritical(k) { quiet.critical = quiet.critical.includes(k) ? quiet.critical.filter((x) => x !== k) : [...quiet.critical, k]; }
   let advCtxPctUI = $state(85);   // shown as a percent, stored 0..1
   let advTestRows = $state([]);   // per-project test-command overrides: [{ project, cmd }]
   // secrets are never echoed by the bridge: we get { set, hint } and send a plain string only when the user types one ("" = clear)
@@ -135,6 +139,7 @@
     advTgTok = j.telegramReplyToken || { set: false, hint: '' }; advLic = j.license || { set: false, hint: '' }; advAcc = j.accessToken || { set: false, hint: '' };
     advTgTokIn = ''; advLicIn = ''; advAccIn = ''; advClear = { telegramReplyToken: false, license: false, accessToken: false };
     advPhone = j.phone || { remote: false, tokenSet: false, urls: [], port: 0 };
+    if (j.quietHours) quiet = { enabled: !!j.quietHours.enabled, start: j.quietHours.start || '23:00', end: j.quietHours.end || '08:00', critical: Array.isArray(j.quietHours.critical) ? j.quietHours.critical : ['runaway', 'danger'] };
     advRestart = !!j.restartNeeded;
   }
   async function loadAdvanced() { try { const j = await (await fetch('/api/app-config')).json(); if (j && !j.error) applyAdvanced(j); } catch (_) {} }
@@ -153,6 +158,7 @@
       usageAlertPct: Number(adv.usageAlertPct) || 0,
       lessonMinCount: Math.max(2, Number(adv.lessonMinCount) || 3),
       ollamaUrl: String(adv.ollamaUrl || '').trim(), lmstudioUrl: String(adv.lmstudioUrl || '').trim(), gameNames: String(adv.gameNames || ''),
+      quietHours: { enabled: !!quiet.enabled, start: quiet.start, end: quiet.end, critical: quiet.critical },
     };
     // secrets: typed value → send it · "clear" pressed → send "" · otherwise omit (bridge keeps the stored one)
     if (advTgTokIn.trim()) body.telegramReplyToken = advTgTokIn.trim(); else if (advClear.telegramReplyToken) body.telegramReplyToken = '';
@@ -641,6 +647,11 @@
           </div>
           {#if advClear.license}<div class="tg-status">Licence key will be cleared on Save</div>{/if}
 
+          <div class="adv-group">🌙 Quiet hours</div>
+          <label class="cbrow"><input type="checkbox" bind:checked={quiet.enabled} /> Hold alerts from <input class="in num wide-num" type="time" bind:value={quiet.start} /> to <input class="in num wide-num" type="time" bind:value={quiet.end} /></label>
+          <div class="tg-hint">Telegram, Slack, desktop pop-ups and the ambient light stay quiet in that window (it can run past midnight). Everything still lands in the 🔔 rail, and the "while you were away" card sums it up when you're back. Always let these through:</div>
+          <div class="quietkinds">{#each QUIET_KINDS as [k, label] (k)}<label class="cbrow"><input type="checkbox" checked={quiet.critical.includes(k)} onchange={() => toggleCritical(k)} /> {label}</label>{/each}</div>
+
           <div class="adv-group">Remote access</div>
           <label class="cbrow"><input type="checkbox" bind:checked={adv.allowRemote} /> Allow remote</label>
           <div class="tg-hint adv-danger">binds to all interfaces — set an access token first</div>
@@ -827,6 +838,7 @@
   .in { font-size: 11px; padding: 5px 7px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary);
     background: var(--color-background-secondary); color: var(--color-text-primary); box-sizing: border-box; width: 100%; }
   .tg-btns { display: flex; gap: 6px; }
+  .quietkinds { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; }
   .tg-status { font-size: 11px; color: var(--color-text-secondary); }
   .tg-hint { font-size: 10px; color: var(--color-text-tertiary); line-height: 1.4; }
   .cbrow { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--color-text-secondary); cursor: pointer; }

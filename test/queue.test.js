@@ -336,3 +336,37 @@ describe('queue worktrees', () => {
     assert.notEqual(r.item.id, 1, 'a NEW task, original left as the record');
   });
 });
+
+describe('cost per task', () => {
+  beforeEach(() => queue._test.reset());
+  const finish = (it, status) => { it.status = status; it.doneAt = Date.now(); };
+
+  test('a task carries the spend of its session', () => {
+    const { item } = queue.add({ cwd: 'C:/x/shop', prompt: 'build it' });
+    item.sessionId = 's1';
+    assert.equal(queue.setCosts({ s1: { costUSD: 1.23456 }, other: { costUSD: 9 } }), 1);
+    assert.equal(item.costUSD, 1.2346);
+    assert.equal(queue.setCosts({ s1: { costUSD: 1.23456 } }), 0, 'no change → no save');
+  });
+
+  test('a plain retry keeps what the failed attempt cost', () => {
+    const { item } = queue.add({ cwd: 'C:/x/shop', prompt: 'build it' });
+    item.sessionId = 's1'; queue.setCosts({ s1: { costUSD: 2 } }); finish(item, 'failed');
+    assert.ok(queue.action(item.id, 'retry').ok);
+    assert.equal(item.priorCostUSD, 2);
+    assert.equal(item.costUSD, 0);
+    assert.equal(item.attempts, 2);
+    item.sessionId = 's2'; queue.setCosts({ s2: { costUSD: 0.5 } });
+    assert.equal(item.priorCostUSD + item.costUSD, 2.5, 'the goal cost both attempts');
+  });
+
+  test('retry with context links the new task and carries the cost forward', () => {
+    const { item } = queue.add({ cwd: 'C:/x/shop', prompt: 'build it' });
+    item.sessionId = 's1'; queue.setCosts({ s1: { costUSD: 3 } }); finish(item, 'failed'); item.error = 'tests red';
+    const r = queue.action(item.id, 'retry-context');
+    assert.ok(r.ok);
+    assert.equal(r.item.retryOf, item.id);
+    assert.equal(r.item.attempts, 2);
+    assert.equal(r.item.priorCostUSD, 3);
+  });
+});

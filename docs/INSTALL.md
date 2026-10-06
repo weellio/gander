@@ -118,6 +118,9 @@ It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — 
 | `lessonMinCount` [3] | 📈 Improvement: how many times an error must repeat (across 2+ sessions) before it is suggested as a rule. |
 | `ollamaUrl` · `lmstudioUrl` [local defaults] | 🎮 GPU panel: where Ollama / LM Studio listen, if not the usual local ports. |
 | `gameNames` | 🎮 Extra game executables that pause GPU readings (Unreal Engine games and big titles are recognised already). |
+| `guardMode` [critical] · `guardHow` [deny] · `guardExtra` | 🛡 Danger guard: `off` / `flag` / `critical` / `all`; `ask` instead of `deny` forces Claude Code's own prompt; extra phrases to treat as dangerous. Set in Manage → 🛡 Safety. |
+| `allowSuggestMin` [5] | ✅ Approvals (with no denials) before a prompt is offered as an allow-rule. |
+| `quietHours` `{ enabled, start, end, critical }` | 🌙 Quiet hours (Settings → Advanced). |
 | `desktopWatch` [true] | Watch the Claude desktop app and show it as a view-only tile. |
 | `codex` [true] | Show OpenAI Codex sessions (read from `$CODEX_HOME`, default `~/.codex`) as tiles + a Cost-panel section. Price them with a `pricing` entry such as `"gpt-6"`. |
 

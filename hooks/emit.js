@@ -151,6 +151,13 @@ process.stdin.on('end', () => {
             process.stdout.write(JSON.stringify({
               hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: d.text },
             }));
+          } else if (d && d.kind === 'pretool-ask') {
+            // danger guard, "ask" mode: make Claude Code show its own permission
+            // prompt for this one command (which then reaches the rail through
+            // the PermissionRequest hook), even when the session normally skips them
+            process.stdout.write(JSON.stringify({
+              hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: d.text },
+            }));
           }
         } catch (_) {}
         process.exit(0);

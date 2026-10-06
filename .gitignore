@@ -10,6 +10,7 @@ bridge/aoc-queue.json
 bridge/aoc-patterns.json
 bridge/aoc-lessons.json
 bridge/aoc-lessons-cache.json
+bridge/aoc-permlearn.json
 
 # Captured stream-json samples (regenerated on demand)
 samples/*.jsonl

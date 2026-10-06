@@ -118,6 +118,28 @@
         </div>
       {/if}
 
+      {#if d && d.scorecard && d.scorecard.length}
+        <!-- 📊 scorecards: which agent TYPES are worth using -->
+        <details class="score" open={d.scorecard.length <= 6}>
+          <summary>📊 Scorecard by agent type</summary>
+          <table>
+            <thead><tr><th>Type</th><th>Runs</th><th>Avg cost</th><th>Avg time</th><th title="tool errors per 100 tool calls">Errors</th><th title="share of runs whose last step was an error">Ended on error</th></tr></thead>
+            <tbody>
+              {#each d.scorecard as s (s.agentType)}
+                <tr class:small={s.sample === 'small'}>
+                  <td class="mono">{s.agentType || 'agent'}{#if s.sample === 'small'} <span class="cdim" title="fewer than 3 runs: too few to judge">· few runs</span>{/if}</td>
+                  <td class="num">{s.runs}</td>
+                  <td class="num">{money(s.avgCostUSD)}</td>
+                  <td class="num">{s.avgDurationMs ? Math.max(1, Math.round(s.avgDurationMs / 60000)) + 'm' : '—'}</td>
+                  <td class="num">{s.toolErrorRate != null ? s.toolErrorRate.toFixed(1) + '%' : '—'}</td>
+                  <td class="num" class:bad={s.sample !== 'small' && s.endedOnErrorPct >= 25}>{s.endedOnErrorPct != null ? s.endedOnErrorPct + '%' : '—'}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </details>
+      {/if}
+
       <input class="filter-input" bind:value={filter} placeholder="filter by description, type or project…" />
     </div>
 
@@ -167,6 +189,14 @@
     border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-secondary); }
   .mini:hover { border-color: var(--accent, #6366F1); color: var(--color-text-primary); }
 
+  .score { font-size: 11px; color: var(--color-text-secondary); }
+  .score summary { cursor: pointer; font-weight: 600; margin-bottom: 4px; }
+  .score table { width: 100%; border-collapse: collapse; }
+  .score th { text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-tertiary); font-weight: 500; padding: 2px 4px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .score td { padding: 3px 4px; border-bottom: 0.5px solid var(--color-border-tertiary); color: var(--color-text-primary); }
+  .score td.num { font-family: var(--font-mono); text-align: right; }
+  .score tr.small td { color: var(--color-text-tertiary); }
+  .score td.bad { color: var(--hm-err); font-weight: 600; }
   .totals { font-size: 11.5px; color: var(--color-text-secondary); line-height: 1.5; }
   .totals b { color: var(--color-text-primary); font-weight: 600; }
   .hint { font-size: 10px; color: var(--color-text-tertiary); line-height: 1.4; }

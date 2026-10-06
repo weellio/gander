@@ -2,7 +2,16 @@
   // "Needs you" triage rail — one ranked list of every session waiting on a human
   // (needs input / errored / finished), with the reason, how long it's waited, and
   // the answer keys right here so you never have to go find the terminal.
-  let { agents = [], budget = null, escalations = [], plans = [], reviews = [], onOpen, onFly, onConfig, onBoard } = $props();
+  let { agents = [], budget = null, escalations = [], plans = [], reviews = [], dangers = [], collisions = [], onOpen, onFly, onConfig, onBoard } = $props();
+  // 🛡 danger guard: a destructive command was held before it ran (or flagged)
+  async function guardAct(id, what) {
+    try { await fetch('/api/guard/' + what, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); } catch (_) {}
+  }
+  // ⚠ two sessions edited the same file
+  async function collisionAck(key) {
+    try { await fetch('/api/collisions/dismiss', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) }); } catch (_) {}
+  }
+  const shortPath = (f) => { const p = String(f || '').replace(/\\/g, '/').split('/'); return p.slice(-3).join('/'); };
   // review-before-merge: a queue task's green branch waiting for your 👀
   let diffs = $state({});
   async function loadDiff(id) {
@@ -89,7 +98,7 @@
   let ctxFull = $derived(
     agents.filter((a) => typeof a.ctxPct === 'number' && a.ctxPct >= 0.85).sort((x, y) => y.ctxPct - x.ctxPct)
   );
-  let count = $derived(items.length + escalations.length + plans.length + reviews.length + limited.length + ctxFull.length + (budget?.overDaily ? 1 : 0));
+  let count = $derived(items.length + escalations.length + plans.length + reviews.length + limited.length + ctxFull.length + dangers.length + collisions.length + (budget?.overDaily ? 1 : 0));
   const KEYS = [['1', '1'], ['2', '2'], ['3', '3'], ['↑', '{UP}'], ['↓', '{DOWN}'], ['y', 'y'], ['n', 'n'], ['↵', '{ENTER}'], ['esc', '{ESC}']];
   function onKey(e) { if (e.key === 'Escape') open = false; }
 </script>
@@ -102,7 +111,7 @@
     <div class="nu-backdrop" onclick={() => (open = false)} role="presentation"></div>
     <div class="nu-panel" role="menu">
       <div class="nu-h">Needs you{#if count}<span class="dim"> · {count}</span>{/if}</div>
-      {#if !items.length && !escalations.length && !plans.length && !reviews.length && !limited.length && !ctxFull.length && !budget?.overDaily}
+      {#if !items.length && !escalations.length && !plans.length && !reviews.length && !limited.length && !ctxFull.length && !dangers.length && !collisions.length && !budget?.overDaily}
         <div class="nu-empty">All clear — nothing needs you. ✨</div>
       {:else}
         {#each limited as a (a.id)}
@@ -147,6 +156,37 @@
                 <button class="kk allow" onclick={() => boardAction(pl.id, 'approve')}>✓ Approve</button>
                 <button class="kk deny" onclick={() => boardAction(pl.id, 'veto')}>✕ Veto</button>
               </div>
+            </div>
+          </div>
+        {/each}
+        {#each dangers as dg (dg.id)}
+          <div class="nu-item danger" class:flagonly={dg.action !== 'block'}>
+            <span class="nu-ic">🛡</span>
+            <div class="nu-body">
+              <div class="nu-title">{dg.action === 'block' ? 'Blocked a risky command' : 'Risky command ran'}<span class="nu-proj">{dg.project}</span><span class="nu-age">{agoText(dg.at)}</span></div>
+              <div class="nu-sub">{dg.label}</div>
+              <div class="nu-sub mono">{dg.command}</div>
+              {#if dg.action === 'block'}
+                <div class="nu-sub dim">{dg.allowed ? 'Allowed once: the session can run it on its next try.' : 'Claude was told it was blocked and to wait or ask you.'}</div>
+                <div class="nu-keys">
+                  {#if !dg.allowed}<button class="kk allow" onclick={() => guardAct(dg.id, 'allow')}>✓ Allow once</button>{/if}
+                  <button class="kk deny" onclick={() => guardAct(dg.id, 'dismiss')}>{dg.allowed ? 'Done' : '✕ Keep blocked'}</button>
+                </div>
+              {:else}
+                <div class="nu-keys"><button class="kk" onclick={() => guardAct(dg.id, 'dismiss')}>Got it</button></div>
+              {/if}
+            </div>
+          </div>
+        {/each}
+        {#each collisions as co (co.key)}
+          <div class="nu-item collision">
+            <span class="nu-ic">⚠</span>
+            <div class="nu-body">
+              <div class="nu-title">{co.sessions.length} sessions edited the same file<span class="nu-age">{agoText(co.lastAt)}</span></div>
+              <div class="nu-sub mono" title={co.file}>{shortPath(co.file)}</div>
+              <div class="nu-sub">{co.sessions.map((s) => (s.name || s.project) + (s.project && s.name && s.name !== s.project ? ' (' + s.project + ')' : '') + (co.sessions.filter((o) => (o.name || o.project) === (s.name || s.project)).length > 1 ? ' #' + String(s.sessionId || '').slice(0, 4) : '')).join(' · ')}</div>
+              <div class="nu-sub dim">One may have overwritten the other's change. Check the file before either commits.</div>
+              <div class="nu-keys"><button class="kk" onclick={() => collisionAck(co.key)}>Got it</button></div>
             </div>
           </div>
         {/each}
@@ -224,6 +264,10 @@
   .nu-item.escalation { background: #F59E0B18; }
   .nu-item.plan { background: #6366F114; }
   .nu-item.review { background: #F59E0B14; }
+  .nu-item.danger { background: #EF444414; }
+  .nu-item.danger.flagonly { background: #F59E0B14; }
+  .nu-item.collision { background: #F59E0B14; }
+  .nu-sub.mono { font-family: var(--font-mono); word-break: break-all; }
   .nu-item.limited { background: #EF444414; }
   .nu-item.ctx { background: #F59E0B0f; }
   .nu-bar { height: 5px; margin-top: 6px; border-radius: 3px; background: var(--color-background-secondary); overflow: hidden; }

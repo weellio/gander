@@ -118,6 +118,7 @@
             <span class="ic">{ICON[it.status] || '•'}</span>
             <div class="ibody">
               <div class="itop"><b>#{it.id}</b> <span class="proj">{it.project}</span> <span class="st">{it.status === 'gating' ? 'testing before merge' : it.status === 'review' ? 'awaiting your review' : it.status}{it.runner === 'terminal' ? ' · terminal' : ''}</span>
+                {#if (it.costUSD || 0) + (it.priorCostUSD || 0) > 0}<span class="cost" title={'This attempt $' + (it.costUSD || 0).toFixed(2) + ((it.priorCostUSD || 0) > 0 ? ' + earlier attempts $' + it.priorCostUSD.toFixed(2) : '') + ' (estimated from tokens at list prices)'}>💲{((it.costUSD || 0) + (it.priorCostUSD || 0)).toFixed(2)}</span>{/if}{#if (it.attempts || 1) > 1}<span class="chain" title={it.retryOf ? 'retry of task #' + it.retryOf : 'retried'}>⟳ attempt {it.attempts}</span>{/if}
                 {#if it.afterId}<span class="chain" title="starts only after that task lands">⛓ after #{it.afterId}</span>{/if}{#if it.candidate}<span class="chain" title="one of {it.candN} competing attempts — branch kept for you to compare">⊘ cand {it.candK}/{it.candN}</span>{/if}
                 <span class="when">{it.status === 'running' ? age(it.startedAt) + ' in' : it.doneAt ? age(it.doneAt) + ' ago' : age(it.createdAt) + ' waiting'}</span>
               </div>
@@ -198,6 +199,7 @@
   .proj { color: var(--color-text-secondary); }
   .st { color: var(--color-text-tertiary); }
   .when { margin-left: auto; color: var(--color-text-tertiary); font-size: 10px; }
+  .cost { font-size: 10px; font-family: var(--font-mono); color: var(--color-text-secondary); margin-left: 6px; }
   .prompt { font-size: 11.5px; line-height: 1.45; margin-top: 2px; word-break: break-word; }
   .err { font-size: 10px; color: #EF4444; margin-top: 2px; }
   .acts { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }

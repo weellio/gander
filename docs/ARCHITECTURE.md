@@ -77,6 +77,11 @@ bridge/
   version.js           # installed vs published Claude CLI (drives Update Claude)
   lessons.js           # improvement trend + recurring-error families + before/after rule measurement
   gpu.js               # nvidia-smi + Ollama / LM Studio; game detection keeps it off the driver while you play
+  guard.js             # danger guard: shell-aware command classification (critical / warn) + policy by mode
+  permlearn.js         # "stop asking me": prompt -> allow-rule, approval ledger, safe settings.json edits
+  collisions.js        # same-file edits across sessions within a window
+  quiet.js · away.js   # quiet-hours gate per alert channel · "while you were away" summary
+  replayclip.js        # session replay -> self-contained auto-playing HTML clip
 web/                   # Svelte 5 + Vite dashboard SOURCE
   src/App.svelte, src/lib/*.svelte, src/lib/*.js
   src/lib/{ProjectsSidebar,CostPanel,GithubPanel,SettingsPanel,HistoryPanel}.svelte  # control-center panels

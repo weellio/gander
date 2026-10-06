@@ -158,6 +158,12 @@
           <span class="meta">Loading…</span>
         {/if}
       </div>
+      {#if data}
+        <!-- 🎬 a self-contained, auto-playing page of this replay: open it, screen-record it,
+             or capture it at 1920x1080 for a launch video / LinkedIn post -->
+        <button class="clip" title="Open this replay as a 30-second auto-playing clip page, ready to screen-record"
+          onclick={() => window.open('/api/replay/clip?session=' + encodeURIComponent(data.sessionId || sessionId), '_blank', 'noopener')}>🎬 Clip</button>
+      {/if}
       <button class="x" onclick={close} aria-label="Close">✕</button>
     </div>
 
@@ -286,6 +292,12 @@
   }
   .meta { font-size: 10px; color: var(--color-text-tertiary); white-space: nowrap; }
   .mono { font-family: var(--font-mono); }
+  .clip {
+    margin-left: auto; margin-right: 8px; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+    padding: 3px 10px; border-radius: 6px; border: 0.5px solid var(--color-border-secondary);
+    background: var(--color-background-secondary); color: var(--color-text-primary);
+  }
+  .clip:hover { border-color: var(--accent, #6366F1); }
   .x {
     background: none;
     border: none;

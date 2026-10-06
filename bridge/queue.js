@@ -87,6 +87,10 @@ function action(id, what, extra) {
   }
   if (what === 'retry') {
     if (it.status === 'running' || it.status === 'queued' || it.status === 'gating' || it.status === 'review') return { error: 'task is not finished' };
+    // the failed attempt's spend is real money — keep it, or a task that took three
+    // tries would show only the cost of the last one
+    it.priorCostUSD = (Number(it.priorCostUSD) || 0) + (Number(it.costUSD) || 0);
+    it.costUSD = 0; it.attempts = (Number(it.attempts) || 1) + 1;
     it.status = 'queued'; it.startedAt = null; it.doneAt = null; it.sessionId = null; it.runner = null; it.error = null;
     it.gate = null; it.gateCmd = null; it.testOut = null; it.wtPath = null; it.branch = null; it.merge = null;
     save(); return { ok: true, item: it };
@@ -100,7 +104,14 @@ function action(id, what, extra) {
       it.testOut ? `Test output (tail):\n${it.testOut.slice(-1500)}` : null,
       it.merge && /CONFLICT|kept/i.test(it.merge) ? `Merge status: ${it.merge}` : null,
     ].filter(Boolean).join('\n\n');
-    return add({ cwd: it.cwd, prompt: `${it.prompt}\n\n(Retry — a previous attempt did not land.${ctx ? '\n' + ctx : ''}\nFix the cause this time.)` });
+    const r = add({ cwd: it.cwd, prompt: `${it.prompt}\n\n(Retry — a previous attempt did not land.${ctx ? '\n' + ctx : ''}\nFix the cause this time.)` });
+    if (r.ok) {
+      r.item.retryOf = it.id;
+      r.item.attempts = (Number(it.attempts) || 1) + 1;
+      r.item.priorCostUSD = (Number(it.priorCostUSD) || 0) + (Number(it.costUSD) || 0);
+      save();
+    }
+    return r;
   }
   if (what === 'remove') { items = items.filter((x) => x !== it || x.status === 'running' || x.status === 'review'); save(); return { ok: true }; }
   return { error: 'unknown action' };
@@ -108,6 +119,22 @@ function action(id, what, extra) {
 
 let lastPaused = false;   // set by tick — plan rate-limited, holding new starts
 function list() { return { enabled: cfgState.enabled, maxSlots: cfgState.maxSlots, worktrees: cfgState.worktrees, testGate: cfgState.testGate, review: cfgState.review, paused: lastPaused, items: items.slice().sort((a, b) => b.id - a.id) }; }
+// Per-task cost. The bridge's usage sampler (every 30 s) knows what each session
+// has spent; a task's session is its spend. Stamped while it runs and kept after
+// it finishes. costUSD = this attempt; priorCostUSD = earlier attempts.
+function setCosts(bySession) {
+  if (!bySession) return 0;
+  let changed = 0;
+  for (const it of items) {
+    if (!it.sessionId) continue;
+    const s = bySession[it.sessionId];
+    if (!s || !(s.costUSD >= 0)) continue;
+    const c = Math.round(s.costUSD * 10000) / 10000;
+    if (c !== it.costUSD) { it.costUSD = c; changed++; }
+  }
+  if (changed) save();
+  return changed;
+}
 function setConfig(c) {
   if (c && c.enabled !== undefined) cfgState.enabled = !!c.enabled;
   if (c && c.maxSlots !== undefined) cfgState.maxSlots = Math.max(1, Math.min(8, Number(c.maxSlots) || 2));
@@ -312,4 +339,4 @@ ${it.reviewNote || '(no note given — ask on the board if unclear)'})`, doneWhe
   return { started, finished };
 }
 
-module.exports = { add, action, list, setConfig, tick, _test: { load, save, items: () => items, reset: () => { items = []; seq = 1; cfgState = { enabled: true, maxSlots: 2, worktrees: false, testGate: true, review: false }; } } };
+module.exports = { add, action, list, setConfig, setCosts, tick, _test: { load, save, items: () => items, reset: () => { items = []; seq = 1; cfgState = { enabled: true, maxSlots: 2, worktrees: false, testGate: true, review: false }; } } };
