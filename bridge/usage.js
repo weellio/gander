@@ -72,6 +72,20 @@ function contextMaxFor(model, observed) {
   return 200000;
 }
 
+// "What would this have cost on a cheaper model?" — the same tokens at Sonnet and
+// Haiku list prices. Only for sessions on a pricier model (Opus / Fable), and
+// only the PRICE: it makes no claim that the cheaper model would have done the
+// job as well. (Token counts differ a little between models; this ignores that.)
+function whatIf(s) {
+  const m = String((s && s.ctxModel) || '').toLowerCase();
+  if (!/opus|fable|mythos/.test(m)) return null;
+  const at = (k) => {
+    const r = PRICING[k];
+    return Math.round((((s.input || 0) * r.input + (s.output || 0) * r.output + (s.cacheWrite || 0) * r.cacheWrite + (s.cacheRead || 0) * r.cacheRead) / 1e6) * 100) / 100;
+  };
+  return { sonnet: at('sonnet'), haiku: at('haiku') };
+}
+
 function costOf(model, input, output, cacheWrite, cacheRead, overrides) {
   const r = rateFor(model, overrides);
   return (
@@ -393,6 +407,8 @@ async function build() {
       ctxTokens: s.ctxTokens,
       ctxMax,
       ctxPct: ctxMax > 0 ? Math.min(1, s.ctxTokens / ctxMax) : 0,
+      model: s.ctxModel || '',
+      whatIf: whatIf(s),
     };
   }
 
@@ -471,4 +487,4 @@ function summary() {
   return _cache || emptyShape();
 }
 
-module.exports = { summary, summaryAsync, PRICING, rateFor };
+module.exports = { summary, summaryAsync, PRICING, rateFor, whatIf };

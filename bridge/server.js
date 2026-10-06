@@ -45,6 +45,7 @@ const gpu = require('./gpu.js');
 const collisions = require('./collisions.js');
 const quiet = require('./quiet.js');
 const away = require('./away.js');
+const ctxbreak = require('./ctxbreak.js');
 const guard = require('./guard.js');
 const permlearn = require('./permlearn.js');
 const transcript = require('./transcript.js');
@@ -1336,6 +1337,55 @@ function noteEdit(body, project) {
   console.log(`[collision] ${hit.file} <- ${hit.sessions.map((x) => x.sessionId.slice(0, 8)).join(', ')}`);
 }
 
+// ⑂ Fork lineage. --fork-session gives the branch a brand-new session id that
+// nothing announces, so the bridge remembers the fork it launched and links the
+// next session to start in that folder within 3 minutes.
+const FORKS_FILE = path.join(__dirname, 'aoc-forks.json');
+let forks = []; try { forks = JSON.parse(fs.readFileSync(FORKS_FILE, 'utf8')) || []; } catch (_) { forks = []; }
+const forksPending = [];   // [{ parent, cwdKey, at }]
+function noteForkLaunch(parent, cwd) { forksPending.push({ parent, cwdKey: projKeyOf(cwd), at: Date.now() }); }
+function linkFork(body) {
+  if (body.hook_event_name !== 'SessionStart' || !body.session_id || !body.cwd) return;
+  const key = projKeyOf(body.cwd), now = Date.now();
+  const i = forksPending.findIndex((f) => f.cwdKey === key && now - f.at < 3 * 60 * 1000 && f.parent !== body.session_id);
+  if (i < 0) return;
+  const f = forksPending.splice(i, 1)[0];
+  if (forks.some((x) => x.child === body.session_id)) return;
+  forks.push({ child: body.session_id, parent: f.parent, at: now });
+  if (forks.length > 2000) forks = forks.slice(-2000);
+  try { fs.writeFileSync(FORKS_FILE, JSON.stringify(forks)); } catch (_) {}
+  console.log('[fork] ' + body.session_id.slice(0, 8) + ' forked from ' + f.parent.slice(0, 8));
+}
+
+// For the rail's diff preview: the parts of an Edit / Write / MultiEdit /
+// NotebookEdit request a human needs to see, size-capped (this rides every
+// /api/state poll while the prompt is open). A Write over an existing file also
+// says how long that file is now, so "replaces a 400-line file" is visible.
+const PREVIEW_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+const previewCache = new Map();   // requestKey -> input (the file stat happens once per prompt)
+function previewInput(tool, input, cwd) {
+  if (!PREVIEW_TOOLS.has(tool) || !input || typeof input !== 'object') return undefined;
+  const key = tool + '\n' + JSON.stringify(input).slice(0, 400);
+  if (previewCache.has(key)) return previewCache.get(key);
+  const cap = (v, n) => (typeof v === 'string' ? v.slice(0, n) : undefined);
+  const out = { file_path: cap(input.file_path || input.notebook_path, 500) };
+  if (tool === 'Edit') { out.old_string = cap(input.old_string, 20000); out.new_string = cap(input.new_string, 20000); out.replace_all = !!input.replace_all; }
+  if (tool === 'MultiEdit') out.edits = (Array.isArray(input.edits) ? input.edits : []).slice(0, 20).map((e) => ({ old_string: cap(e && e.old_string, 8000), new_string: cap(e && e.new_string, 8000) }));
+  if (tool === 'NotebookEdit') out.new_source = cap(input.new_source, 20000);
+  if (tool === 'Write') {
+    out.content = cap(input.content, 30000);
+    try {
+      let f = out.file_path;
+      if (f && !path.isAbsolute(f) && cwd) f = path.join(cwd, f);
+      const st = f && fs.statSync(f);
+      if (st && st.isFile() && st.size < 4 * 1024 * 1024) out.__existingLines = fs.readFileSync(f, 'utf8').split(/\r?\n/).length;
+    } catch (_) { /* new file */ }
+  }
+  previewCache.set(key, out);
+  if (previewCache.size > 100) previewCache.delete(previewCache.keys().next().value);
+  return out;
+}
+
 let gpuLowered = [];
 const gameNamesCfg = () => (Array.isArray(cfg.gameNames) ? cfg.gameNames : String(cfg.gameNames || '').split(/[,\n]/)).map((x) => String(x).trim()).filter(Boolean);
 const gpuOpts = () => ({ ollamaUrl: cfg.ollamaUrl || '', lmstudioUrl: cfg.lmstudioUrl || '', gameNames: gameNamesCfg() });
@@ -1546,7 +1596,7 @@ function captureWin(cwd) {
   } catch (_) {}
 }
 
-function launchSession(cwd, resume, prompt) {
+function launchSession(cwd, resume, prompt, fork) {
   if (resume && !/^[\w-]+$/.test(resume)) return { error: 'bad session id' };
   // cwd is interpolated into the shell command lines below (inside single quotes on
   // macOS/Linux, and the window title on Windows). Reject break-out chars — real
@@ -1562,7 +1612,9 @@ function launchSession(cwd, resume, prompt) {
   const cli = (/\s/.test(rawCli) && !/^["']/.test(rawCli)) ? `"${rawCli}"` : rawCli;
   const flags = buildLaunchFlags();
   const base = flags ? `${cli} ${flags}` : cli;
-  const inner = resume ? `${base} --resume ${resume}` : (task ? `${base} "${task}"` : base);
+  // ⑂ fork: Claude Code's own --fork-session resumes the conversation under a NEW session id,
+  // so the original stays exactly as it was and the two can go different ways
+  const inner = resume ? `${base} --resume ${resume}${fork ? ' --fork-session' : ''}` : (task ? `${base} "${task}"` : base);
   // The bridge is usually started by a Claude session, so it carries CLAUDECODE /
   // CLAUDE_CODE_* — a child terminal would inherit them and Claude refuses to launch
   // ("cannot be launched inside another Claude Code session"). Strip them so the new
@@ -2082,7 +2134,7 @@ function snapshot() {
     }
     a.inbox = peers.canDeliver(a.sessionId) || undefined;      // replies can go straight into its inbox
     const mine = perms.filter((p) => p.sessionId === a.sessionId);
-    a.perm = mine.length ? { requestId: mine[0].requestId, tool: mine[0].tool, detail: mine[0].detail, hasSuggestions: !!(mine[0].suggestions || []).length, ts: mine[0].ts } : undefined;
+    a.perm = mine.length ? { requestId: mine[0].requestId, tool: mine[0].tool, detail: mine[0].detail, hasSuggestions: !!(mine[0].suggestions || []).length, ts: mine[0].ts, input: previewInput(mine[0].tool, mine[0].input, a.cwd) } : undefined;
     a.permCount = mine.length || undefined;
     if (dispatch.isHosted(a.sessionId)) a.dispatch = true;
   }
@@ -2539,6 +2591,7 @@ Allow / Deny it in the dashboard rail.`);
     }
     const project = projectFromCwd(body.cwd);
     try { noteEdit(body, project); } catch (e) { console.error('[collision]', e && e.message); }
+    try { linkFork(body); } catch (_) {}
     try { notePermission(body, project); } catch (_) {}
     // the guard runs BEFORE the muted check: hiding a project from the floor must not switch off its safety net
     const guardDeliver = body.hook_event_name === 'PreToolUse' && body.session_id ? guardCheck(body, project) : null;
@@ -2784,7 +2837,8 @@ Allow / Deny it in the dashboard rail.`);
     // a launch WITH a goal runs inside the bridge — no terminal window, instant replies,
     // dashboard-native permission prompts. A goal-less launch always opens a terminal
     // (an interactive session with nobody typing into it has nothing to do headless).
-    const wantDispatch = !!cfg.dispatch && body.mode !== 'terminal' && String(body.prompt || '').trim();
+    // a fork is an interactive branch you work in yourself, so it always opens a terminal
+    const wantDispatch = !!cfg.dispatch && body.mode !== 'terminal' && !body.fork && String(body.prompt || '').trim();
     // a ＋ New task launch WITH a goal gets the board briefing too (not a bare
     // interactive start, which has no prompt to append to)
     const launchPrompt = String(body.prompt || '').trim() ? body.prompt + boardBrief(body.cwd) : body.prompt;
@@ -2793,7 +2847,9 @@ Allow / Deny it in the dashboard rail.`);
       const r = dispatch.start({ cwd: body.cwd, prompt: launchPrompt, resume: body.resume, permMode: cfg.launchPermMode || '', cli: claudeCliRaw(), extraFlags: cfg.launchFlags });
       return sendJson(res, r.error ? 400 : 200, r.error ? r : { ...r, dispatched: true });
     }
-    const r = launchSession(body.cwd, body.resume, launchPrompt);
+    if (body.fork && !body.resume) return sendJson(res, 400, { error: 'fork needs a session to fork from' });
+    const r = launchSession(body.cwd, body.resume, launchPrompt, !!body.fork);
+    if (r.ok && body.fork) noteForkLaunch(body.resume, body.cwd);
     if (r.ok) captureWin(body.cwd);   // remember the window's PID so quick-keys/nudge can reach it
     return sendJson(res, r.error ? 400 : 200, r);
   }
@@ -3174,7 +3230,16 @@ Allow / Deny it in the dashboard rail.`);
   }
 
   if (url === '/api/history' && req.method === 'GET') {
-    return sendJson(res, 200, await history.list({}));
+    const h = await history.list({});
+    // ⑂ lineage: which sessions are forks, and how many branches each has
+    const list = Array.isArray(h) ? h : (h && (h.sessions || h.items)) || [];
+    for (const s of list) {
+      const f = forks.find((x) => x.child === s.sessionId);
+      if (f) s.forkOf = f.parent;
+      const n = forks.filter((x) => x.parent === s.sessionId).length;
+      if (n) s.forkCount = n;
+    }
+    return sendJson(res, 200, h);
   }
 
   if (url === '/api/transcript' && req.method === 'POST') {
@@ -3262,6 +3327,67 @@ Allow / Deny it in the dashboard rail.`);
     if (!body || !body.rule) return sendJson(res, 400, { error: 'rule required' });
     permLedger.forget(String(body.rule));
     return sendJson(res, 200, { ok: true });
+  }
+
+  // ── 📄 runbook: a finished session as hand-off steps (what worked, what changed, how it was verified)
+  if (url === '/api/runbook' && req.method === 'GET') {
+    const ru = new URL(req.url, 'http://localhost');
+    const sid = String(ru.searchParams.get('session') || '');
+    if (!/^[\w-]{6,80}$/.test(sid)) return sendJson(res, 400, { error: 'session required' });
+    const a = agents.get('sess:' + sid) || Array.from(agents.values()).find((x) => x.sessionId === sid && x.root);
+    let file = a && a.transcriptPath;
+    if (!file) {   // a session that has clocked out: find its transcript on disk
+      const root = path.join(os.homedir(), '.claude', 'projects');
+      try { for (const d of fs.readdirSync(root)) { const f = path.join(root, d, sid + '.jsonl'); if (fs.existsSync(f)) { file = f; break; } } } catch (_) {}
+    }
+    if (!file) return sendJson(res, 404, { error: 'no transcript for that session' });
+    try {
+      let title;
+      try { title = (sessionmeta.read(file) || {}).title || undefined; } catch (_) {}
+      const rb = await require('./runbook.js').build(file, { title });
+      const md = ru.searchParams.get('format') === 'md';
+      res.writeHead(200, md
+        ? { 'Content-Type': 'text/markdown; charset=utf-8', 'Content-Disposition': 'inline; filename="runbook.md"', 'Cache-Control': 'no-store' }
+        : { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(md ? require('./runbook.js').toMarkdown(rb) : require('./runbook.js').toHtml(rb));
+    } catch (e) { sendJson(res, 500, { error: String(e && e.message || e) }); }
+    return;
+  }
+
+  // ── 🧠 what is filling a session's context window ──────────────────────────
+  if (url === '/api/context-breakdown' && req.method === 'GET') {
+    const cu = new URL(req.url, 'http://localhost');
+    const sid = String(cu.searchParams.get('session') || '');
+    const a = agents.get('sess:' + sid) || Array.from(agents.values()).find((x) => x.sessionId === sid && x.root);
+    if (!a || !a.transcriptPath) return sendJson(res, 404, { error: 'no transcript for this session yet' });
+    try {
+      // a full read is fast (it skips to the last compaction) and yields while it reads;
+      // cap the wait so a pathological file can never hold the request open
+      await Promise.race([ctxbreak.readFull(a.transcriptPath), new Promise((r) => setTimeout(r, 8000))]);
+      return sendJson(res, 200, ctxbreak.breakdown(a.transcriptPath, { model: a.model }));
+    } catch (e) { return sendJson(res, 500, { error: String(e && e.message || e) }); }
+  }
+
+  // ── 📝 prompt templates (＋ New task) — stored here so every browser sees the same ones
+  if (url === '/api/templates' && req.method === 'GET') {
+    return sendJson(res, 200, { templates: Array.isArray(cfg.promptTemplates) ? cfg.promptTemplates : [] });
+  }
+  if (url === '/api/templates' && req.method === 'POST') {
+    const body = await readBody(req);
+    const name = String((body && body.name) || '').trim().slice(0, 60), text = String((body && body.text) || '').trim().slice(0, 4000);
+    if (!name || !text) return sendJson(res, 400, { error: 'name and text required' });
+    const list = Array.isArray(cfg.promptTemplates) ? cfg.promptTemplates : [];
+    const existing = list.find((t) => t.name.toLowerCase() === name.toLowerCase());
+    if (existing) existing.text = text;   // same name: update it
+    else { if (list.length >= 100) return sendJson(res, 400, { error: 'template limit reached (100)' }); list.push({ id: Date.now().toString(36), name, text }); }
+    cfg.promptTemplates = list; saveConfig();
+    return sendJson(res, 200, { ok: true, templates: list });
+  }
+  if (url === '/api/templates/delete' && req.method === 'POST') {
+    const body = await readBody(req);
+    cfg.promptTemplates = (Array.isArray(cfg.promptTemplates) ? cfg.promptTemplates : []).filter((t) => t.id !== (body && body.id));
+    saveConfig();
+    return sendJson(res, 200, { ok: true, templates: cfg.promptTemplates });
   }
 
   // ── ⚠ collisions · 🌙 while you were away ───────────────────────────────────

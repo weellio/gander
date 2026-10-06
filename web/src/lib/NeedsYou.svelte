@@ -1,4 +1,5 @@
 <script>
+  import DiffView from './DiffView.svelte';
   // "Needs you" triage rail — one ranked list of every session waiting on a human
   // (needs input / errored / finished), with the reason, how long it's waited, and
   // the answer keys right here so you never have to go find the terminal.
@@ -226,6 +227,8 @@
                   <button class="kk allow" class:sent={sentId === a.id + ':allow'} onclick={() => perm(a, 'allow')}>✓ Allow {a.perm.tool}</button>
                   <button class="kk deny" class:sent={sentId === a.id + ':deny'} onclick={() => perm(a, 'deny')}>✕ Deny</button>
                 </div>
+                <!-- what you are about to allow: a real before/after diff for Edit / Write -->
+                {#if a.perm.input}<div class="nu-diff"><DiffView tool={a.perm.tool} input={a.perm.input} maxHeight={220} /></div>{/if}
               {:else if (a.state === 'awaiting' || stateOf(a) === 'stalled') && !a.dispatch}
                 <div class="nu-keys" title="Types into the session's terminal — keep that window focused">
                   {#each KEYS as [lbl, k] (lbl)}<button class="kk" class:sent={sentId === a.id + ':' + lbl} onclick={() => key(a, k, lbl)}>{lbl}</button>{/each}
@@ -265,6 +268,7 @@
   .nu-item.plan { background: #6366F114; }
   .nu-item.review { background: #F59E0B14; }
   .nu-item.danger { background: #EF444414; }
+  .nu-diff { margin-top: 6px; min-width: 0; }
   .nu-item.danger.flagonly { background: #F59E0B14; }
   .nu-item.collision { background: #F59E0B14; }
   .nu-sub.mono { font-family: var(--font-mono); word-break: break-all; }

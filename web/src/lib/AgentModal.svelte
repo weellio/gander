@@ -54,8 +54,38 @@
   }
   async function loadCost() {
     if (!sid) return;
+    loadFill();   // in parallel: right after a restart /api/usage is a slow cold scan, and the breakdown doesn't need it
     try { const r = await fetch('/api/usage'); const j = await r.json(); cost = (j.bySession && j.bySession[sid]) || null; } catch (_) {}
   }
+  // 🧠 what is filling the context window (estimated from the transcript, scaled to the real total)
+  let fill = $state(null);
+  let fillReading = $state(false);
+  // Right after a bridge restart a big session is still being read (it catches up in
+  // the background), and the first answer can come back empty. Retry a few times
+  // instead of showing nothing — measured: cold 489 MB session, warm answer in 9 ms.
+  async function loadFill(tries = 0) {
+    if (!sid) return;
+    try {
+      const j = await (await fetch('/api/context-breakdown?session=' + encodeURIComponent(sid))).json();
+      if (j && !j.error && j.totalTokens && !j.behind) { fill = j; fillReading = false; return; }
+      if (j && !j.error && tries < 8) { fillReading = true; setTimeout(() => loadFill(tries + 1), 1500); return; }
+      if (j && !j.error && j.totalTokens) fill = j;   // still catching up after retries: show what there is
+      fillReading = false;
+    } catch (_) { fillReading = false; }
+  }
+  // colour follows the CATEGORY (fixed slot order from the validated palette), never its rank;
+  // "not shown" is neutral grey because it is a remainder, not a thing
+  const FILL_COL = { toolResults: 'var(--fc-1)', toolCalls: 'var(--fc-2)', thinking: 'var(--fc-3)', conversation: 'var(--fc-4)', injected: 'var(--fc-5)', summary: 'var(--fc-6)', baseline: 'var(--fc-rest)' };
+  const kTok = (n) => (n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1000 ? Math.round(n / 1000) + 'k' : String(n || 0));
+  // a file path keeps its last two parts; a shell command is NOT a path (splitting it on '/'
+  // chopped commands into nonsense like '…/lib/He'), so a command shows its start instead
+  const PATH_TOOLS = new Set(['Read', 'Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'NotebookRead', 'Glob']);
+  const shortDetail = (b) => {
+    const d = String((b && b.detail) || '');
+    if (!PATH_TOOLS.has(b && b.tool)) return d.length > 60 ? d.slice(0, 59) + '…' : d;
+    const p = d.replace(/\\/g, '/').split('/');
+    return p.length > 2 ? '…/' + p.slice(-2).join('/') : d;
+  };
   async function loadGithub() {
     if (!agent || !agent.cwd) return;
     try {
@@ -351,14 +381,22 @@
         {/if}
       </div>
 
-      {#if cost && (cost.tokens || ctxPct !== null)}
+      {#if (cost && (cost.tokens || ctxPct !== null)) || fill || fillReading}
         <div class="sec">
           <div class="lbl">Analytics <span class="dim2">· estimated from transcript</span></div>
+          <!-- usage-backed parts wait for /api/usage; the context breakdown below does not -->
+          {#if cost}
           <div class="gauges">
             {#if cost.tokens}<span class="g" title="Total tokens this session (input + output + cache)">🔢 {cost.tokens >= 1e6 ? (cost.tokens / 1e6).toFixed(1) + 'M' : Math.round(cost.tokens / 1000) + 'k'} tok</span>{/if}
             {#if typeof cost.cacheHit === 'number'}<span class="g" title="Share of input-side tokens served from cache. Higher = more efficient (re-using context instead of re-sending it).">♻️ {pct(cost.cacheHit)} cache-hit</span>{/if}
             {#if typeof cost.outShare === 'number'}<span class="g" title="Output's share of spend. Output costs ~5x input, so a high share means verbose answers — a candidate for a terse/shorthand skill.">🗣 {pct(cost.outShare)} output $</span>{/if}
           </div>
+          {#if cost.whatIf}
+            <div class="whatif" title="The same tokens at list prices. This is the price difference only: it says nothing about whether a cheaper model would have done the job as well.">
+              💡 Same work at list price: <b>${cost.whatIf.sonnet.toFixed(2)}</b> on Sonnet · <b>${cost.whatIf.haiku.toFixed(2)}</b> on Haiku <span class="dim2">(price only)</span>
+            </div>
+          {/if}
+          {/if}
           {#if ctxPct !== null}
             <div class="ctx">
               <div class="ctx-top">
@@ -366,6 +404,28 @@
                 <span class="mono" style="color:{ctxColor(ctxPct)}">{pct(ctxPct)} of {Math.round((cost.ctxMax || 200000) / 1000)}k{ctxPct >= 0.85 ? ' · auto-compact soon' : ''}</span>
               </div>
               <div class="bar"><div class="fill" style="width:{Math.round(ctxPct * 100)}%;background:{ctxColor(ctxPct)}"></div></div>
+            </div>
+          {/if}
+          {#if !fill && fillReading}<div class="dim2 fill-note">Reading this session to see what fills its context…</div>{/if}
+          {#if fill}
+            <div class="fill-box">
+              <div class="ctx-top"><span>What's filling it</span><span class="dim2">{kTok(fill.totalTokens)} · since {fill.compactions ? 'the last /compact' : 'the start'}</span></div>
+              <div class="fill-bar" role="img" aria-label="Context window contents by category">
+                {#each fill.categories.filter((c) => c.tokens > 0) as c (c.key)}<span class="seg" style="width:{Math.max(0.6, c.pct * 100)}%;background:{FILL_COL[c.key] || 'var(--fc-rest)'}" title="{c.label}: {kTok(c.tokens)} ({Math.round(c.pct * 100)}%)"></span>{/each}
+              </div>
+              <div class="fill-legend">
+                {#each fill.categories.filter((c) => c.tokens > 0) as c (c.key)}
+                  <span class="fl"><i style="background:{FILL_COL[c.key] || 'var(--fc-rest)'}"></i>{c.label} <b>{Math.round(c.pct * 100)}%</b></span>
+                {/each}
+              </div>
+              {#if fill.biggest && fill.biggest.length}
+                <div class="fill-big">
+                  <div class="dim2">Biggest single items</div>
+                  {#each fill.biggest.slice(0, 4) as b}<div class="fb"><span class="mono">{kTok(b.tokens)}</span> {b.tool} <span class="dim2" title={b.detail}>{shortDetail(b)}</span></div>{/each}
+                </div>
+              {/if}
+              {#if fill.advice}<div class="fill-advice">💡 {fill.advice}</div>{/if}
+              <div class="dim2 fill-note">{fill.note}</div>
             </div>
           {/if}
           {#if agent.cwd}<button class="auditbtn" onclick={() => (auditOpen = true)} title="Find CLAUDE.md lines that cost window every turn but are never used">🔍 Audit CLAUDE.md for dead weight</button>{/if}
@@ -533,6 +593,22 @@
   .dim { font-size: 11px; color: var(--color-text-tertiary); }
   .dim2 { color: var(--color-text-tertiary); font-weight: 400; text-transform: none; letter-spacing: 0; }
   .gauges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+  .whatif { font-size: 11px; color: var(--color-text-secondary); margin-top: 6px; }
+  /* context-fill palette: the validated categorical slots, light then dark */
+  .fill-box { --fc-1: #2a78d6; --fc-2: #eb6834; --fc-3: #1baf7a; --fc-4: #eda100; --fc-5: #e87ba4; --fc-6: #008300; --fc-rest: #b7b5ad;
+    margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  @media (prefers-color-scheme: dark) { .fill-box { --fc-1: #3987e5; --fc-2: #d95926; --fc-3: #199e70; --fc-4: #c98500; --fc-5: #d55181; --fc-6: #008300; --fc-rest: #5c5952; } }
+  .fill-bar { display: flex; gap: 2px; height: 12px; border-radius: 4px; overflow: hidden; }
+  .fill-bar .seg { display: block; height: 100%; min-width: 2px; }
+  .fill-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 10.5px; color: var(--color-text-secondary); }
+  .fill-legend .fl { display: inline-flex; align-items: center; gap: 4px; }
+  .fill-legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .fill-legend b { color: var(--color-text-primary); font-family: var(--font-mono); font-weight: 600; }
+  .fill-big { display: flex; flex-direction: column; gap: 2px; font-size: 10.5px; color: var(--color-text-primary); }
+  .fill-big .fb { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fill-advice { font-size: 11px; color: var(--color-text-primary); background: var(--color-background-secondary); border-radius: 6px; padding: 6px 8px; line-height: 1.45; }
+  .fill-note { font-size: 9.5px; line-height: 1.4; }
+  .whatif b { color: var(--color-text-primary); font-family: var(--font-mono); }
   .gauges .g { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--color-background-secondary);
     border: 0.5px solid var(--color-border-tertiary); color: var(--color-text-secondary); white-space: nowrap; }
   .ctx { margin-top: 8px; }

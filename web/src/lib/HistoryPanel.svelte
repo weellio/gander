@@ -33,6 +33,17 @@
     } catch (_) {}
   }
 
+  // ⑂ branch this session into a new one (Claude Code's --fork-session): the original
+  // is left exactly as it was, so you can try a different direction without losing it
+  let forked = $state(null);
+  async function fork(session) {
+    try {
+      await fetch('/api/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: session.cwd, resume: session.sessionId, fork: true }) });
+      forked = session.sessionId;
+      setTimeout(() => { if (forked === session.sessionId) forked = null; }, 2500);
+    } catch (_) {}
+  }
+
   async function copyResume(session) {
     try {
       await navigator.clipboard.writeText(session.resumeCmd);
@@ -114,11 +125,17 @@
             </div>
             <div class="row-bottom">
               <span class="sid mono">{s.sessionId.slice(0, 8)}</span>
+              {#if s.forkOf}<span class="fork" title="Forked from session {s.forkOf}">⑂ from {s.forkOf.slice(0, 8)}</span>{/if}
+              {#if s.forkCount}<span class="fork" title="{s.forkCount} branch(es) were forked from this session">⑂ {s.forkCount}</span>{/if}
               <span class="rb-actions">
                 {#if onView}<button class="copy-btn" onclick={() => onView(s.sessionId)} title="Read this session's transcript">View</button>{/if}
                 {#if onReplay}<button class="copy-btn" onclick={() => onReplay(s.sessionId)} title="Replay this session on a timeline — states, tools, cumulative cost">⏪</button>{/if}
                 <button class="copy-btn" onclick={() => resume(s)} title="Open a terminal and resume this session">
                   {launched === s.sessionId ? 'launching…' : '▶ Resume'}
+                </button>
+                <button class="copy-btn" onclick={() => window.open('/api/runbook?session=' + encodeURIComponent(s.sessionId), '_blank', 'noopener')} title="Turn this session into a step-by-step runbook for whoever implements the fix">📄</button>
+                <button class="copy-btn" onclick={() => fork(s)} title="Branch this session into a new one. The original stays exactly as it is, so you can try a different direction">
+                  {forked === s.sessionId ? 'forking…' : '⑂ Fork'}
                 </button>
                 <button
                   class="copy-btn"
@@ -183,4 +200,5 @@
     background: var(--accent, #6366F1); color: #fff; border-color: transparent;
   }
   .rb-actions { display: flex; gap: 5px; }
+  .fork { font-size: 10px; font-family: var(--font-mono); color: var(--color-text-secondary); margin-left: 6px; }
 </style>

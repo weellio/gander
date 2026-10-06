@@ -163,6 +163,9 @@
              or capture it at 1920x1080 for a launch video / LinkedIn post -->
         <button class="clip" title="Open this replay as a 30-second auto-playing clip page, ready to screen-record"
           onclick={() => window.open('/api/replay/clip?session=' + encodeURIComponent(data.sessionId || sessionId), '_blank', 'noopener')}>🎬 Clip</button>
+        <!-- 📄 the same session as hand-off steps for whoever implements the fix -->
+        <button class="clip rb" title="Turn this session into a step-by-step runbook: the commands that worked, the files changed, how it was verified"
+          onclick={() => window.open('/api/runbook?session=' + encodeURIComponent(data.sessionId || sessionId), '_blank', 'noopener')}>📄 Runbook</button>
       {/if}
       <button class="x" onclick={close} aria-label="Close">✕</button>
     </div>
@@ -298,6 +301,7 @@
     background: var(--color-background-secondary); color: var(--color-text-primary);
   }
   .clip:hover { border-color: var(--accent, #6366F1); }
+  .clip.rb { margin-left: 0; }
   .x {
     background: none;
     border: none;

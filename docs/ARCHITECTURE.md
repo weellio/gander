@@ -82,10 +82,13 @@ bridge/
   collisions.js        # same-file edits across sessions within a window
   quiet.js · away.js   # quiet-hours gate per alert channel · "while you were away" summary
   replayclip.js        # session replay -> self-contained auto-playing HTML clip
+  runbook.js           # session -> hand-off runbook (steps that worked, files changed, checks) as Markdown or a page
+  ctxbreak.js          # what fills a session's context window since the last /compact (bounded, background reads)
 web/                   # Svelte 5 + Vite dashboard SOURCE
   src/App.svelte, src/lib/*.svelte, src/lib/*.js
   src/lib/{ProjectsSidebar,CostPanel,GithubPanel,SettingsPanel,HistoryPanel}.svelte  # control-center panels
   src/lib/procgroups.js  # shared server-room grouping (Office floor robots + Mosaic strip)
+  src/lib/diff.js + DiffView.svelte  # line diff for approval previews (no dependencies, never {@html})
   -> `npm run build` outputs to dashboard/dist (what the bridge serves)
 dashboard/dist/        # built dashboard (shipped); phone.html is the phone console, copied from web/public/
 skills/                # copied into ~/.claude (or the project's .claude) by the installer — setup/lib.js COMPONENTS
