@@ -50,6 +50,8 @@ Valid states: `idle thinking coding spawning reading testing searching error don
 
 ## What works for non-Claude tools vs what stays Claude-only
 
+The **🧩 Terminal mod** (`gander-feed`, exact cost / context / plan windows) is Claude Code-only by nature: it is a Claude Code plugin running inside the engine. Other providers never see an Install button for it and lose nothing: their tiles keep the hook, event-API and transcript paths described above.
+
 | Works with ANY tool (wrap / event API) | Claude Code only (hooks + transcripts + CLI) |
 |---|---|
 | Live floor tiles: states, goals, live log lines | Auto-attach (sessions appear with zero wiring) |

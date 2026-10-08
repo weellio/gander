@@ -1,0 +1,41 @@
+{
+  "name": "gander-feed",
+  "displayName": "Gander feed",
+  "version": "0.1.0",
+  "description": "Feeds the Gander dashboard exact per-session telemetry (context fill, rate-limit windows, cost, every model request, sub-agent spawns) and draws a one-line Gander band above the prompt. Needs Claude Code 2.1.287 or newer; Gander's classic hooks keep working without it.",
+  "author": {
+    "name": "Bworld",
+    "email": "b@bworldtools.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "gander",
+    "dashboard",
+    "telemetry",
+    "cost",
+    "context",
+    "subagents"
+  ],
+  "hooks": "./hooks/hooks.json",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "bridgeUrl": {
+      "type": "string",
+      "description": "Where the Gander bridge listens.",
+      "default": "http://127.0.0.1:3131",
+      "title": "Bridge URL"
+    },
+    "band": {
+      "type": "boolean",
+      "description": "Draw the one-line Gander band above the prompt (needs-you count, this session's spend, context fill).",
+      "default": true,
+      "title": "Band above the prompt"
+    },
+    "pollSeconds": {
+      "type": "number",
+      "description": "How often the band asks the bridge for the needs-you count.",
+      "default": 15,
+      "title": "Band refresh (seconds)"
+    }
+  }
+}

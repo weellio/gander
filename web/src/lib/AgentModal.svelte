@@ -26,7 +26,9 @@
   let sid = $derived(agent ? (agent.sessionId || String(agent.id).replace(/^sess:/, '')) : '');
   // Context-fill gauge: latest turn's context ÷ model limit. Claude Code auto-compacts
   // near the limit, so a high % on a parked session is the moment to compact by hand.
-  let ctxPct = $derived(cost && typeof cost.ctxPct === 'number' ? cost.ctxPct : null);
+  // A live gander-feed mod (in-process Claude Code hooks) reports the engine's own figures; they beat the transcript estimate.
+  let feed = $derived(agent && agent.feed && agent.feed.live ? agent.feed : null);
+  let ctxPct = $derived(feed && feed.ctxPct !== null ? feed.ctxPct : (cost && typeof cost.ctxPct === 'number' ? cost.ctxPct : null));
   let parked = $derived(agent && ['idle', 'done', 'awaiting'].includes(agent.state));
   let compactReady = $derived(ctxPct !== null && ctxPct >= 0.7 && parked);
   // OpenAI Codex session (CLI / Codex Desktop) — watched via its rollout logs, so
@@ -315,7 +317,8 @@
         {#if agent.role}<span title="Agent type">· {agent.role}</span>{/if}
         {#if agent.model && agent.model !== 'inherit'}<span title="Defined model">· 🧠 {agent.model}</span>{/if}
         {#if agent.updatedAt}<span class="mono" title="Time since last event">· ⏱ {rel(agent.updatedAt)}</span>{/if}
-        {#if cost}<span class="mono" title="This session's estimated spend">· 💰 ${cost.costUSD.toFixed(2)}</span>
+        {#if feed && feed.costUsd !== null}<span class="mono" title="This session's spend as Claude Code itself reports it (gander-feed mod)">· 💰 ${feed.costUsd.toFixed(2)} <span class="dim2">exact</span></span>
+        {:else if cost}<span class="mono" title="This session's estimated spend">· 💰 ${cost.costUSD.toFixed(2)}</span>
         {:else if codex && agent.costUSD != null}<span class="mono" title="Priced by the bridge from the Codex token log">· 💰 ${Number(agent.costUSD).toFixed(2)}</span>{/if}
         {#if agent.runaway && $costAlerts}<span class="mono burn" title="Burning fast right now — consider Stop">· 💸 ${(agent.burnRate || 0).toFixed(2)}/min</span>{/if}
       </div>
@@ -381,9 +384,16 @@
         {/if}
       </div>
 
-      {#if (cost && (cost.tokens || ctxPct !== null)) || fill || fillReading}
+      {#if (cost && (cost.tokens || ctxPct !== null)) || feed || fill || fillReading}
         <div class="sec">
-          <div class="lbl">Analytics <span class="dim2">· estimated from transcript</span></div>
+          <div class="lbl">Analytics <span class="dim2">{feed ? '· exact, from the gander-feed mod' : '· estimated from transcript'}</span></div>
+          {#if feed}
+          <div class="gauges">
+            {#each feed.rateLimits as r}<span class="g" title="Plan window as Claude Code reports it live">⏳ {r.kind.replace(/_/g, ' ')} {r.percentUsed}%</span>{/each}
+            {#if feed.cacheHit !== null}<span class="g" title="Share of input-side tokens served from the prompt cache, from the engine's own usage">♻️ {Math.round(feed.cacheHit * 100)}% cache</span>{/if}
+            <span class="g" title="Model requests this session (main loop plus sub-agent loops), counted as they are sent">🔁 {feed.steps} request{feed.steps === 1 ? '' : 's'}{feed.subagents ? ' · ' + feed.subagents + ' sub-agent' + (feed.subagents === 1 ? '' : 's') : ''}</span>
+          </div>
+          {/if}
           <!-- usage-backed parts wait for /api/usage; the context breakdown below does not -->
           {#if cost}
           <div class="gauges">
@@ -401,7 +411,7 @@
             <div class="ctx">
               <div class="ctx-top">
                 <span>Context window</span>
-                <span class="mono" style="color:{ctxColor(ctxPct)}">{pct(ctxPct)} of {Math.round((cost.ctxMax || 200000) / 1000)}k{ctxPct >= 0.85 ? ' · auto-compact soon' : ''}</span>
+                <span class="mono" style="color:{ctxColor(ctxPct)}">{pct(ctxPct)} of {Math.round(((feed && feed.ctxMax) || (cost && cost.ctxMax) || 200000) / 1000)}k{ctxPct >= 0.85 ? ' · auto-compact soon' : ''}</span>
               </div>
               <div class="bar"><div class="fill" style="width:{Math.round(ctxPct * 100)}%;background:{ctxColor(ctxPct)}"></div></div>
             </div>

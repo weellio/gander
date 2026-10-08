@@ -5,7 +5,7 @@
     "email": "b@bworldtools.com"
   },
   "metadata": {
-    "description": "Agent Ops Center — live animated dashboard for Claude Code agents.",
+    "description": "Agent Ops Center \u2014 live animated dashboard for Claude Code agents.",
     "version": "0.1.0"
   },
   "plugins": [
@@ -13,6 +13,12 @@
       "name": "gander",
       "source": "./",
       "description": "Live animated dashboard of your Claude Code agents & sub-agents, driven automatically by hooks.",
+      "version": "0.1.0"
+    },
+    {
+      "name": "gander-feed",
+      "source": "./mods/gander-feed",
+      "description": "In-process hooks (Claude Code 2.1.287+) that feed the dashboard exact per-session cost, context fill, rate-limit windows and sub-agent model requests, plus a one-line Gander band above the prompt.",
       "version": "0.1.0"
     }
   ]

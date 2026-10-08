@@ -27,7 +27,7 @@
     loading = false;
   }
 
-  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); loadFleet(); loadPricing(); loadAdvanced(); loadClaudeVersion(); if (cwd) loadConfig(); }
+  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); loadFleet(); loadPricing(); loadAdvanced(); loadClaudeVersion(); loadMod(); if (cwd) loadConfig(); }
 
   // ── Fleet (multi-machine): peer bridges polled by this hub ──
   let flOpen = $state(false); let flPeers = $state([]); let flStatus = $state(''); let flHealth = $state([]);
@@ -86,6 +86,23 @@
     if (r && r.ok) { await loadClaudeVersion(); cvStatus = '✓ Updated'; }
     else cvStatus = '✗ ' + cvTrim(r && (r.error || r.output));
     cvBusy = false;
+  }
+
+  // ── gander-feed mod: in-process Claude Code hooks (2.1.287+) that post exact cost / context / rate limits.
+  //    Gated by the CLI version the bridge launches; an older CLI or another provider keeps the hook path. ──
+  let md = $state(null); let mdBusy = $state(false); let mdStatus = $state(''); let mdOut = $state('');
+  async function loadMod(manual) {
+    if (manual) { mdBusy = true; mdStatus = 'Checking…'; mdOut = ''; }
+    try { const j = await (await fetch('/api/mod/status')).json(); md = j && !j.error ? j : null; } catch (_) { md = null; }
+    if (manual) { mdBusy = false; mdStatus = ''; }
+  }
+  async function installMod() {
+    mdBusy = true; mdOut = ''; mdStatus = 'Installing… registers this checkout as a marketplace, then installs gander-feed at user scope';
+    const r = await post('/api/mod/install', {});
+    mdOut = (r && r.output) || '';
+    if (r && r.ok) { await loadMod(); mdStatus = '✓ Installed. Open terminal sessions: /reload-plugins. New sessions load it on start.'; }
+    else mdStatus = '✗ ' + ((r && r.error) || 'install failed');
+    mdBusy = false;
   }
 
   // ── idle-session nudge (the bridge runs it itself — no external task needed) ──
@@ -489,6 +506,21 @@
             {#if cvStatus}<div class="tg-status">{cvStatus}</div>{/if}
             {#if cvOut}<details class="cv-out"><summary>update output</summary><pre class="raw mono">{cvOut}</pre></details>{/if}
           {/if}
+          {#if md}
+            <div class="cv-line" class:cv-behind={md.supported && !md.installed} class:cv-ok={md.installed}>
+              <span class="cv-ver">
+                {#if md.installed}Terminal mod gander-feed · installed{#if md.live} · feeding {md.live} session{md.live === 1 ? '' : 's'}{/if}
+                {:else if md.supported}Terminal mod gander-feed · available (Claude Code {md.ccVersion})
+                {:else if md.ccVersion}Terminal mod gander-feed · needs Claude Code {md.minVersion}+ (you run {md.ccVersion}) · estimates stay on
+                {:else}Terminal mod gander-feed · no Claude Code CLI found · hooks and estimates stay on{/if}
+              </span>
+              <button class="mini" title="check again" aria-label="Re-check the mod" onclick={() => loadMod(true)} disabled={mdBusy}>⟳</button>
+              {#if md.supported && !md.installed}<button class="mini cv-up" onclick={installMod} disabled={mdBusy}>Install mod</button>{/if}
+            </div>
+            {#if mdStatus}<div class="tg-status">{mdStatus}</div>{/if}
+            {#if mdOut}<details class="cv-out"><summary>install output</summary><pre class="raw mono">{mdOut}</pre></details>{/if}
+            <div class="tg-hint">The mod runs <b>inside</b> Claude Code (terminal and desktop app; the VS Code extension does not load mods yet) and posts the engine's own cost, context fill and plan-window figures, so a session's tile says <b>exact</b> instead of estimated, and a one-line Gander band appears above the prompt. Without it, on an older CLI, or on other providers (Codex, Desktop), everything keeps working from hooks and transcripts. Manual install in any terminal session: <code>{md.installLine}</code></div>
+          {/if}
           <div class="tg-btns"><button class="select" onclick={saveClaude}>Save</button></div>
           {#if clStatus}<div class="tg-status">{clStatus}</div>{/if}
           <div class="tg-hint">Applies to ▶ Start and ＋ New task. <b>Skip ALL prompts</b> launches with <code>--dangerously-skip-permissions</code> — Claude won't ask before edits/commands, so only use it on projects you trust. The one-time <b>“trust this folder”</b> prompt has no bypass flag, but Claude remembers it per folder after you accept once. Set the path if Start says “'claude' is not recognized” (<code>where claude</code> / <code>which claude</code>).</div>
@@ -882,6 +914,7 @@
   .cv-out { font-size: 10px; color: var(--color-text-tertiary); }
   .cv-out summary { cursor: pointer; }
   .cv-out .raw { margin-top: 4px; max-height: 180px; white-space: pre-wrap; }
+  .cv-line.cv-ok { color: var(--hm-ok, #22c55e); }
   /* Advanced — grouped bridge knobs */
   .adv-group { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-tertiary); margin-top: 8px; padding-top: 6px; border-top: 0.5px dashed var(--color-border-tertiary); }
   .adv-head, .adv-row { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 6px; align-items: center; }

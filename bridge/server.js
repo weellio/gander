@@ -56,6 +56,7 @@ const board = require('./board.js');
 const digest = require('./digest.js');
 const replay = require('./replay.js');
 const fleet = require('./fleet.js');
+const mod = require('./mod.js');       // gander-feed mod (Claude Code 2.1.287+ in-process hooks): exact per-session telemetry
 const desktop = require('./desktop.js');
 const patterns = require('./patterns.js');
 const lessons = require('./lessons.js');
@@ -349,9 +350,16 @@ async function sampleBurn() {
       if (!a.root) { if (a.costUSD != null || a.burnRate) { a.costUSD = null; a.burnRate = 0; a.burnStreak = 0; } continue; }
       const sid = sidOf(a);
       if (!sid) continue;
-      const s = u.bySession[sid];
-      if (!s) continue;
+      // A live gander-feed mod reports the engine's own cost and context fill;
+      // while it is fresh those replace the transcript estimate for this session.
+      const feed = mod.forSession(sid);
+      const exact = feed && feed.live ? feed : null;
+      let s = u.bySession[sid];
+      if (!s && !exact) continue;
+      if (exact) s = Object.assign({}, s || {}, exact.costUsd !== null ? { costUSD: exact.costUsd } : {}, exact.ctxPct !== null ? { ctxPct: exact.ctxPct } : {});
+      if (typeof s.costUSD !== 'number') continue;
       a.costUSD = s.costUSD;
+      a.costExact = exact ? true : undefined;
       let rec = costSamples.get(sid);
       if (!rec) { costSamples.set(sid, { cost: s.costUSD, ts: now, ema: 0, streak: 0 }); a.burnRate = 0; a.burnStreak = 0; continue; }
       // The usage summary is cached (60s TTL) while we sample every 30s, so equal
@@ -1427,6 +1435,13 @@ function buildLaunchFlags() {
 
 // ── routines / briefings ─────────────────────────────────────────────────────
 function claudeCliRaw() { return (cfg.claudeCmd && String(cfg.claudeCmd).trim()) || 'claude'; }
+const REPO_ROOT = path.join(__dirname, '..');
+// The launched CLI's version, cached 5 min: the mod's version gate reads it on every Settings open.
+let modVerCache = { at: 0, v: '' };
+function modCliVersion(force) {
+  if (!force && modVerCache.v && Date.now() - modVerCache.at < 300000) return Promise.resolve(modVerCache.v);
+  return new Promise((r) => version.currentVersion(claudeCliRaw(), (_e, v) => { modVerCache = { at: Date.now(), v: v || '' }; r(v || ''); }));
+}
 let lastHookAt = 0;   // when the last Claude Code hook event arrived (doctor: "are events flowing?")
 
 // ── claude.exe ↔ session linking ──────────────────────────────────────────────
@@ -2137,6 +2152,7 @@ function snapshot() {
     a.perm = mine.length ? { requestId: mine[0].requestId, tool: mine[0].tool, detail: mine[0].detail, hasSuggestions: !!(mine[0].suggestions || []).length, ts: mine[0].ts, input: previewInput(mine[0].tool, mine[0].input, a.cwd) } : undefined;
     a.permCount = mine.length || undefined;
     if (dispatch.isHosted(a.sessionId)) a.dispatch = true;
+    a.feed = mod.forSession(a.sessionId) || undefined;        // exact telemetry from the gander-feed mod, when one is live
   }
   // fleet: merge remote peers' agents AFTER local decoration (their sessionIds
   // never match local windows/dispatch, and they arrive pre-tagged machine/remote)
@@ -2873,6 +2889,46 @@ Allow / Deny it in the dashboard rail.`);
     if (!a || !a.transcriptPath) return sendJson(res, 404, { error: 'unknown session' });
     const m = await sessionmeta.readFull(a.transcriptPath);   // complete, but yields while it reads
     return sendJson(res, m ? 200 : 404, m || { error: 'no transcript' });
+  }
+  // ── gander-feed mod: in-process Claude Code hooks (2.1.287+) posting exact telemetry ──
+  // POST /api/mod            one event from the mod (hello / measure / step / turn / spawn / bye)
+  // GET  /api/mod/band       what the one-line band above the prompt draws
+  // GET  /api/mod/status     version gate + install state, for the Settings panel
+  // POST /api/mod/install    one-click install (refused on a CLI older than the gate)
+  if (url === '/api/mod' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    const r = mod.ingest(body);
+    if (r.error) return sendJson(res, 400, r);
+    const a = agents.get('sess:' + String(body.session_id));
+    if (a && r.summary.live) {                                 // zero-latency: no need to wait for the 30 s sampler
+      if (r.summary.costUsd !== null && !a.costManual) a.costUSD = r.summary.costUsd;
+      if (r.summary.ctxPct !== null) a.ctxPct = r.summary.ctxPct;
+      a.costExact = true;
+      a.updatedAt = Date.now();
+    }
+    return sendJson(res, 200, { ok: true });
+  }
+  if (url === '/api/mod/band' && req.method === 'GET') {
+    const bu = new URL(req.url, 'http://localhost');
+    const sid = bu.searchParams.get('session_id') || '';
+    const perms = dispatch.pendingList().concat(hookPermPendingList());
+    let needsYou = 0;
+    for (const a of agents.values()) {
+      if (!a.root) continue;
+      if (a.state === 'awaiting' || a.state === 'error' || perms.some((p) => p.sessionId === a.sessionId)) needsYou++;
+    }
+    return sendJson(res, 200, mod.band({ sid, needsYou, url: `http://localhost:${argPort}/` }));
+  }
+  if (url === '/api/mod/status' && req.method === 'GET') {
+    const current = await modCliVersion(false);
+    return sendJson(res, 200, mod.status({ current, root: REPO_ROOT }));
+  }
+  if (url === '/api/mod/install' && req.method === 'POST') {
+    const current = await modCliVersion(true);
+    const r = await new Promise((r2) => mod.install({ cli: claudeCliRaw(), root: REPO_ROOT, current }, (_e, v) => r2(v)));
+    console.log('[mod] install -> ' + (r.ok ? 'ok' : (r.gated ? 'gated: ' + r.error : 'failed')));
+    return sendJson(res, r.ok ? 200 : (r.gated ? 409 : 500), r);
   }
   // Is the CLI Gander launches behind the published one? Drives the Update button.
   if (url === '/api/claude-version' && req.method === 'GET') {
@@ -4210,6 +4266,7 @@ server.listen(argPort, BIND_HOST, () => {
   setInterval(retireSweep, 12000);
   setInterval(checkBudget, 180000); setTimeout(checkBudget, 8000);
   setInterval(sampleBurn, 30000); setTimeout(sampleBurn, 6000);
+  setInterval(() => mod.sweep(), 3600000);   // forget gander-feed records of sessions that ended a day ago
   rescheduleNudge();   // periodic idle-session nudge (cfg.nudgeInterval minutes; 0 = off)
   setInterval(() => routines.tick(runRoutineOpts()), 30000);   // run scheduled routines (HH:MM)
   setInterval(queueTick, 10000); setTimeout(queueTick, 5000);  // task-queue scheduler

@@ -120,7 +120,7 @@ cd web && npm run dev                    # hot-reload dev server
 Run the zero-dependency test suite from the repo root:
 
 ```bash
-node --test
+node --test test/
 ```
 
 ## Event API
