@@ -120,8 +120,13 @@ cd web && npm run dev                    # hot-reload dev server
 Run the zero-dependency test suite from the repo root:
 
 ```bash
-node --test test/
+node --test "test/**/*.test.js"
 ```
+
+### The connector and datasets
+
+`bridge/datasets.js` is one catalog of row-shaped datasets over the existing modules (`usage`, `subagents`, `forensics`, `digest`, `history`, `queue`, the agent registry, the gander-feed store). Three consumers share it: `GET /api/datasets/<id>` (JSON or CSV), `bridge/mcp.js` (a zero-dependency Streamable HTTP MCP server mounted at `/mcp`, one tool per dataset, read-only), and the dashboard data pack. `bridge/tunnel.js` runs a cloudflared quick tunnel so claude.ai can reach `/mcp`; the endpoint sits in front of the bridge's loopback guard with a gate of its own (Origin, token, on/off).
+
 
 ## Event API
 

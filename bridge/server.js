@@ -57,6 +57,9 @@ const digest = require('./digest.js');
 const replay = require('./replay.js');
 const fleet = require('./fleet.js');
 const mod = require('./mod.js');       // gander-feed mod (Claude Code 2.1.287+ in-process hooks): exact per-session telemetry
+const datasets = require('./datasets.js'); // row-shaped datasets: /api/datasets, the MCP connector's tools, the dashboard data pack
+const mcp = require('./mcp.js');       // Gander as a connector: read-only MCP server at /mcp (claude.ai, Desktop, Claude Code)
+const tunnel = require('./tunnel.js'); // cloudflared quick tunnel: a public https door for claude.ai's connector
 const desktop = require('./desktop.js');
 const patterns = require('./patterns.js');
 const lessons = require('./lessons.js');
@@ -187,6 +190,33 @@ const tg = {
   dash: process.env.AOC_DASH_URL || cfg.dashboardUrl || `http://localhost:${argPort}/`,
 };
 function saveConfig() { try { fs.writeFileSync(CFG_FILE, JSON.stringify(cfg, null, 2)); } catch (_) {} }
+
+// ── Gander as a connector: datasets + a read-only MCP endpoint ──
+datasets.init({
+  usage, subagents, forensics, digest, history, queue, projects,
+  getAgents: () => Array.from(agents.values()),
+  priceFor: (m) => usage.rateFor(m, cfg.pricing || {}),
+  feeds: (sid) => mod.forSession(sid),
+});
+const mcpRpc = mcp.createRpc(datasets.tools());
+// Remote callers need the token, and only while the connector is switched on;
+// loopback callers (Claude Code / Desktop on this machine) always may.
+const mcpHandle = mcp.mount({ rpc: mcpRpc, getToken: () => (cfg.mcpEnabled && cfg.mcpToken ? String(cfg.mcpToken) : ''), readBody: (req) => readBody(req), sendJson: (res, code, obj) => sendJson(res, code, obj) });
+function mcpConfigView() {
+  const t = tunnel.status();
+  const base = t.url || '';
+  return {
+    enabled: !!cfg.mcpEnabled,
+    tokenSet: !!cfg.mcpToken,
+    token: cfg.mcpEnabled ? String(cfg.mcpToken || '') : '',
+    localUrl: `http://localhost:${argPort}/mcp`,
+    remoteUrl: base ? `${base}/mcp` : '',
+    tunnel: t,
+    installHint: tunnel.installHint(),
+    tools: mcpRpc.list.length,
+    datasets: datasets.catalog().length,
+  };
+}
 
 // Wake parked/idle sessions so queued replies deliver. The bridge runs the nudge
 // script itself (it's a local process with desktop access) — no external Windows
@@ -2516,6 +2546,10 @@ const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
   try {
 
+  // The MCP connector has its own gate (Origin + token, see mcp.js) so a tunnel
+  // can reach it while the rest of the bridge stays loopback-only.
+  if (url === '/mcp' || url.startsWith('/mcp/')) { if (await mcpHandle(req, res, url)) return; }
+
   // Localhost-only guard (unless remote access is explicitly enabled): reject a
   // non-loopback Host header (defeats DNS-rebinding) and any cross-origin request
   // (defeats a malicious web page CSRFing the bridge). No Origin = server-side hook
@@ -2889,6 +2923,45 @@ Allow / Deny it in the dashboard rail.`);
     if (!a || !a.transcriptPath) return sendJson(res, 404, { error: 'unknown session' });
     const m = await sessionmeta.readFull(a.transcriptPath);   // complete, but yields while it reads
     return sendJson(res, m ? 200 : 404, m || { error: 'no transcript' });
+  }
+  // ── datasets: row-shaped JSON (or CSV) over what the bridge computes; the dashboard data pack ──
+  if (url === '/api/datasets' && req.method === 'GET') {
+    return sendJson(res, 200, { datasets: datasets.catalog(), mcp: mcpConfigView() });
+  }
+  if (url === '/api/datasets-pack' && req.method === 'GET') {
+    const out = { generatedAt: new Date().toISOString(), machine: os.hostname(), datasets: {} };
+    for (const d of datasets.catalog()) { try { out.datasets[d.id] = await datasets.get(d.id, {}); } catch (e) { out.datasets[d.id] = { id: d.id, error: String(e.message || e) }; } }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': 'attachment; filename="gander-datasets.json"' });
+    return res.end(JSON.stringify(out));
+  }
+  if (url.startsWith('/api/datasets/') && req.method === 'GET') {
+    const du = new URL(req.url, 'http://localhost');
+    const id = url.slice('/api/datasets/'.length).replace(/\.(json|csv)$/, '');
+    const format = du.searchParams.get('format') || (url.endsWith('.csv') ? 'csv' : 'json');
+    const params = {}; for (const [k, v] of du.searchParams) if (k !== 'format') params[k] = v;
+    try {
+      const r = await datasets.get(id, params);
+      if (format === 'csv') { res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="gander-${id}.csv"` }); return res.end(datasets.toCsv(r)); }
+      return sendJson(res, 200, r);
+    } catch (e) { return sendJson(res, /unknown dataset/.test(String(e.message)) ? 404 : 500, { error: String(e.message || e) }); }
+  }
+  // ── connector settings: the token, the tunnel ──
+  if (url === '/api/mcp-config' && req.method === 'GET') {
+    return sendJson(res, 200, mcpConfigView());
+  }
+  if (url === '/api/mcp-config' && req.method === 'POST') {
+    const body = (await readBody(req)) || {};
+    if (body.enabled !== undefined) { cfg.mcpEnabled = !!body.enabled; if (cfg.mcpEnabled && !cfg.mcpToken) cfg.mcpToken = mcp.newToken(); saveConfig(); }
+    if (body.regenerate) { cfg.mcpToken = mcp.newToken(); saveConfig(); }
+    if (body.tunnel === 'start') {
+      const ver = await new Promise((r) => tunnel.installed(r));
+      if (!ver) return sendJson(res, 409, { ...mcpConfigView(), error: `cloudflared is not installed. ${tunnel.installHint()}` });
+      await new Promise((r) => tunnel.start(argPort, () => r()));
+    }
+    if (body.tunnel === 'stop') await new Promise((r) => tunnel.stop(() => r()));
+    const v = mcpConfigView();
+    console.log(`[mcp] connector ${v.enabled ? 'on' : 'off'}${v.remoteUrl ? ' · ' + v.remoteUrl : ''}`);
+    return sendJson(res, 200, v);
   }
   // ── gander-feed mod: in-process Claude Code hooks (2.1.287+) posting exact telemetry ──
   // POST /api/mod            one event from the mod (hello / measure / step / turn / spawn / bye)

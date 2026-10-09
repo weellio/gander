@@ -65,6 +65,10 @@ It prints a `https://<random>.trycloudflare.com` URL — open that on your phone
 
 **Caveats, read them:** that URL is **public internet** — anyone who has it can reach your bridge, so the access token is **MANDATORY**, not optional. And the URL **rotates every run**, so you'll re-add the home-screen app (or re-enter the token) each time. Fine for a day out; use Tailscale for the permanent setup.
 
+## The Claude connector (claude.ai needs a public URL)
+
+The phone console works over Tailscale because *your* phone is on the tailnet. claude.ai's custom connectors are different: Anthropic's cloud calls your MCP server, so it must be reachable from the public internet. Gander ships the zero-config route: **Settings → 🔌 Claude connector → Start tunnel** runs `cloudflared tunnel --url http://127.0.0.1:3131` and shows the `https://<random>.trycloudflare.com/mcp` URL. Only `/mcp` answers through it: the connector's own gate validates `Origin`, requires the token for every call that is not purely local (the tunnel's proxy headers mark a call as remote even though it arrives on loopback), and refuses remote calls while the connector is off; the dashboard, hooks and every other `/api` route keep the loopback-only guard. The hostname changes each start; for a stable one, make a named Cloudflare tunnel or put the bridge behind your own HTTPS reverse proxy and point the connector at `https://your-host/mcp`.
+
 ## The phone console
 
 Open **`http://<host>:3131/phone?token=...`** once. The token sets a cookie, so afterwards the bare `/phone` is enough and you can bookmark it.

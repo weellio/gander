@@ -18,7 +18,7 @@ Gander is **built and shipping** — a Svelte 5 dashboard (`web/`, built into `d
 cd web; npm install; npm run build     # build the dashboard -> dashboard/dist/ (what the bridge serves)
 cd web; npm run dev                     # hot-reload dev server
 node bridge/server.js --port 3131       # the zero-dep bridge on :3131
-node --test test/                       # run the test suite (zero deps; mods/ has its own: claude plugin test mods/gander-feed)
+node --test "test/**/*.test.js"         # run the test suite (zero deps; the mod has its own: claude plugin test mods/gander-feed)
 node install.js                         # merge the global Claude Code hooks (or: --project)
 ```
 

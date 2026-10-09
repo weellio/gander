@@ -27,7 +27,7 @@
     loading = false;
   }
 
-  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); loadFleet(); loadPricing(); loadAdvanced(); loadClaudeVersion(); loadMod(); if (cwd) loadConfig(); }
+  function openPanel() { open = true; cfg = null; cwd = (scope === 'project' && projectCwd) ? projectCwd : ''; rawOpen = false; status = ''; loadProjects(); loadTg(); loadBudget(); loadEditor(); loadClaude(); loadNudge(); loadAmbient(); loadOsNotify(); loadDispatch(); loadFleet(); loadPricing(); loadAdvanced(); loadClaudeVersion(); loadMod(); loadMcp(); if (cwd) loadConfig(); }
 
   // ── Fleet (multi-machine): peer bridges polled by this hub ──
   let flOpen = $state(false); let flPeers = $state([]); let flStatus = $state(''); let flHealth = $state([]);
@@ -104,6 +104,18 @@
     else mdStatus = '✗ ' + ((r && r.error) || 'install failed');
     mdBusy = false;
   }
+
+  // ── Claude connector: the bridge as a read-only MCP server (/mcp) for claude.ai, Claude Desktop and Claude Code,
+  //    plus the dashboard data pack a person attaches to a Claude Dashboard. ──
+  let mcOpen = $state(false); let mc = $state(null); let mcStatus = $state(''); let mcBusy = $state(false); let mcShowTok = $state(false);
+  async function loadMcp() { try { const j = await (await fetch('/api/mcp-config')).json(); mc = j && !j.error ? j : null; } catch (_) { mc = null; } }
+  async function saveMcp(patch, label) {
+    mcBusy = true; mcStatus = label || 'Saving…';
+    const r = await post('/api/mcp-config', patch);
+    if (r && !r.error) { mc = r; mcStatus = '✓'; } else mcStatus = '✗ ' + ((r && r.error) || 'failed');
+    mcBusy = false; setTimeout(() => { if (mcStatus === '✓') mcStatus = ''; }, 2000);
+  }
+  async function copyText(t) { try { await navigator.clipboard.writeText(t); mcStatus = '✓ copied'; setTimeout(() => (mcStatus = ''), 1500); } catch (_) { mcStatus = 'select and copy by hand'; } }
 
   // ── idle-session nudge (the bridge runs it itself — no external task needed) ──
   let nzOpen = $state(false); let nzOn = $state(false); let nzInterval = $state(0); let nzStatus = $state('');
@@ -618,6 +630,51 @@
           <div class="tg-btns"><button class="select" onclick={saveAmbient}>Save</button></div>
           {#if ambStatus}<div class="tg-status">{ambStatus}</div>{/if}
           <div class="tg-hint">No light yet? The webhook + command fire regardless, so you can wire those now and add a bulb later.</div>
+        </div>
+      {/if}
+    </div>
+
+    <div class="tg">
+      <button class="collapser" onclick={() => (mcOpen = !mcOpen)} aria-expanded={mcOpen}>
+        <span class="caret">{mcOpen ? '▾' : '▸'}</span> 🔌 Claude connector
+        {#if mc?.enabled}<span class="tg-state">· on{#if mc.tunnel?.url} · tunnel up{/if}</span>{:else}<span class="dim">· query Gander from claude.ai, Desktop, Claude Code</span>{/if}
+      </button>
+      {#if mcOpen}
+        <div class="tg-form">
+          {#if mc}
+            <label class="cbrow"><input type="checkbox" checked={mc.enabled} disabled={mcBusy} onchange={(e) => saveMcp({ enabled: e.currentTarget.checked }, e.currentTarget.checked ? 'Switching on…' : 'Switching off…')} /> Connector on — <b>{mc.tools} read-only tools</b> over {mc.datasets} datasets (sessions, spend, scorecards, queue, forensics)</label>
+            <div class="cv-line"><span class="cv-ver mono">{mc.localUrl}</span><button class="mini" onclick={() => copyText(mc.localUrl)} title="copy">⧉</button></div>
+            {#if mc.enabled}
+              <div class="cv-line">
+                <span class="cv-ver mono" title="Fixed credential: paste as a Bearer token in claude.ai, or append it to the URL as /mcp/&lt;token&gt;">token · {mcShowTok ? mc.token : '•'.repeat(12)}</span>
+                <button class="mini" onclick={() => (mcShowTok = !mcShowTok)} title={mcShowTok ? 'hide' : 'show'}>{mcShowTok ? '🙈' : '👁'}</button>
+                <button class="mini" onclick={() => copyText(mc.token)} title="copy token">⧉</button>
+                <button class="mini" onclick={() => saveMcp({ regenerate: true }, 'New token…')} disabled={mcBusy} title="Mint a new token; the old one stops working">↻</button>
+              </div>
+              <div class="cv-line" class:cv-ok={!!mc.tunnel?.url}>
+                <span class="cv-ver">
+                  {#if mc.tunnel?.url}Public URL · <span class="mono">{mc.remoteUrl}</span>
+                  {:else if mc.tunnel?.running}Tunnel starting…
+                  {:else if mc.tunnel?.error}Tunnel: {mc.tunnel.error}
+                  {:else}No public URL yet — claude.ai calls connectors from Anthropic's cloud, so it needs one{/if}
+                </span>
+                {#if mc.tunnel?.url}<button class="mini" onclick={() => copyText(mc.remoteUrl)} title="copy public URL">⧉</button><button class="mini" onclick={() => saveMcp({ tunnel: 'stop' }, 'Stopping tunnel…')} disabled={mcBusy}>Stop tunnel</button>
+                {:else}<button class="mini cv-up" onclick={() => saveMcp({ tunnel: 'start' }, 'Starting cloudflared… up to 25 s')} disabled={mcBusy || mc.tunnel?.running}>Start tunnel</button>{/if}
+              </div>
+            {/if}
+            {#if mcStatus}<div class="tg-status">{mcStatus}</div>{/if}
+            <div class="tg-hint">
+              <b>claude.ai / Claude Desktop:</b> Settings → Connectors → <i>Add custom connector</i> → URL = the public URL above → Authentication: <i>fixed credentials</i>, Bearer token = the token (or <i>No sign in</i> with the URL as <code>…/mcp/&lt;token&gt;</code>). A <b>Claude Dashboard</b> can then run live queries on Gander: "build a dashboard of my Claude Code spend by project this month".<br>
+              <b>Claude Code on this machine:</b> <code>claude mcp add --transport http gander {mc.localUrl}</code> (no token needed on localhost).<br>
+              The tunnel is a cloudflared <i>quick tunnel</i>: free, no account, a new <code>*.trycloudflare.com</code> hostname each start (re-paste it in claude.ai after a restart). Needs cloudflared: <code>{mc.installHint}</code>. Everything behind it is read-only.
+            </div>
+            <div class="tg-hint">
+              <b>No connector? Attach a file instead.</b> <a href="/api/datasets-pack" download>⬇ Dashboard data pack (JSON)</a> holds every dataset as rows; or one at a time as CSV:
+              <a href="/api/datasets/cost_by_day.csv" download>spend by day</a> · <a href="/api/datasets/cost_by_project.csv" download>by project</a> · <a href="/api/datasets/cost_by_model.csv" download>by model</a> · <a href="/api/datasets/sessions.csv" download>sessions</a> · <a href="/api/datasets/scorecards.csv" download>scorecards</a> · <a href="/api/datasets/queue.csv" download>queue</a> · <a href="/api/datasets/spend_by_activity.csv" download>by activity</a>. Drop one into claude.ai and ask for a dashboard; numbers are as of the download.
+            </div>
+          {:else}
+            <div class="tg-hint">Connector status unavailable — is the bridge running the current code? (restart it)</div>
+          {/if}
         </div>
       {/if}
     </div>
