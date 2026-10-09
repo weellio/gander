@@ -109,7 +109,7 @@ describe('Gander as an MCP connector, on a real bridge', () => {
 
     // a call that looks tunnelled (foreign Host) must carry the token
     const noTok = await call(port, 'POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'ping' }, { host: 'abc.trycloudflare.com' });
-    assert.equal(noTok.status, 401);
+    assert.equal(noTok.status, 403);
     const withTok = await call(port, 'POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'ping' }, { host: 'abc.trycloudflare.com', authorization: `Bearer ${token}` });
     assert.equal(withTok.status, 200);
     const pathTok = await call(port, 'POST', `/mcp/${token}`, { jsonrpc: '2.0', id: 1, method: 'ping' }, { host: 'abc.trycloudflare.com' });

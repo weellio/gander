@@ -98,8 +98,11 @@ function gate({ origin, remoteAddress, pathToken, authHeader, token }) {
   if (!token) return { ok: false, status: 403, error: 'Remote MCP access is off: no connector token is set' };
   const bearer = /^Bearer\s+(.+)$/i.exec(String(authHeader || ''));
   const given = (bearer && bearer[1].trim()) || pathToken || '';
+  // 403, not 401: a 401 makes MCP clients (claude.ai's "Add custom connector")
+  // start OAuth discovery, and this server has none. The token rides as a
+  // fixed Authorization header or in the path instead.
   if (!given || given.length !== token.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(token))) {
-    return { ok: false, status: 401, error: 'Bad or missing connector token' };
+    return { ok: false, status: 403, error: 'Bad or missing connector token: send Authorization: Bearer <token>, or use /mcp/<token>' };
   }
   return { ok: true, via: bearer ? 'bearer' : 'path' };
 }

@@ -60,10 +60,10 @@ test('gate: loopback needs no token; remote needs the exact token by bearer or p
   const off = mcp.gate({ remoteAddress: '203.0.113.9', token: '' });
   assert.equal(off.ok, false); assert.equal(off.status, 403);
   const bad = mcp.gate({ remoteAddress: '203.0.113.9', token, authHeader: 'Bearer wrong' });
-  assert.equal(bad.ok, false); assert.equal(bad.status, 401);
+  assert.equal(bad.ok, false); assert.equal(bad.status, 403);
   assert.equal(mcp.gate({ remoteAddress: '203.0.113.9', token, authHeader: `Bearer ${token}` }).via, 'bearer');
   assert.equal(mcp.gate({ remoteAddress: '203.0.113.9', token, pathToken: token }).via, 'path');
-  assert.equal(mcp.gate({ remoteAddress: '203.0.113.9', token, pathToken: token.slice(0, -1) + 'X' }).status, 401);
+  assert.equal(mcp.gate({ remoteAddress: '203.0.113.9', token, pathToken: token.slice(0, -1) + 'X' }).status, 403);
   // Origin: a browser page elsewhere cannot use the endpoint, even from loopback
   assert.equal(mcp.gate({ remoteAddress: '127.0.0.1', token, origin: 'https://evil.example' }).status, 403);
   assert.equal(mcp.gate({ remoteAddress: '127.0.0.1', token, origin: 'http://localhost:3131' }).ok, true);
@@ -107,7 +107,7 @@ test('mount: handles only /mcp paths, 405 on GET, 202 on notifications, 400 on b
 
   res = fakeRes();
   await handle(fakeReq({ remoteAddress: '203.0.113.9', body: { jsonrpc: '2.0', id: 1, method: 'ping' } }), res, '/mcp');
-  assert.equal(res.status, 401, 'remote without token');
+  assert.equal(res.status, 403, 'remote without token');
 
   res = fakeRes();
   assert.equal(await handle(fakeReq({ remoteAddress: '203.0.113.9', body: { jsonrpc: '2.0', id: 1, method: 'ping' } }), res, '/mcp/tok_abcdefghijklmnopqrstuvwxyz'), true);
@@ -119,10 +119,10 @@ test('mount: a tunnelled call (loopback socket, proxy headers or foreign Host) i
   const handle = mcp.mount({ rpc: mcp.createRpc(TOOLS), getToken: () => token, readBody, sendJson });
   let res = fakeRes();
   await handle(fakeReq({ headers: { 'cf-connecting-ip': '203.0.113.9' }, body: { jsonrpc: '2.0', id: 1, method: 'ping' } }), res, '/mcp');
-  assert.equal(res.status, 401, 'cloudflared header without a token');
+  assert.equal(res.status, 403, 'cloudflared header without a token');
   res = fakeRes();
   await handle(fakeReq({ headers: { host: 'abc.trycloudflare.com' }, body: { jsonrpc: '2.0', id: 1, method: 'ping' } }), res, '/mcp');
-  assert.equal(res.status, 401, 'foreign Host without a token');
+  assert.equal(res.status, 403, 'foreign Host without a token');
   res = fakeRes();
   await handle(fakeReq({ headers: { host: 'abc.trycloudflare.com', authorization: `Bearer ${token}` }, body: { jsonrpc: '2.0', id: 1, method: 'ping' } }), res, '/mcp');
   assert.equal(res.status, 200, 'foreign Host with the bearer token');
