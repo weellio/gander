@@ -50,7 +50,7 @@ describe('gander-feed mod on a real bridge', () => {
     const dir = tmp();
     child = spawn(process.execPath, [path.join(__dirname, '..', 'bridge', 'server.js'), '--port', String(port)], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, AOC_QUEUE_FILE: path.join(dir, 'q.json'), AOC_REGISTRY_FILE: path.join(dir, 'reg.json'), GANDER_NO_OPEN: '1', GANDER_SETTINGS: path.join(dir, 'settings.json') },
+      env: { ...process.env, AOC_QUEUE_FILE: path.join(dir, 'q.json'), AOC_REGISTRY_FILE: path.join(dir, 'reg.json'), GANDER_NO_OPEN: '1', GANDER_SETTINGS: path.join(dir, 'settings.json'), AOC_CONFIG_FILE: path.join(dir, 'aoc-config.json') },
     });
     child.stdout.on('data', (d) => (out += d));
     child.stderr.on('data', (d) => (out += d));

@@ -22,6 +22,9 @@ const LATEST = PROTOCOL_VERSIONS[0];
 const SERVER_INFO = { name: 'gander', version: '0.1.0' };
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1', 'localhost']);
+const RECENT = [];   // the last remote calls: what claude.ai actually sent, for the Settings panel
+function recent() { return RECENT.slice(); }
+function remember(entry) { RECENT.unshift(entry); if (RECENT.length > 20) RECENT.pop(); }
 const TRUSTED_ORIGIN = /(^|\.)(claude\.ai|claude\.com|anthropic\.com)$/i;
 
 function newToken() { return crypto.randomBytes(24).toString('base64url'); }
@@ -88,7 +91,7 @@ function hostOf(origin) {
 }
 
 // Decide whether a request may reach the endpoint: { ok } or { ok:false, status, error }.
-function gate({ origin, remoteAddress, pathToken, authHeader, token }) {
+function gate({ origin, remoteAddress, pathToken, authHeader, headerToken, token }) {
   if (origin) {
     const h = hostOf(origin);
     if (!LOOPBACK.has(h) && !TRUSTED_ORIGIN.test(h)) return { ok: false, status: 403, error: 'Origin not allowed' };
@@ -96,15 +99,18 @@ function gate({ origin, remoteAddress, pathToken, authHeader, token }) {
   const loopback = LOOPBACK.has(String(remoteAddress || '').toLowerCase());
   if (loopback) return { ok: true, via: 'loopback' };
   if (!token) return { ok: false, status: 403, error: 'Remote MCP access is off: no connector token is set' };
-  const bearer = /^Bearer\s+(.+)$/i.exec(String(authHeader || ''));
-  const given = (bearer && bearer[1].trim()) || pathToken || '';
+  // The token may arrive as `Authorization: Bearer <t>`, a bare `Authorization: <t>`,
+  // an `X-Gander-Token: <t>` header, or in the path (/mcp/<t>).
+  const auth = String(authHeader || '').trim();
+  const bearer = /^Bearer\s+(.+)$/i.exec(auth);
+  const given = (bearer && bearer[1].trim()) || (auth && !/\s/.test(auth) ? auth : '') || String(headerToken || '').trim() || pathToken || '';
   // 403, not 401: a 401 makes MCP clients (claude.ai's "Add custom connector")
   // start OAuth discovery, and this server has none. The token rides as a
   // fixed Authorization header or in the path instead.
   if (!given || given.length !== token.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(token))) {
     return { ok: false, status: 403, error: 'Bad or missing connector token: send Authorization: Bearer <token>, or use /mcp/<token>' };
   }
-  return { ok: true, via: bearer ? 'bearer' : 'path' };
+  return { ok: true, via: bearer ? 'bearer' : (auth ? 'authorization' : (headerToken ? 'header' : 'path')) };
 }
 
 // Mount on the bridge's request handler. `getToken()` reads the current token.
@@ -119,7 +125,13 @@ function mount({ rpc, getToken, readBody, sendJson }) {
     const forwarded = String(req.headers['cf-connecting-ip'] || String(req.headers['x-forwarded-for'] || '').split(',')[0]).trim();
     const hostLoop = /^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(String(req.headers.host || ''));
     const remoteAddress = forwarded || (hostLoop ? (req.socket && req.socket.remoteAddress) : 'proxied');
-    const g = gate({ origin: req.headers.origin, remoteAddress, pathToken, authHeader: req.headers.authorization, token: getToken() });
+    const g = gate({ origin: req.headers.origin, remoteAddress, pathToken, authHeader: req.headers.authorization, headerToken: req.headers['x-gander-token'], token: getToken() });
+    const remote = remoteAddress !== (req.socket && req.socket.remoteAddress) || !hostLoop;
+    if (remote) {
+      const entry = { at: Date.now(), method: req.method, path: url.replace(/\/mcp\/[^/]+/, '/mcp/<token>'), from: remoteAddress, ua: String(req.headers['user-agent'] || '').slice(0, 60), origin: req.headers.origin || '', auth: req.headers.authorization ? (/^Bearer /i.test(req.headers.authorization) ? 'bearer' : 'other') : '', xToken: !!req.headers['x-gander-token'], result: g.ok ? 'ok via ' + g.via : `${g.status} ${g.error}` };
+      remember(entry);
+      console.log(`[mcp] ${entry.method} ${entry.path} from ${entry.from} ua=${entry.ua.slice(0, 40)} origin=${entry.origin || '-'} auth=${entry.auth || 'no'} x-gander-token=${entry.xToken ? 'yes' : 'no'} -> ${entry.result}`);
+    }
     if (!g.ok) { sendJson(res, g.status, rpcError(null, -32000, g.error)); return true; }
 
     if (req.method === 'GET') { res.writeHead(405, { Allow: 'POST', 'content-type': 'application/json' }); res.end(JSON.stringify(rpcError(null, -32000, 'No SSE stream here: POST one JSON-RPC message'))); return true; }
@@ -131,11 +143,13 @@ function mount({ rpc, getToken, readBody, sendJson }) {
 
     const body = await readBody(req);
     if (!body) { sendJson(res, 400, rpcError(null, -32700, 'Parse error')); return true; }
+    if (remote && RECENT[0] && body && typeof body === 'object') RECENT[0].rpc = String(body.method || (body.result !== undefined || body.error !== undefined ? 'response' : '?'));
     const answer = await rpc.handle(body);
+    if (remote && RECENT[0]) RECENT[0].status = answer === null ? 202 : (answer.error ? 'rpc error ' + answer.error.code : 200);
     if (answer === null) { res.writeHead(202); res.end(); return true; }
     sendJson(res, 200, answer);
     return true;
   };
 }
 
-module.exports = { createRpc, mount, gate, newToken, toolResult, PROTOCOL_VERSIONS, LATEST, SERVER_INFO };
+module.exports = { createRpc, mount, gate, newToken, toolResult, recent, PROTOCOL_VERSIONS, LATEST, SERVER_INFO };

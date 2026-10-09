@@ -63,6 +63,9 @@ test('gate: loopback needs no token; remote needs the exact token by bearer or p
   assert.equal(bad.ok, false); assert.equal(bad.status, 403);
   assert.equal(mcp.gate({ remoteAddress: '203.0.113.9', token, authHeader: `Bearer ${token}` }).via, 'bearer');
   assert.equal(mcp.gate({ remoteAddress: '203.0.113.9', token, pathToken: token }).via, 'path');
+  assert.equal(mcp.gate({ remoteAddress: '203.0.113.9', token, authHeader: token }).via, 'authorization', 'a bare token in Authorization works too');
+  assert.equal(mcp.gate({ remoteAddress: '203.0.113.9', token, headerToken: token }).via, 'header', 'X-Gander-Token works');
+  assert.equal(mcp.gate({ remoteAddress: '203.0.113.9', token, authHeader: 'Basic ' + token }).status, 403, 'a different scheme is not the token');
   assert.equal(mcp.gate({ remoteAddress: '203.0.113.9', token, pathToken: token.slice(0, -1) + 'X' }).status, 403);
   // Origin: a browser page elsewhere cannot use the endpoint, even from loopback
   assert.equal(mcp.gate({ remoteAddress: '127.0.0.1', token, origin: 'https://evil.example' }).status, 403);

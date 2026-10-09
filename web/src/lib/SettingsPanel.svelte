@@ -653,17 +653,23 @@
                 <button class="select" onclick={() => saveMcp({ connect: true }, 'Connecting… gets cloudflared if needed, opens a free tunnel, keeps it alive (up to a minute the first time)')} disabled={mcBusy || mc.tunnel?.running || mc.tunnel?.installing}>🔌 Connect to claude.ai</button>
               </div>
             {:else}
-              <div class="cv-line cv-ok"><span class="cv-ver">Connected · paste these two into claude.ai → Settings → Connectors → <i>Add custom connector</i></span><button class="mini" onclick={() => saveMcp({ disconnect: true }, 'Disconnecting…')} disabled={mcBusy}>Disconnect</button></div>
-              <div class="cv-line"><span class="cv-ver mono" title="The connector URL">URL · {mc.remoteUrl}</span><button class="mini" onclick={() => copyText(mc.remoteUrl)} title="copy URL">⧉</button></div>
+              <div class="cv-line cv-ok"><span class="cv-ver">Connected · in claude.ai: Settings → Connectors → <i>Add custom connector</i> → paste the URL below → Authentication: <b>No sign-in</b> → Add</span><button class="mini" onclick={() => saveMcp({ disconnect: true }, 'Disconnecting…')} disabled={mcBusy}>Disconnect</button></div>
+              <div class="cv-line"><span class="cv-ver mono" title="The connector URL with your token in it: no header needed">URL · {mc.remoteUrl}/{mcShowTok ? mc.token : '•'.repeat(12)}</span><button class="mini" onclick={() => copyText(mc.remoteUrl + '/' + mc.token)} title="copy the URL to paste into claude.ai">⧉</button></div>
               <div class="cv-line">
-                <span class="cv-ver mono" title="Authentication: fixed credentials → Bearer token">token · {mcShowTok ? mc.token : '•'.repeat(12)}</span>
+                <span class="cv-ver mono" title="Prefer a header? Request headers → X-Gander-Token (or Authorization) = this token, with the plain URL">token · {mcShowTok ? mc.token : '•'.repeat(12)}</span>
                 <button class="mini" onclick={() => (mcShowTok = !mcShowTok)} title={mcShowTok ? 'hide' : 'show'}>{mcShowTok ? '🙈' : '👁'}</button>
                 <button class="mini" onclick={() => copyText(mc.token)} title="copy token">⧉</button>
                 <button class="mini" onclick={() => saveMcp({ regenerate: true }, 'New token…')} disabled={mcBusy} title="Mint a new token; the old one stops working">↻</button>
               </div>
-              <div class="cv-line"><span class="cv-ver mono" title="One line for people who prefer the No sign in option">or, No sign in · {mc.remoteUrl}/{mcShowTok ? mc.token : '•'.repeat(12)}</span><button class="mini" onclick={() => copyText(mc.remoteUrl + '/' + mc.token)} title="copy URL with token">⧉</button></div>
+              <div class="cv-line"><span class="cv-ver mono" title="The plain URL, for the header route">plain URL · {mc.remoteUrl}</span><button class="mini" onclick={() => copyText(mc.remoteUrl)} title="copy plain URL">⧉</button></div>
             {/if}
             {#if mcStatus}<div class="tg-status">{mcStatus}</div>{/if}
+            {#if mc.recent?.length}
+              <details class="cv-out"><summary>last {mc.recent.length} call{mc.recent.length === 1 ? '' : 's'} from outside (what claude.ai sent)</summary>
+                <pre class="raw mono">{mc.recent.map((r) => `${new Date(r.at).toLocaleTimeString()}  ${r.method} ${r.path}${r.rpc ? ' ' + r.rpc : ''}  auth=${r.auth || (r.xToken ? 'x-gander-token' : 'none')}  → ${r.result}${r.status ? ' / ' + r.status : ''}`).join(String.fromCharCode(10))}</pre>
+              </details>
+              <button class="mini" onclick={() => loadMcp()} title="refresh">⟳ refresh calls</button>
+            {/if}
             <div class="tg-hint">
               <b>{mc.tools} read-only tools</b> over {mc.datasets} datasets: sessions on the floor, spend by day / project / model, sub-agent scorecards, the queue, forensics. Once added, ask claude.ai for "a dashboard of my Claude Code spend by project this month" and the <b>Claude Dashboard</b> runs live queries on Gander, each chart citing its query.<br>
               <b>Claude Code on this machine</b> needs no tunnel: <code>claude mcp add --transport http gander {mc.localUrl}</code>.<br>

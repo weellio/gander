@@ -180,7 +180,7 @@ function takeCommand(sessionId, predicate) {
 // Telegram so you can reply from the dashboard while away. Configure via env
 // AOC_TG_TOKEN / AOC_TG_CHAT / AOC_DASH_URL, or bridge/aoc-config.json:
 //   { "telegramToken": "...", "telegramChatId": "...", "dashboardUrl": "https://..." }
-const CFG_FILE = path.join(__dirname, 'aoc-config.json');
+const CFG_FILE = process.env.AOC_CONFIG_FILE || path.join(__dirname, 'aoc-config.json');   // tests point this at a scratch file so they never flip the real settings
 let cfg = {};
 try { cfg = JSON.parse(fs.readFileSync(CFG_FILE, 'utf8')); } catch (_) {}
 // Live-updatable Telegram config (settable from the dashboard via /api/telegram-config).
@@ -230,6 +230,7 @@ function mcpConfigView() {
     remoteUrl: base ? `${base}/mcp` : '',
     tunnel: t,
     autoTunnel: !!cfg.mcpTunnel,
+    recent: mcp.recent(),
     installHint: tunnel.installHint(),
     tools: mcpRpc.list.length,
     datasets: datasets.catalog().length,

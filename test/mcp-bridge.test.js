@@ -36,7 +36,7 @@ describe('Gander as an MCP connector, on a real bridge', () => {
     port = await freePort(); dir = tmp();
     child = spawn(process.execPath, [path.join(__dirname, '..', 'bridge', 'server.js'), '--port', String(port)], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, AOC_QUEUE_FILE: path.join(dir, 'q.json'), GANDER_NO_OPEN: '1', GANDER_SETTINGS: path.join(dir, 'settings.json') },
+      env: { ...process.env, AOC_QUEUE_FILE: path.join(dir, 'q.json'), GANDER_NO_OPEN: '1', GANDER_SETTINGS: path.join(dir, 'settings.json'), AOC_CONFIG_FILE: path.join(dir, 'aoc-config.json') },
     });
     child.stdout.on('data', (d) => (out += d)); child.stderr.on('data', (d) => (out += d));
     await waitUp(port);
