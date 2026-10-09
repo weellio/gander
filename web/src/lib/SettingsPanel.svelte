@@ -108,13 +108,16 @@
   // ── Claude connector: the bridge as a read-only MCP server (/mcp) for claude.ai, Claude Desktop and Claude Code,
   //    plus the dashboard data pack a person attaches to a Claude Dashboard. ──
   let mcOpen = $state(false); let mc = $state(null); let mcStatus = $state(''); let mcBusy = $state(false); let mcShowTok = $state(false);
-  async function loadMcp() { try { const j = await (await fetch('/api/mcp-config')).json(); mc = j && !j.error ? j : null; } catch (_) { mc = null; } }
+  async function loadMcp() { try { const j = await (await fetch('/api/mcp-config')).json(); mc = j && !j.error ? j : null; if (mc && mc.stable && mc.stable.hostname && !cfHost) cfHost = mc.stable.hostname; } catch (_) { mc = null; } }
   async function saveMcp(patch, label) {
     mcBusy = true; mcStatus = label || 'Saving…';
     const r = await post('/api/mcp-config', patch);
     if (r && !r.error) { mc = r; mcStatus = '✓'; } else mcStatus = '✗ ' + ((r && r.error) || 'failed');
     mcBusy = false; setTimeout(() => { if (mcStatus === '✓') mcStatus = ''; }, 2000);
   }
+  let cfHost = $state(''); let cfTok = $state('');
+  async function saveStable() { const patch = { cfHostname: cfHost }; if (cfTok.trim()) patch.cfTunnelToken = cfTok.trim(); await saveMcp(patch, 'Switching to the fixed address… (reconnects the tunnel)'); cfTok = ''; }
+  async function clearStable() { await saveMcp({ clearStable: true }, 'Back to a quick tunnel…'); cfHost = ''; cfTok = ''; }
   async function copyText(t) { try { await navigator.clipboard.writeText(t); mcStatus = '✓ copied'; setTimeout(() => (mcStatus = ''), 1500); } catch (_) { mcStatus = 'select and copy by hand'; } }
 
   // ── idle-session nudge (the bridge runs it itself — no external task needed) ──
@@ -664,6 +667,12 @@
               <div class="cv-line"><span class="cv-ver mono" title="The plain URL, for the header route">plain URL · {mc.remoteUrl}</span><button class="mini" onclick={() => copyText(mc.remoteUrl)} title="copy plain URL">⧉</button></div>
             {/if}
             {#if mcStatus}<div class="tg-status">{mcStatus}</div>{/if}
+            <details class="cv-out"><summary>{mc.stable?.tokenSet ? `Fixed address: ${mc.stable.hostname} (Cloudflare named tunnel)` : 'Fixed address (optional): stop re-pasting after restarts'}</summary>
+              <div class="tg-hint">A quick tunnel gets a new hostname on every start. A <b>Cloudflare named tunnel</b> is free and keeps one hostname forever; it needs a domain whose DNS is on Cloudflare. One time, about 3 minutes: Cloudflare dashboard → Zero Trust → Networks → Tunnels → <i>Create a tunnel</i> → Cloudflared → name it <code>gander</code> → copy the token from the install command (the long string after <code>--token</code>) → <i>Public hostname</i>: subdomain <code>gander</code>, service <code>HTTP</code> → <code>localhost:3131</code> → Save. Then paste both here; the connector URL in claude.ai becomes <code>https://gander.yourdomain.com/mcp/…</code> and never changes again.</div>
+              <input class="in" placeholder="hostname, e.g. gander.yourdomain.com" bind:value={cfHost} />
+              <input class="in" type="password" placeholder={mc.stable?.tokenSet ? 'tunnel token (saved; paste to replace)' : 'tunnel token from the Cloudflare install command'} bind:value={cfTok} />
+              <div class="tg-btns"><button class="select" onclick={saveStable} disabled={mcBusy || !cfHost.trim() || (!cfTok.trim() && !mc.stable?.tokenSet)}>Use fixed address</button>{#if mc.stable?.tokenSet}<button class="mini" onclick={clearStable} disabled={mcBusy}>Back to quick tunnel</button>{/if}</div>
+            </details>
             {#if mc.recent?.length}
               <details class="cv-out"><summary>last {mc.recent.length} call{mc.recent.length === 1 ? '' : 's'} from outside (what claude.ai sent)</summary>
                 <pre class="raw mono">{mc.recent.map((r) => `${new Date(r.at).toLocaleTimeString()}  ${r.method} ${r.path}${r.rpc ? ' ' + r.rpc : ''}  auth=${r.auth || (r.xToken ? 'x-gander-token' : 'none')}  → ${r.result}${r.status ? ' / ' + r.status : ''}`).join(String.fromCharCode(10))}</pre>

@@ -217,7 +217,8 @@ function onTunnelUrl(u) {
 // cloudflared (download it if missing), start the tunnel, keep it alive.
 function mcpConnect(cb) {
   cfg.mcpEnabled = true; if (!cfg.mcpToken) cfg.mcpToken = mcp.newToken(); cfg.mcpTunnel = true; saveConfig();
-  tunnel.connect(argPort, { onUrl: onTunnelUrl }, (err, st) => cb(err ? (err.message || String(err)) : '', st));
+  const namedT = cfg.cfTunnelToken && cfg.cfHostname ? { token: cfg.cfTunnelToken, hostname: cfg.cfHostname } : null;
+  tunnel.connect(argPort, { onUrl: onTunnelUrl, named: namedT }, (err, st) => cb(err ? (err.message || String(err)) : '', st));
 }
 function mcpConfigView() {
   const t = tunnel.status();
@@ -230,6 +231,7 @@ function mcpConfigView() {
     remoteUrl: base ? `${base}/mcp` : '',
     tunnel: t,
     autoTunnel: !!cfg.mcpTunnel,
+    stable: { hostname: cfg.cfHostname || '', tokenSet: !!cfg.cfTunnelToken },   // Cloudflare named tunnel = a fixed address; the token is never echoed
     recent: mcp.recent(),
     installHint: tunnel.installHint(),
     tools: mcpRpc.list.length,
@@ -2972,6 +2974,13 @@ Allow / Deny it in the dashboard rail.`);
     const body = (await readBody(req)) || {};
     if (body.enabled !== undefined) { cfg.mcpEnabled = !!body.enabled; if (cfg.mcpEnabled && !cfg.mcpToken) cfg.mcpToken = mcp.newToken(); saveConfig(); }
     if (body.regenerate) { cfg.mcpToken = mcp.newToken(); saveConfig(); }
+    if (body.cfHostname !== undefined || body.cfTunnelToken !== undefined || body.clearStable) {   // stable address: save, then reconnect on the named tunnel
+      if (body.cfHostname !== undefined) cfg.cfHostname = String(body.cfHostname || '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+      if (body.cfTunnelToken !== undefined && String(body.cfTunnelToken).trim()) cfg.cfTunnelToken = String(body.cfTunnelToken).trim();
+      if (body.clearStable) { delete cfg.cfTunnelToken; delete cfg.cfHostname; }
+      saveConfig();
+      if (cfg.mcpEnabled) { const err = await new Promise((r) => mcpConnect((e) => r(e))); if (err) return sendJson(res, 502, { ...mcpConfigView(), error: `Could not open the tunnel: ${err}` }); }
+    }
     if (body.connect || body.tunnel === 'start') {
       const err = await new Promise((r) => mcpConnect((e) => r(e)));
       if (err) return sendJson(res, 502, { ...mcpConfigView(), error: `Could not open the tunnel: ${err}` });

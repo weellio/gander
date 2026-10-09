@@ -22,10 +22,11 @@ const RELEASES = 'https://github.com/cloudflare/cloudflared/releases/latest/down
 let child = null;
 let state = { running: false, url: '', startedAt: 0, error: '', log: [], bin: '', installing: false, installError: '' };
 let keepAlive = null;        // { port, onUrl } while auto-restart is wanted
+let named = null;            // { token, hostname }: a Cloudflare named tunnel = a fixed address
 let restartTimer = null;
 
 function status() {
-  return { running: state.running, url: state.url, startedAt: state.startedAt, error: state.error, bin: state.bin || binName(), installing: state.installing, installError: state.installError, managed: !!state.bin && state.bin.startsWith(BIN_DIR) };
+  return { stable: !!named, hostname: named ? named.hostname : '', running: state.running, url: state.url, startedAt: state.startedAt, error: state.error, bin: state.bin || binName(), installing: state.installing, installError: state.installError, managed: !!state.bin && state.bin.startsWith(BIN_DIR) };
 }
 function binName() { return process.env.GANDER_CLOUDFLARED || 'cloudflared'; }
 function managedPath() { return path.join(BIN_DIR, WIN ? 'cloudflared.exe' : 'cloudflared'); }
@@ -37,6 +38,11 @@ function downloadUrl(platform = process.platform, arch = process.arch) {
   if (platform === 'darwin') return { url: `${RELEASES}cloudflared-darwin-${a}.tgz`, archive: 'tgz' };
   if (platform === 'linux') return { url: `${RELEASES}cloudflared-linux-${a}`, archive: 'bin' };
   return null;
+}
+
+// What to run: a quick tunnel (random hostname) or a named one (fixed hostname, Cloudflare token).
+function spawnArgs(port, n) {
+  return n && n.token ? ['tunnel', '--no-autoupdate', 'run', '--token', String(n.token)] : ['tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate'];
 }
 
 // The URL a cloudflared log line announces, or ''.
@@ -121,8 +127,9 @@ function start(port, cb) {
   const bin = state.bin || binName();
   state = { ...state, running: true, url: '', startedAt: Date.now(), error: '', log: [] };
   let proc;
+  const n = named && named.token && named.hostname ? named : null;
   try {
-    proc = spawn(bin, ['tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate'], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: WIN && !/[\\/]/.test(bin) });
+    proc = spawn(bin, spawnArgs(port, n), { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: WIN && !/[\\/]/.test(bin) });
   } catch (e) {
     state.running = false; state.error = e.message;
     return cb(null, status());
@@ -133,8 +140,10 @@ function start(port, cb) {
   const onLine = (chunk) => {
     const text = String(chunk);
     state.log.push(text); if (state.log.length > 40) state.log.shift();
-    const u = parseUrl(text);
+    // a quick tunnel prints its random URL; a named one only says it registered, and its URL is the fixed hostname
+    const u = n ? (/Registered tunnel connection|Connection .* registered/i.test(text) ? 'https://' + n.hostname : '') : parseUrl(text);
     if (u && !state.url) { state.url = u; if (keepAlive && keepAlive.onUrl) { try { keepAlive.onUrl(u); } catch (_) {} } answer(); }
+    if (n && !state.url && /error|failed|invalid|unauthorized/i.test(text)) state.error = text.replace(/\s+/g, ' ').slice(0, 200);
   };
   proc.stdout.on('data', onLine);
   proc.stderr.on('data', onLine);
@@ -166,10 +175,18 @@ function stop(cb) {
 }
 
 // The one-call path: install if needed, start, keep alive, report each URL. -> cb(err, status)
-function connect(port, { onUrl } = {}, cb) {
+function connect(port, { onUrl, named: n } = {}, cb) {
   ensureInstalled((err) => {
     if (err) return cb(err, status());
+    const want = n && n.token && n.hostname ? { token: String(n.token), hostname: String(n.hostname).replace(/^https?:\/\//, '').replace(/\/.*$/, '') } : null;
+    const changed = JSON.stringify(want) !== JSON.stringify(named);
+    named = want;
     keepAlive = { port, onUrl: onUrl || null };
+    if (child && changed) {   // the kind of tunnel changed: drop the running one, start() below brings up the other
+      const p = child; child = null; try { p.kill(); } catch (_) {}
+      if (WIN) { try { execFile('taskkill', ['/PID', String(p.pid), '/T', '/F'], { windowsHide: true }, () => {}); } catch (_) {} }
+      state = { ...state, running: false, url: '', error: '', log: [] };
+    }
     if (child) return cb(null, status());
     start(port, (_e, st) => cb(st.url ? null : new Error(st.error || 'tunnel did not come up'), st));
   });
@@ -181,4 +198,4 @@ function installHint() {
   return 'https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/';
 }
 
-module.exports = { status, installed, install, ensureInstalled, start, stop, connect, installHint, downloadUrl, parseUrl, managedPath, BIN_DIR };
+module.exports = { status, installed, install, ensureInstalled, start, stop, connect, installHint, downloadUrl, parseUrl, spawnArgs, managedPath, BIN_DIR };

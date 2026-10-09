@@ -43,3 +43,9 @@ test('installed(): answers with a path and a version line, or empty strings, nev
     done();
   });
 });
+
+test('spawnArgs(): a quick tunnel by default, a named one when a Cloudflare token is given', () => {
+  assert.deepEqual(tunnel.spawnArgs(3131, null), ['tunnel', '--url', 'http://127.0.0.1:3131', '--no-autoupdate']);
+  assert.deepEqual(tunnel.spawnArgs(3131, { token: 'eyJ.abc', hostname: 'gander.example.com' }), ['tunnel', '--no-autoupdate', 'run', '--token', 'eyJ.abc']);
+  assert.equal(tunnel.status().stable, false);
+});
