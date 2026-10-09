@@ -202,6 +202,23 @@ const mcpRpc = mcp.createRpc(datasets.tools());
 // Remote callers need the token, and only while the connector is switched on;
 // loopback callers (Claude Code / Desktop on this machine) always may.
 const mcpHandle = mcp.mount({ rpc: mcpRpc, getToken: () => (cfg.mcpEnabled && cfg.mcpToken ? String(cfg.mcpToken) : ''), readBody: (req) => readBody(req), sendJson: (res, code, obj) => sendJson(res, code, obj) });
+// The tunnel came up (or came back) with an address: remember it and tell the
+// person when it changed, since claude.ai keeps the old one until re-pasted.
+function onTunnelUrl(u) {
+  if (!u || u === cfg.mcpLastUrl) return;
+  const first = !cfg.mcpLastUrl;
+  cfg.mcpLastUrl = u; saveConfig();
+  const msg = first ? `🔌 Gander connector is reachable at ${u}/mcp` : `🔌 Gander connector address changed: ${u}/mcp — paste the new one into claude.ai`;
+  try { pushFeed({ ts: Date.now(), agentId: 'connector', agent: 'connector', project: '', sessionId: '', state: 'idle', log: msg, error: false }); } catch (_) {}
+  if (!first) { try { osNotify('Gander — connector address changed', `${u}/mcp · update the custom connector in claude.ai`); } catch (_) {} }
+  console.log('[mcp] ' + msg);
+}
+// Everything the Connect button does, in order: switch on, mint a token, get
+// cloudflared (download it if missing), start the tunnel, keep it alive.
+function mcpConnect(cb) {
+  cfg.mcpEnabled = true; if (!cfg.mcpToken) cfg.mcpToken = mcp.newToken(); cfg.mcpTunnel = true; saveConfig();
+  tunnel.connect(argPort, { onUrl: onTunnelUrl }, (err, st) => cb(err ? (err.message || String(err)) : '', st));
+}
 function mcpConfigView() {
   const t = tunnel.status();
   const base = t.url || '';
@@ -212,6 +229,7 @@ function mcpConfigView() {
     localUrl: `http://localhost:${argPort}/mcp`,
     remoteUrl: base ? `${base}/mcp` : '',
     tunnel: t,
+    autoTunnel: !!cfg.mcpTunnel,
     installHint: tunnel.installHint(),
     tools: mcpRpc.list.length,
     datasets: datasets.catalog().length,
@@ -2953,12 +2971,11 @@ Allow / Deny it in the dashboard rail.`);
     const body = (await readBody(req)) || {};
     if (body.enabled !== undefined) { cfg.mcpEnabled = !!body.enabled; if (cfg.mcpEnabled && !cfg.mcpToken) cfg.mcpToken = mcp.newToken(); saveConfig(); }
     if (body.regenerate) { cfg.mcpToken = mcp.newToken(); saveConfig(); }
-    if (body.tunnel === 'start') {
-      const ver = await new Promise((r) => tunnel.installed(r));
-      if (!ver) return sendJson(res, 409, { ...mcpConfigView(), error: `cloudflared is not installed. ${tunnel.installHint()}` });
-      await new Promise((r) => tunnel.start(argPort, () => r()));
+    if (body.connect || body.tunnel === 'start') {
+      const err = await new Promise((r) => mcpConnect((e) => r(e)));
+      if (err) return sendJson(res, 502, { ...mcpConfigView(), error: `Could not open the tunnel: ${err}` });
     }
-    if (body.tunnel === 'stop') await new Promise((r) => tunnel.stop(() => r()));
+    if (body.disconnect || body.tunnel === 'stop') { cfg.mcpTunnel = false; saveConfig(); await new Promise((r) => tunnel.stop(() => r())); }
     const v = mcpConfigView();
     console.log(`[mcp] connector ${v.enabled ? 'on' : 'off'}${v.remoteUrl ? ' · ' + v.remoteUrl : ''}`);
     return sendJson(res, 200, v);
@@ -4340,6 +4357,9 @@ server.listen(argPort, BIND_HOST, () => {
   setInterval(checkBudget, 180000); setTimeout(checkBudget, 8000);
   setInterval(sampleBurn, 30000); setTimeout(sampleBurn, 6000);
   setInterval(() => mod.sweep(), 3600000);   // forget gander-feed records of sessions that ended a day ago
+  if (cfg.mcpEnabled && cfg.mcpTunnel) {       // the connector was connected last time: come back up without being asked
+    setTimeout(() => mcpConnect((err, st) => { if (err) console.log('[mcp] tunnel did not come back: ' + err); else if (st.url) console.log('[mcp] tunnel back at ' + st.url); }), 3000);
+  }
   rescheduleNudge();   // periodic idle-session nudge (cfg.nudgeInterval minutes; 0 = off)
   setInterval(() => routines.tick(runRoutineOpts()), 30000);   // run scheduled routines (HH:MM)
   setInterval(queueTick, 10000); setTimeout(queueTick, 5000);  // task-queue scheduler

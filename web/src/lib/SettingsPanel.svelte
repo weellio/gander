@@ -642,31 +642,32 @@
       {#if mcOpen}
         <div class="tg-form">
           {#if mc}
-            <label class="cbrow"><input type="checkbox" checked={mc.enabled} disabled={mcBusy} onchange={(e) => saveMcp({ enabled: e.currentTarget.checked }, e.currentTarget.checked ? 'Switching on…' : 'Switching off…')} /> Connector on — <b>{mc.tools} read-only tools</b> over {mc.datasets} datasets (sessions, spend, scorecards, queue, forensics)</label>
-            <div class="cv-line"><span class="cv-ver mono">{mc.localUrl}</span><button class="mini" onclick={() => copyText(mc.localUrl)} title="copy">⧉</button></div>
-            {#if mc.enabled}
+            {#if !mc.tunnel?.url}
               <div class="cv-line">
-                <span class="cv-ver mono" title="Fixed credential: paste as a Bearer token in claude.ai, or append it to the URL as /mcp/&lt;token&gt;">token · {mcShowTok ? mc.token : '•'.repeat(12)}</span>
+                <span class="cv-ver">
+                  {#if mc.tunnel?.installing}Downloading cloudflared (about 40 MB, once)…
+                  {:else if mc.tunnel?.running}Opening the tunnel…
+                  {:else if mc.tunnel?.error || mc.tunnel?.installError}Last try: {mc.tunnel.error || mc.tunnel.installError}
+                  {:else}Not connected to claude.ai yet{/if}
+                </span>
+                <button class="select" onclick={() => saveMcp({ connect: true }, 'Connecting… gets cloudflared if needed, opens a free tunnel, keeps it alive (up to a minute the first time)')} disabled={mcBusy || mc.tunnel?.running || mc.tunnel?.installing}>🔌 Connect to claude.ai</button>
+              </div>
+            {:else}
+              <div class="cv-line cv-ok"><span class="cv-ver">Connected · paste these two into claude.ai → Settings → Connectors → <i>Add custom connector</i></span><button class="mini" onclick={() => saveMcp({ disconnect: true }, 'Disconnecting…')} disabled={mcBusy}>Disconnect</button></div>
+              <div class="cv-line"><span class="cv-ver mono" title="The connector URL">URL · {mc.remoteUrl}</span><button class="mini" onclick={() => copyText(mc.remoteUrl)} title="copy URL">⧉</button></div>
+              <div class="cv-line">
+                <span class="cv-ver mono" title="Authentication: fixed credentials → Bearer token">token · {mcShowTok ? mc.token : '•'.repeat(12)}</span>
                 <button class="mini" onclick={() => (mcShowTok = !mcShowTok)} title={mcShowTok ? 'hide' : 'show'}>{mcShowTok ? '🙈' : '👁'}</button>
                 <button class="mini" onclick={() => copyText(mc.token)} title="copy token">⧉</button>
                 <button class="mini" onclick={() => saveMcp({ regenerate: true }, 'New token…')} disabled={mcBusy} title="Mint a new token; the old one stops working">↻</button>
               </div>
-              <div class="cv-line" class:cv-ok={!!mc.tunnel?.url}>
-                <span class="cv-ver">
-                  {#if mc.tunnel?.url}Public URL · <span class="mono">{mc.remoteUrl}</span>
-                  {:else if mc.tunnel?.running}Tunnel starting…
-                  {:else if mc.tunnel?.error}Tunnel: {mc.tunnel.error}
-                  {:else}No public URL yet — claude.ai calls connectors from Anthropic's cloud, so it needs one{/if}
-                </span>
-                {#if mc.tunnel?.url}<button class="mini" onclick={() => copyText(mc.remoteUrl)} title="copy public URL">⧉</button><button class="mini" onclick={() => saveMcp({ tunnel: 'stop' }, 'Stopping tunnel…')} disabled={mcBusy}>Stop tunnel</button>
-                {:else}<button class="mini cv-up" onclick={() => saveMcp({ tunnel: 'start' }, 'Starting cloudflared… up to 25 s')} disabled={mcBusy || mc.tunnel?.running}>Start tunnel</button>{/if}
-              </div>
+              <div class="cv-line"><span class="cv-ver mono" title="One line for people who prefer the No sign in option">or, No sign in · {mc.remoteUrl}/{mcShowTok ? mc.token : '•'.repeat(12)}</span><button class="mini" onclick={() => copyText(mc.remoteUrl + '/' + mc.token)} title="copy URL with token">⧉</button></div>
             {/if}
             {#if mcStatus}<div class="tg-status">{mcStatus}</div>{/if}
             <div class="tg-hint">
-              <b>claude.ai / Claude Desktop:</b> Settings → Connectors → <i>Add custom connector</i> → URL = the public URL above → Authentication: <i>fixed credentials</i>, Bearer token = the token (or <i>No sign in</i> with the URL as <code>…/mcp/&lt;token&gt;</code>). A <b>Claude Dashboard</b> can then run live queries on Gander: "build a dashboard of my Claude Code spend by project this month".<br>
-              <b>Claude Code on this machine:</b> <code>claude mcp add --transport http gander {mc.localUrl}</code> (no token needed on localhost).<br>
-              The tunnel is a cloudflared <i>quick tunnel</i>: free, no account, a new <code>*.trycloudflare.com</code> hostname each start (re-paste it in claude.ai after a restart). Needs cloudflared: <code>{mc.installHint}</code>. Everything behind it is read-only.
+              <b>{mc.tools} read-only tools</b> over {mc.datasets} datasets: sessions on the floor, spend by day / project / model, sub-agent scorecards, the queue, forensics. Once added, ask claude.ai for "a dashboard of my Claude Code spend by project this month" and the <b>Claude Dashboard</b> runs live queries on Gander, each chart citing its query.<br>
+              <b>Claude Code on this machine</b> needs no tunnel: <code>claude mcp add --transport http gander {mc.localUrl}</code>.<br>
+              The tunnel is a free cloudflared <i>quick tunnel</i> (no account; the bridge downloads cloudflared itself and restarts the tunnel whenever it or the bridge comes back). Its hostname changes on every start: Gander then posts the new address to the feed and a desktop alert so you can re-paste it. Everything behind it is read-only.
             </div>
             <div class="tg-hint">
               <b>No connector? Attach a file instead.</b> <a href="/api/datasets-pack" download>⬇ Dashboard data pack (JSON)</a> holds every dataset as rows; or one at a time as CSV:

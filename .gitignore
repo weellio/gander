@@ -28,3 +28,4 @@ docs/*.gif
 bridge/aoc-board.json
 bridge/aoc-claudepids.json
 bridge/aoc-forks.json
+bridge/bin/            # cloudflared the bridge downloads for the Claude connector
