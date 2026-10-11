@@ -6,6 +6,7 @@
   import AgentTile from './lib/AgentTile.svelte';
   import AgentModal from './lib/AgentModal.svelte';
   import NeedsYou from './lib/NeedsYou.svelte';
+  import VoiceControl from './lib/VoiceControl.svelte';
   import BoardPanel from './lib/BoardPanel.svelte';
   import NewTask from './lib/NewTask.svelte';
   import Tour from './lib/Tour.svelte';
@@ -572,6 +573,7 @@
         {/if}
       </div>
 
+      <VoiceControl {agents} {selectedProject} onOpen={openP} onFly={flyTo} onLayout={(v) => ($layout = v)} onNewTask={() => (newTaskOpen = true)} />
       <NeedsYou {agents} {budget} {escalations} {plans} {reviews} {dangers} {collisions} onOpen={(id) => (tileModalId = id)} onFly={flyTo} onConfig={() => openP('config')} onBoard={openBoard} />
 
       <HelpPanel />

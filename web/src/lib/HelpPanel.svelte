@@ -153,6 +153,7 @@
           </section>
         {/each}
       </div>
+      <div class="foot">Tip: click <b>🎙</b> (beside ⚙ Settings) and say <b>“hey Gander, start a session in WaivePulse and write a report on this”</b>, “who needs me”, “allow”, “stop Roy”, “open settings”; hold <kbd>V</kbd> for one command without the wake word; “hey Gander help” lists the rest.</div>
       <div class="foot">Tip: press <kbd>/</kbd> (or click <b>🔍 Jump</b>) for the command palette — jump to any panel or fly to any agent by name. Panels open from <b>⚙ Manage ▾</b> and are <b>drag-resizable</b> from their left edge (the width is remembered). Everything runs locally via the bridge on :3131.</div>
     </div>
   </div>

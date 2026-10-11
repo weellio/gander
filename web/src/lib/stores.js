@@ -23,3 +23,8 @@ export const costAlerts = persisted('aoc-cost-alerts', true);     // show per-ag
 export const briefAloud = persisted('aoc-brief-aloud', false);    // read a new briefing aloud (TTS) when it lands
 export const ttsVoice = persisted('aoc-tts-voice', '');           // chosen speech-synthesis voice name ('' = browser default)
 export const ttsRate = persisted('aoc-tts-rate', 1);              // speech rate (0.5–2)
+// 🎙 voice control (VoiceControl.svelte): always-listening ear, wake word, confirmations, spoken answers
+export const voiceOn = persisted('aoc-voice', false);
+export const voiceWake = persisted('aoc-voice-wake', '');          // '' = the built-in list (hey gander, ok gander, yo gander…)
+export const voiceConfirm = persisted('aoc-voice-confirm', true);  // read the action back and wait for a yes
+export const voiceSpeak = persisted('aoc-voice-speak', true);      // answer aloud
