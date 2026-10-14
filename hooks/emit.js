@@ -92,6 +92,32 @@ function waitForDecision(requestId, port) {
   once();
 }
 
+// Danger guard "hold": the bridge parked this PreToolUse while the person decides in the rail.
+// Allow once -> exit silently and the command runs; Keep blocked / no answer in time -> deny.
+function waitForGuard(gp, port) {
+  const deadline = Date.now() + Math.max(5000, Math.min(570000, Number(gp.holdMs) || 120000) - 2000);
+  const deny = (why) => {
+    process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: gp.text + (why ? ' ' + why : '') } }));
+    process.exit(0);
+  };
+  const once = () => {
+    if (Date.now() > deadline) return deny('(No decision arrived while the command was held. If the user allows it in Gander later, you will be told to run it again.)');
+    const r = http.request({ host: 'localhost', port, path: '/api/guard/wait?id=' + encodeURIComponent(gp.id), method: 'GET', timeout: 30000 }, (res) => {
+      let b = ''; res.on('data', (d) => (b += d));
+      res.on('end', () => {
+        let j = {}; try { j = JSON.parse(b || '{}'); } catch (_) {}
+        if (j.answered) return j.allow ? process.exit(0) : deny('(The user chose Keep blocked.)');
+        if (j.gone) return deny('');
+        setTimeout(once, 250);
+      });
+    });
+    r.on('error', () => deny(''));
+    r.on('timeout', () => { r.destroy(); setTimeout(once, 500); });
+    r.end();
+  };
+  once();
+}
+
 let data = '';
 process.stdin.on('data', (c) => { data += c; if (data.length > 1e6) process.stdin.destroy(); });
 process.stdin.on('error', () => process.exit(0));
@@ -144,6 +170,7 @@ process.stdin.on('end', () => {
           // Claude the decision. No answer in time -> exit silently and Claude shows
           // its own prompt as usual. Never blocks anything on a dead bridge.
           if (j && j.pending && j.requestId) { waitForDecision(j.requestId, port); return; }
+          if (j && j.guardPending && j.guardPending.id) { waitForGuard(j.guardPending, port); return; }
           const d = j && j.deliver;
           if (d && d.kind === 'stop-block') {
             process.stdout.write(JSON.stringify({ decision: 'block', reason: d.text }));

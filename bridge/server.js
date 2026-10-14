@@ -1307,6 +1307,33 @@ const guardPasses = new Map();      // sessionId + command -> expiry (Allow once
 const guardDismissed = new Set();
 const guardMode = () => (['off', 'flag', 'critical', 'all'].includes(cfg.guardMode) ? cfg.guardMode : 'critical');
 const guardHow = () => (cfg.guardHow === 'ask' ? 'ask' : 'deny');
+// How long a blocked command is HELD (the PreToolUse hook parked) while the person decides in
+// the rail. 0 = the old behaviour: deny at once, Allow once arms the next try. Must stay under
+// the PreToolUse hook timeout the installer writes (590 s).
+const guardHoldMs = () => Math.max(0, Math.min(540, Number(cfg.guardHoldSeconds === undefined ? 120 : cfg.guardHoldSeconds) || 0)) * 1000;
+const guardWaiters = new Map();     // guard entry id -> [{ res, timer }] parked emitters
+function guardResolve(id, answer) {
+  const list = guardWaiters.get(id) || [];
+  guardWaiters.delete(id);
+  for (const w of list) { clearTimeout(w.timer); try { sendJson(w.res, 200, { answered: true, ...answer }); } catch (_) {} }
+  return list.length > 0;
+}
+// The person allowed a command after the hold had already expired (the session got a deny and
+// is waiting or asking). Tell the session itself to run it again, so nobody has to type that.
+async function guardNudge(g) {
+  const text = `Gander: the user clicked "Allow once" for the command you were told was held:
+${g.command}
+Run it again now, exactly as before; it will go through this time.`;
+  try {
+    if (g.sessionId && cfg.inboxDeliver !== false && peers.canDeliver(g.sessionId)) {
+      const d = await peers.deliver(g.sessionId, text, { fromName: 'gander' });
+      if (d.ok) return 'inbox';
+    }
+  } catch (_) {}
+  const r = queueCommand(g.sessionId, 'message', text);
+  if (!r.error) { try { maybeNudge(); } catch (_) {} return 'queued'; }
+  return '';
+}
 const guardExtra = () => (Array.isArray(cfg.guardExtra) ? cfg.guardExtra : []);
 function guardCheck(body, project) {
   const ti = body.tool_input || {};
@@ -1339,8 +1366,11 @@ function guardCheck(body, project) {
   }
   console.log(`[guard] ${entry.action} (${c.level}/${c.rule}) ${project}: ${cmd.slice(0, 100)}`);
   if (!hold) return null;
+  if (how !== 'ask' && guardHoldMs() > 0) entry.holdUntil = Date.now() + guardHoldMs();   // the emitter parks until Allow / Keep blocked / the hold runs out
   const text = `Gander's danger guard held this command (${c.label}). Do not work around it: no other spelling, no wrapper script, no splitting it up. Tell the user exactly what you were about to run and why, then wait. If they click "Allow once" in the Gander dashboard, you may run exactly this command again.`;
-  return how === 'ask' ? { kind: 'pretool-ask', text } : { kind: 'pretool-deny', text };
+  if (how === 'ask') return { kind: 'pretool-ask', text };
+  if (entry.holdUntil) return { kind: 'pretool-hold', guardId: entry.id, holdMs: guardHoldMs(), text };
+  return { kind: 'pretool-deny', text };
 }
 
 // ✅ "Stop asking me". A PermissionRequest followed by the tool actually running
@@ -2715,7 +2745,8 @@ Allow / Deny it in the dashboard rail.`);
       }
     }
     if (deliver) console.log(`[deliver] ${sid} <- ${deliver.kind}`);
-    return sendJson(res, 200, { ok: true, applied: evs.length, deliver, ...(permPending ? { pending: true, requestId: permPending.requestId } : {}) });
+    return sendJson(res, 200, { ok: true, applied: evs.length, deliver, ...(permPending ? { pending: true, requestId: permPending.requestId } : {}),
+      ...(deliver && deliver.kind === 'pretool-hold' ? { guardPending: { id: deliver.guardId, holdMs: deliver.holdMs, text: deliver.text } } : {}) });
   }
 
   if (url === '/api/mute' && req.method === 'POST') {
@@ -3429,18 +3460,42 @@ Allow / Deny it in the dashboard rail.`);
   }
 
   // ── 🛡 Safety: danger guard + "stop asking me" ───────────────────────────────
+  // The parked emitter long-polls here (each call ~25 s) until Allow once / Keep blocked.
+  if (url === '/api/guard/wait' && req.method === 'GET') {
+    const gu = new URL(req.url, 'http://localhost');
+    const gid = String(gu.searchParams.get('id') || '');
+    const g = guardLog.find((x) => x.id === gid);
+    if (!g) return sendJson(res, 200, { gone: true });
+    if (g.allowed) return sendJson(res, 200, { answered: true, allow: true });
+    if (g.kept) return sendJson(res, 200, { answered: true, allow: false });
+    const timer = setTimeout(() => {
+      guardWaiters.set(gid, (guardWaiters.get(gid) || []).filter((w) => w.res !== res));
+      try { sendJson(res, 200, { pending: true }); } catch (_) {}
+    }, 25000);
+    (guardWaiters.get(gid) || guardWaiters.set(gid, []).get(gid)).push({ res, timer });
+    return;
+  }
   if (url === '/api/guard/allow' && req.method === 'POST') {
     const body = await readBody(req);
     const g = body && guardLog.find((x) => x.id === body.id);
     if (!g) return sendJson(res, 404, { error: 'no such entry' });
     guardPasses.set(g.passKey, Date.now() + 15 * 60 * 1000);   // the next try within 15 min goes through
     g.allowed = true; g.allowedAt = Date.now();
-    console.log('[guard] allow once granted: ' + g.command.slice(0, 100));
-    return sendJson(res, 200, { ok: true });
+    // Still parked: the command runs right now. Otherwise the session already got a deny:
+    // tell it to run the command again, so the person never has to.
+    const resumed = guardResolve(g.id, { allow: true });
+    if (resumed) guardPasses.delete(g.passKey);   // it ran on the spot: no free pass left lying around for 15 min
+    let nudged = '';
+    if (!resumed && g.action === 'block') { nudged = await guardNudge(g); g.nudged = nudged || undefined; }
+    g.resumed = resumed || undefined;
+    console.log('[guard] allow once granted: ' + g.command.slice(0, 100) + (resumed ? ' (resumed)' : nudged ? ' (session told to retry via ' + nudged + ')' : ''));
+    return sendJson(res, 200, { ok: true, resumed, nudged });
   }
   if (url === '/api/guard/dismiss' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.id) return sendJson(res, 400, { error: 'id required' });
+    const gk = guardLog.find((x) => x.id === String(body.id));
+    if (gk && !gk.allowed) { gk.kept = true; guardResolve(gk.id, { allow: false }); }   // "Keep blocked" while parked: the deny goes out now
     guardDismissed.add(String(body.id));
     return sendJson(res, 200, { ok: true });
   }
@@ -3450,7 +3505,7 @@ Allow / Deny it in the dashboard rail.`);
     let suggestions = [];
     try { suggestions = permLedger.suggestions({ minAllows, existing: allowList }); } catch (_) {}
     return sendJson(res, 200, {
-      guard: { mode: guardMode(), how: guardHow(), extra: guardExtra(), rules: guard.RULES, recent: guardLog.slice(0, 50).map(({ passKey, ...g }) => g) },
+      guard: { mode: guardMode(), how: guardHow(), holdSeconds: guardHoldMs() / 1000, extra: guardExtra(), rules: guard.RULES, recent: guardLog.slice(0, 50).map(({ passKey, ...g }) => g) },
       suggestions, minAllows, allowList,
     });
   }
@@ -3459,11 +3514,12 @@ Allow / Deny it in the dashboard rail.`);
     if (!body || typeof body !== 'object') return sendJson(res, 400, { error: 'invalid JSON' });
     if (body.mode !== undefined) { if (!['off', 'flag', 'critical', 'all'].includes(body.mode)) return sendJson(res, 400, { error: 'unknown mode' }); cfg.guardMode = body.mode; }
     if (body.how !== undefined) cfg.guardHow = body.how === 'ask' ? 'ask' : 'deny';
+    if (body.holdSeconds !== undefined) cfg.guardHoldSeconds = Math.max(0, Math.min(540, Number(body.holdSeconds) || 0));
     if (body.extra !== undefined) cfg.guardExtra = (Array.isArray(body.extra) ? body.extra : []).map((x) => String(x).trim().slice(0, 120)).filter(Boolean).slice(0, 50);
     if (body.allowSuggestMin !== undefined) cfg.allowSuggestMin = Math.max(2, Math.min(100, Number(body.allowSuggestMin) || 5));
     saveConfig();
     console.log('[guard] mode ' + guardMode() + ' / ' + guardHow() + ' · ' + guardExtra().length + ' extra');
-    return sendJson(res, 200, { ok: true, mode: guardMode(), how: guardHow(), extra: guardExtra() });
+    return sendJson(res, 200, { ok: true, mode: guardMode(), how: guardHow(), holdSeconds: guardHoldMs() / 1000, extra: guardExtra() });
   }
   if (url === '/api/safety/apply' && req.method === 'POST') {
     const body = await readBody(req);

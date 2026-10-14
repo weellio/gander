@@ -52,7 +52,7 @@ function buildHooks() {
   return {
     SessionStart: [{ hooks: [{ type: 'command', command: `node "${r}/bridge/launch.js"`, async: true, timeout: 10, statusMessage: 'Starting Gander' }] }],
     UserPromptSubmit: [evt()],
-    PreToolUse: [evtAll()],
+    PreToolUse: [{ matcher: '*', hooks: [{ ...emit(), timeout: 590 }] }],   // the danger guard may HOLD a command while you decide (see guardHoldSeconds)
     PostToolUse: [evtAll()],
     PostToolUseFailure: [evtAll()],
     SubagentStart: [evt()],

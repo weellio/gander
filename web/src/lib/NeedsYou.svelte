@@ -5,8 +5,13 @@
   // the answer keys right here so you never have to go find the terminal.
   let { agents = [], budget = null, escalations = [], plans = [], reviews = [], dangers = [], collisions = [], onOpen, onFly, onConfig, onBoard } = $props();
   // 🛡 danger guard: a destructive command was held before it ran (or flagged)
+  let guardNotes = $state({});   // id -> what the click did
   async function guardAct(id, what) {
-    try { await fetch('/api/guard/' + what, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); } catch (_) {}
+    try {
+      const r = await fetch('/api/guard/' + what, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+      const j = await r.json().catch(() => ({}));
+      if (what === 'allow') guardNotes[id] = j.resumed ? 'Allowed · the command is running now.' : j.nudged ? 'Allowed · the session was told to run it again.' : 'Allowed once: the session can run it on its next try.';
+    } catch (_) {}
   }
   // ⚠ two sessions edited the same file
   async function collisionAck(key) {
@@ -168,7 +173,7 @@
               <div class="nu-sub">{dg.label}</div>
               <div class="nu-sub mono">{dg.command}</div>
               {#if dg.action === 'block'}
-                <div class="nu-sub dim">{dg.allowed ? 'Allowed once: the session can run it on its next try.' : 'Claude was told it was blocked and to wait or ask you.'}</div>
+                <div class="nu-sub dim">{dg.allowed ? (guardNotes[dg.id] || (dg.resumed ? 'Allowed · the command ran.' : dg.nudged ? 'Allowed · the session was told to run it again.' : 'Allowed once: the session can run it on its next try.')) : (dg.holdUntil && dg.holdUntil > Date.now() ? 'Held: the command is waiting for your answer.' : 'Claude was told it was blocked and to wait or ask you.')}</div>
                 <div class="nu-keys">
                   {#if !dg.allowed}<button class="kk allow" onclick={() => guardAct(dg.id, 'allow')}>✓ Allow once</button>{/if}
                   <button class="kk deny" onclick={() => guardAct(dg.id, 'dismiss')}>{dg.allowed ? 'Done' : '✕ Keep blocked'}</button>

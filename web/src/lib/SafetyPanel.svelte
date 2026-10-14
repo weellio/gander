@@ -45,6 +45,11 @@
     const j = await post('/api/safety/apply', { rule: s.rule, scope }, 'a:' + s.rule);
     if (j && j.ok) flash = '✓ Added ' + s.rule + ' to ' + (j.file || 'your Claude Code settings') + '. New sessions stop asking; open ones pick it up after /hooks or a restart.';
   }
+  async function saveHold() {
+    const v = Math.max(0, Math.min(540, Number(document.getElementById('sf-hold').value) || 0));
+    const j = await post('/api/safety/config', { holdSeconds: v }, 'hold');
+    if (j && j.ok) { data.guard.holdSeconds = j.holdSeconds; flash = v ? `✓ A blocked command now waits up to ${v} s for your answer` : '✓ Blocked commands are denied at once; Allow once arms the next try'; }
+  }
   async function forget(s) { const j = await post('/api/safety/forget', { rule: s.rule }, 'f:' + s.rule); if (j && j.ok) flash = '✓ Won’t suggest ' + s.rule + ' again'; }
 
   const MODES = [
@@ -88,6 +93,11 @@
             {/each}
           </div>
           <div class="note">Blocking works in every permission mode, bypass included: Claude is told the command was held and to wait or ask you. Allow once in the 🔔 rail lets that exact command through on its next try.</div>
+          <label class="row">Hold a blocked command while you decide, up to
+            <input class="in" id="sf-hold" type="number" min="0" max="540" step="10" value={data.guard.holdSeconds ?? 120} style="width:5.5em" /> s
+            <button class="mini" onclick={saveHold} disabled={busy.hold}>Save</button>
+          </label>
+          <div class="note">While held, Allow once runs the command right away. After the hold (or at 0), Claude is told it was blocked; clicking Allow once then tells the session to run it again by itself.</div>
           <label class="row">Also guard commands containing
             <input class="in grow" type="text" placeholder="e.g. taskkill /im chrome.exe, prod-db" bind:value={extraIn} />
             <button class="mini" onclick={saveExtra} disabled={busy.extra}>Save</button>
