@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#0b0d10" />
+<title>Gander — phone</title>
+<!--
+  A phone-shaped console for Gander.
+
+  The full Svelte dashboard has no responsive CSS at all, so on a phone it is a
+  pinch-and-drag mess. This page is the opposite: one column, thumb-sized
+  buttons, and only the things you would actually want to do while away from
+  the desk — answer a permission prompt, approve a held branch, reply to a
+  session that stopped on a question.
+
+  Deliberately a plain static file: no build step, no framework, no CDN. It is
+  copied into dashboard/dist by Vite and served by the bridge, so it works on a
+  LAN with no internet at all.
+
+  Auth rides on what the bridge already does (docs/REMOTE.md): open it once with
+  ?token=... and the bridge sets a cookie. We also forward the token as a header
+  so a browser that drops the cookie still works.
+-->
+<style>
+  :root {
+    --bg: #0b0d10;
+    --card: #14181d;
+    --card2: #1b2026;
+    --line: #262d35;
+    --fg: #e8edf2;
+    --dim: #8e9aa6;
+    --ok: #34d399;
+    --warn: #f59e0b;
+    --bad: #f87171;
+    --accent: #60a5fa;
+    --tap: 48px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+  body {
+    font: 17px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+    padding: max(10px, env(safe-area-inset-top)) 12px calc(24px + env(safe-area-inset-bottom));
+    max-width: 680px; margin: 0 auto;
+  }
+
+  header { display: flex; align-items: center; gap: 10px; padding: 6px 2px 12px; }
+  header h1 { font-size: 19px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); flex: none; transition: background .3s; }
+  .dot.live { background: var(--ok); }
+  .dot.down { background: var(--bad); }
+  .spacer { flex: 1; }
+  .ago { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+  /* headline number — the one thing worth seeing from across a room */
+  .hero {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 18px; text-align: center; margin-bottom: 14px;
+  }
+  .hero .n { font-size: 54px; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .hero .n.zero { color: var(--dim); }
+  .hero .n.some { color: var(--warn); }
+  .hero .lbl { color: var(--dim); font-size: 15px; margin-top: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+  .chip {
+    background: var(--card2); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 12px; font-size: 14px; color: var(--dim);
+  }
+  .chip b { color: var(--fg); font-variant-numeric: tabular-nums; }
+  .chip.paused { color: var(--warn); border-color: var(--warn); }
+
+  h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .9px;
+    color: var(--dim); margin: 22px 2px 10px; font-weight: 650;
+  }
+  h2 .count { color: var(--fg); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 14px; margin-bottom: 10px;
+  }
+  .card.attn { border-left: 4px solid var(--warn); }
+  .card.err  { border-left: 4px solid var(--bad); }
+  .proj { font-weight: 650; font-size: 16px; word-break: break-word; }
+  .meta { color: var(--dim); font-size: 14px; margin-top: 3px; word-break: break-word; }
+  .tool {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 14px; background: var(--card2); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; margin-top: 10px;
+    white-space: pre-wrap; word-break: break-word; max-height: 8.5em; overflow: auto;
+  }
+
+  .row { display: flex; gap: 10px; margin-top: 12px; }
+  button {
+    flex: 1; min-height: var(--tap); border-radius: 12px; border: 1px solid var(--line);
+    background: var(--card2); color: var(--fg); font-size: 16px; font-weight: 600;
+    font-family: inherit; cursor: pointer; padding: 0 12px;
+  }
+  button:active { transform: scale(.98); }
+  button:disabled { opacity: .45; }
+  button.go   { background: #14532d; border-color: #1c6b3c; color: #d9f7e5; }
+  button.no   { background: #4c1d1d; border-color: #6b2626; color: #ffe0e0; }
+  button.flat { background: transparent; color: var(--dim); font-weight: 500; }
+
+  textarea {
+    width: 100%; margin-top: 10px; min-height: 88px; resize: vertical;
+    background: var(--card2); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 10px; padding: 11px; font: inherit; font-size: 16px; /* 16px stops iOS zooming on focus */
+  }
+
+  .empty { color: var(--dim); font-size: 15px; padding: 10px 2px 2px; }
+  .plan { display: flex; gap: 8px; margin-top: 12px; }
+  .plan .p { flex: 1; background: var(--card2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .plan .p .k { color: var(--dim); font-size: 12px; }
+  .plan .p .v { font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .plan .p .v.hot { color: var(--warn); }
+  .plan .p .v.max { color: var(--bad); }
+
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    background: var(--card2); border: 1px solid var(--line); color: var(--fg);
+    padding: 11px 18px; border-radius: 999px; font-size: 15px;
+    opacity: 0; pointer-events: none; transition: opacity .25s; max-width: 92vw;
+  }
+  .toast.on { opacity: 1; }
+  .toast.bad { border-color: var(--bad); color: #ffdede; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>Gander</h1>
+  <span class="spacer"></span>
+  <span class="ago" id="ago">connecting…</span>
+</header>
+
+<div class="hero">
+  <div class="n zero" id="needs">–</div>
+  <div class="lbl" id="needsLbl">need you</div>
+  <div class="chips" id="chips"></div>
+  <div class="plan" id="plan"></div>
+</div>
+
+<div id="sections"></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── token plumbing ────────────────────────────────────────────────────────
+  // The bridge sets a cookie when opened with ?token=..., but we keep the value
+  // and send it as a header too: a phone browser that drops the cookie (private
+  // tab, "clear on close") would otherwise start 403-ing with no explanation.
+  var TOKEN = new URLSearchParams(location.search).get('token') || '';
+  try {
+    if (TOKEN) sessionStorage.setItem('ganderToken', TOKEN);
+    else TOKEN = sessionStorage.getItem('ganderToken') || '';
+  } catch (_) { /* private mode: header-only for this page load */ }
+
+  function api(path, opts) {
+    opts = opts || {};
+    var headers = { 'Content-Type': 'application/json' };
+    if (TOKEN) headers['X-Gander-Token'] = TOKEN;
+    return fetch(path, {
+      method: opts.method || 'GET',
+      headers: headers,
+      credentials: 'same-origin',
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      cache: 'no-store'
+    }).then(function (r) {
+      if (r.status === 403) throw new Error('access token required — reopen with ?token=…');
+      return r.json().catch(function () { return {}; });
+    });
+  }
+
+  // ── tiny DOM helpers (no framework, so keep escaping honest) ──────────────
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function clip(s, n) {
+    s = String(s == null ? '' : s);
+    return s.length > n ? s.slice(0, n - 1) + '…' : s;
+  }
+
+  var toastTimer = null;
+  function toast(msg, bad) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast on' + (bad ? ' bad' : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.className = 'toast'; }, bad ? 4200 : 2200);
+  }
+
+  function mins(ms) {
+    if (!ms || ms < 0) return '';
+    var m = Math.round(ms / 60000);
+    if (m < 1) return 'now';
+    if (m < 60) return m + 'm';
+    var h = Math.floor(m / 60);
+    if (h < 48) return h + 'h ' + (m % 60) + 'm';   // beyond that, "147h" tells you nothing
+    return Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
+  }
+  function plural(n, one, many) { return '<b>' + n + '</b> ' + (n === 1 ? one : many); }
+
+  // ── state ─────────────────────────────────────────────────────────────────
+  var data = null;
+  var lastOk = 0;
+  var busy = {};          // key -> true while an action is in flight
+  var replyFor = null;    // sessionId whose reply box is open
+  var POLL_MS = 4000;
+
+  function render() {
+    if (!data) return;
+
+    // headline
+    var n = data.needsYou || 0;
+    var el = $('needs');
+    el.textContent = n;
+    el.className = 'n ' + (n ? 'some' : 'zero');
+    $('needsLbl').textContent = n === 1 ? 'thing needs you' : 'things need you';
+
+    // chips
+    var chips = [];
+    if (data.running) chips.push('<span class="chip">' + plural(data.running, 'running', 'running') + '</span>');
+    if (data.queued) chips.push('<span class="chip">' + plural(data.queued, 'queued', 'queued') + '</span>');
+    if (data.review) chips.push('<span class="chip">' + plural(data.review, 'in review', 'in review') + '</span>');
+    if (data.escalations) chips.push('<span class="chip">' + plural(data.escalations, 'escalation', 'escalations') + '</span>');
+    if (data.paused) chips.push('<span class="chip paused">queue paused</span>');
+    if (!chips.length) chips.push('<span class="chip">all quiet</span>');
+    $('chips').innerHTML = chips.join('');
+
+    // plan limits (only when the statusline has actually reported them)
+    var p = data.plan;
+    if (p && (p.fiveHour || p.sevenDay)) {
+      var box = function (k, v) {
+        if (!v) return '';
+        var pct = Math.round(v.pct || 0);
+        var cls = pct >= 90 ? 'max' : pct >= 70 ? 'hot' : '';
+        var reset = v.resetsAt ? mins(v.resetsAt * 1000 - Date.now()) : '';
+        return '<div class="p"><div class="k">' + k + (reset ? ' · resets ' + esc(reset) : '') +
+               '</div><div class="v ' + cls + '">' + pct + '%</div></div>';
+      };
+      $('plan').innerHTML = box('5 hour', p.fiveHour) + box('7 day', p.sevenDay);
+    } else {
+      $('plan').innerHTML = '';
+    }
+
+    var html = '';
+
+    // ── permissions: the single most useful thing to do from a phone ────────
+    var perms = data.permissions || [];
+    html += '<h2>Permission prompts <span class="count">' + perms.length + '</span></h2>';
+    if (!perms.length) {
+      html += '<div class="empty">Nothing waiting on an answer.</div>';
+    } else {
+      perms.forEach(function (x) {
+        var k = 'perm:' + x.requestId;
+        var d = busy[k] ? ' disabled' : '';
+        html += '<div class="card attn">' +
+          '<div class="proj">' + esc(x.project || 'session') + '</div>' +
+          '<div class="meta">wants to run <b>' + esc(x.tool || 'a tool') + '</b></div>' +
+          (x.detail ? '<div class="tool">' + esc(clip(x.detail, 400)) + '</div>' : '') +
+          '<div class="row">' +
+            '<button class="go" data-act="allow" data-sid="' + esc(x.sessionId) + '" data-rid="' + esc(x.requestId) + '"' + d + '>Allow</button>' +
+            '<button class="no" data-act="deny" data-sid="' + esc(x.sessionId) + '" data-rid="' + esc(x.requestId) + '"' + d + '>Deny</button>' +
+          '</div></div>';
+      });
+    }
+
+    // ── review-before-merge ─────────────────────────────────────────────────
+    var revs = data.reviews || [];
+    if (revs.length) {
+      html += '<h2>Waiting for review <span class="count">' + revs.length + '</span></h2>';
+      revs.forEach(function (x) {
+        var k = 'rev:' + x.id;
+        var d = busy[k] ? ' disabled' : '';
+        html += '<div class="card attn">' +
+          '<div class="proj">#' + esc(x.id) + ' · ' + esc(x.project || '') + '</div>' +
+          (x.branch ? '<div class="meta">' + esc(x.branch) + '</div>' : '') +
+          '<div class="tool">' + esc(clip(x.prompt, 400)) + '</div>' +
+          '<div class="row">' +
+            '<button class="go" data-act="approve" data-id="' + esc(x.id) + '"' + d + '>Approve &amp; merge</button>' +
+            '<button class="no" data-act="changes" data-id="' + esc(x.id) + '"' + d + '>Request changes</button>' +
+          '</div></div>';
+      });
+    }
+
+    // ── sessions that stopped and want something ────────────────────────────
+    var attn = data.attention || [];
+    html += '<h2>Sessions <span class="count">' + attn.length + '</span></h2>';
+    if (!attn.length) {
+      html += '<div class="empty">No session is waiting on you.</div>';
+    } else {
+      attn.forEach(function (a) {
+        var open = replyFor === a.sessionId;
+        var k = 'say:' + a.sessionId;
+        var d = busy[k] ? ' disabled' : '';
+        html += '<div class="card ' + (a.state === 'error' ? 'err' : 'attn') + '">' +
+          '<div class="proj">' + esc(a.name || a.project || 'session') + '</div>' +
+          '<div class="meta">' + esc(a.state) + (a.stalled ? ' · went quiet' : '') +
+            (a.project && a.project !== a.name ? ' · ' + esc(a.project) : '') + '</div>' +
+          (a.log ? '<div class="tool">' + esc(clip(a.log, 300)) + '</div>' : '');
+        if (!a.sessionId) {
+          html += '<div class="meta" style="margin-top:10px">no session id — reply from the desktop</div>';
+        } else if (!open) {
+          html += '<div class="row"><button class="flat" data-act="open" data-sid="' + esc(a.sessionId) + '">Reply…</button></div>';
+        } else {
+          html += '<textarea id="say" placeholder="Type a reply…"></textarea>' +
+            '<div class="row">' +
+              '<button class="go" data-act="send" data-sid="' + esc(a.sessionId) + '"' + d + '>Send</button>' +
+              '<button class="flat" data-act="close">Cancel</button>' +
+            '</div>';
+        }
+        html += '</div>';
+      });
+    }
+
+    $('sections').innerHTML = html;
+
+    // keep focus/text when the poll re-renders underneath an open reply box
+    if (replyFor && pendingText) {
+      var ta = $('say');
+      if (ta) ta.value = pendingText;
+    }
+  }
+
+  var pendingText = '';
+
+  // ── actions ───────────────────────────────────────────────────────────────
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest ? ev.target.closest('button[data-act]') : null;
+    if (!b) return;
+    var act = b.getAttribute('data-act');
+
+    if (act === 'open') {
+      replyFor = b.getAttribute('data-sid');
+      pendingText = '';
+      render();
+      var ta = $('say'); if (ta) ta.focus();
+      return;
+    }
+    if (act === 'close') { replyFor = null; pendingText = ''; render(); return; }
+
+    if (act === 'allow' || act === 'deny') {
+      var rid = b.getAttribute('data-rid'), sid = b.getAttribute('data-sid');
+      var pk = 'perm:' + rid;
+      busy[pk] = true; render();
+      api('/api/permissions/answer', { method: 'POST', body: { sessionId: sid, requestId: rid, behavior: act === 'allow' ? 'allow' : 'deny' } })
+        .then(function (r) {
+          if (r && r.error) toast(r.error, true);
+          else toast(act === 'allow' ? 'Allowed' : 'Denied');
+        })
+        .catch(function (e) { toast(e.message, true); })
+        .then(function () { delete busy[pk]; poll(); });
+      return;
+    }
+
+    if (act === 'approve' || act === 'changes') {
+      var id = b.getAttribute('data-id');
+      var rk = 'rev:' + id;
+      busy[rk] = true; render();
+      api('/api/queue/action', { method: 'POST', body: { id: Number(id), action: act === 'approve' ? 'approve' : 'request-changes', note: act === 'changes' ? 'Changes requested from the phone console.' : '' } })
+        .then(function (r) {
+          if (r && r.error) toast(r.error, true);
+          else toast(act === 'approve' ? 'Approved — merging' : 'Changes requested');
+        })
+        .catch(function (e) { toast(e.message, true); })
+        .then(function () { delete busy[rk]; poll(); });
+      return;
+    }
+
+    if (act === 'send') {
+      var ta2 = $('say');
+      var text = ta2 ? ta2.value.trim() : '';
+      if (!text) { toast('Nothing to send', true); return; }
+      var ssid = b.getAttribute('data-sid');
+      var sk = 'say:' + ssid;
+      busy[sk] = true; pendingText = text; render();
+      api('/api/resume-reply', { method: 'POST', body: { sessionId: ssid, text: text } })
+        .then(function (r) {
+          if (r && r.error) { toast(r.error, true); }
+          else { toast(r && r.busy ? 'Session busy — queued' : 'Sent'); replyFor = null; pendingText = ''; }
+        })
+        .catch(function (e) { toast(e.message, true); })
+        .then(function () { delete busy[sk]; poll(); });
+      return;
+    }
+  });
+
+  document.addEventListener('input', function (ev) {
+    if (ev.target && ev.target.id === 'say') pendingText = ev.target.value;
+  });
+
+  // ── polling ───────────────────────────────────────────────────────────────
+  var timer = null;
+  function poll() {
+    return api('/api/phone').then(function (j) {
+      if (!j || j.error) throw new Error(j && j.error ? j.error : 'bad reply');
+      data = j;
+      lastOk = Date.now();
+      $('dot').className = 'dot live';
+      render();
+    }).catch(function (e) {
+      $('dot').className = 'dot down';
+      $('ago').textContent = clip(e.message, 40);
+    });
+  }
+
+  function tick() {
+    if (lastOk) {
+      var s = Math.round((Date.now() - lastOk) / 1000);
+      $('ago').textContent = s < 6 ? 'live' : s + 's ago';
+    }
+  }
+
+  function start() {
+    clearInterval(timer);
+    poll();
+    timer = setInterval(poll, POLL_MS);
+  }
+
+  // Stop polling in the background: a phone in a pocket should not keep a radio
+  // busy every 4 seconds, and iOS throttles it into uselessness anyway.
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) clearInterval(timer);
+    else start();
+  });
+
+  setInterval(tick, 1000);
+  start();
+})();
+</script>
+</body>
+</html>

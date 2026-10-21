@@ -1,0 +1,15 @@
+{
+ "url": "https://github.com/example/web-shop",
+ "branch": "feat/coupon-field",
+ "ahead": 2,
+ "behind": 0,
+ "dirty": 3,
+ "prs": [
+  {
+   "number": 142,
+   "title": "feat(cart): coupon field + total wiring",
+   "state": "open",
+   "url": "https://github.com/example/web-shop/pull/142"
+  }
+ ]
+}

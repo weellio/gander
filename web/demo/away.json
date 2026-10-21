@@ -1,0 +1,26 @@
+{
+ "since": 0,
+ "now": 0,
+ "minutes": 0,
+ "finished": [],
+ "failed": [],
+ "waiting": [
+  {
+   "project": "api-gateway",
+   "name": "api-gateway",
+   "why": "wants to run Bash: npm publish --access public"
+  }
+ ],
+ "queue": {
+  "done": 1,
+  "failed": 0,
+  "review": 0,
+  "inReview": 0
+ },
+ "collisions": 0,
+ "dangers": 0,
+ "blocked": 0,
+ "headline": "1 needs you",
+ "quiet": false,
+ "held": 1
+}

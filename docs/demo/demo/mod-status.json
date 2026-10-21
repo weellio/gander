@@ -1,0 +1,13 @@
+{
+ "plugin": "gander-feed@gander",
+ "minVersion": "2.1.287",
+ "ccVersion": "2.1.306",
+ "supported": true,
+ "reason": "",
+ "installed": true,
+ "marketplace": true,
+ "sessionsFed": 4,
+ "live": 3,
+ "installLine": "/plugin install gander-feed@gander",
+ "marketplaceSource": "https://github.com/weellio/gander"
+}

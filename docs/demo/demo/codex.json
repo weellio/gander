@@ -1,0 +1,16 @@
+{
+ "home": "",
+ "sqlite": false,
+ "queued": 0,
+ "goals": [],
+ "sessions": [],
+ "totals": {
+  "sessions": 0,
+  "today": 0,
+  "tokensToday": 0,
+  "costToday": 0,
+  "tokens": 0,
+  "costUSD": 0
+ },
+ "byProject": []
+}

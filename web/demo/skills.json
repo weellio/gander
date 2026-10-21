@@ -1,0 +1,66 @@
+{
+ "skills": [
+  {
+   "name": "browser-verify",
+   "project": "Global (user)",
+   "projectPath": "C:/Users/demo",
+   "global": true,
+   "summary": "Prove a web change works in a real browser before reporting it done."
+  },
+  {
+   "name": "ship-it",
+   "project": "Global (user)",
+   "projectPath": "C:/Users/demo",
+   "global": true,
+   "summary": "Finish-line ritual: docs, build, commit, push, restart."
+  },
+  {
+   "name": "humanize",
+   "project": "Global (user)",
+   "projectPath": "C:/Users/demo",
+   "global": true,
+   "summary": "Rewrite prose so it sounds like a person wrote it."
+  },
+  {
+   "name": "deploy",
+   "project": "web-shop",
+   "projectPath": "D:/code/web-shop",
+   "global": false,
+   "summary": "Build and deploy the storefront to staging."
+  },
+  {
+   "name": "release-notes",
+   "project": "api-gateway",
+   "projectPath": "D:/code/api-gateway",
+   "global": false,
+   "summary": "Draft release notes from merged PRs."
+  }
+ ],
+ "projects": [
+  {
+   "name": "Global (user)",
+   "path": "C:/Users/demo",
+   "global": true
+  },
+  {
+   "name": "web-shop",
+   "path": "D:/code/web-shop",
+   "global": false
+  },
+  {
+   "name": "api-gateway",
+   "path": "D:/code/api-gateway",
+   "global": false
+  },
+  {
+   "name": "docs-site",
+   "path": "D:/code/docs-site",
+   "global": false
+  },
+  {
+   "name": "mobile-app",
+   "path": "D:/code/mobile-app",
+   "global": false
+  }
+ ]
+}

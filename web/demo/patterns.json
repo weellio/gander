@@ -1,0 +1,14 @@
+{
+ "generatedAt": 0,
+ "days": 30,
+ "totals": {
+  "prompts": 161,
+  "sessions": 23,
+  "projects": 4,
+  "files": 68,
+  "parsed": 68,
+  "scanMs": 900
+ },
+ "buckets": [],
+ "suggestions": []
+}

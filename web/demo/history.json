@@ -1,0 +1,62 @@
+[
+ {
+  "sessionId": "11111111-1111-4111-8111-111111111111",
+  "cwd": "D:/code/web-shop",
+  "project": "web-shop",
+  "startedAgo": 2280000,
+  "lastActiveAgo": 20000,
+  "firstPrompt": "Add a checkout coupon field and wire it to the cart total",
+  "bytes": 2140000,
+  "resumeCmd": "claude --resume 11111111-1111-4111-8111-111111111111"
+ },
+ {
+  "sessionId": "22222222-2222-4222-8222-222222222222",
+  "cwd": "D:/code/api-gateway",
+  "project": "api-gateway",
+  "startedAgo": 3300000,
+  "lastActiveAgo": 240000,
+  "firstPrompt": "Rotate the JWT signing key and roll it out behind a feature flag",
+  "bytes": 1480000,
+  "resumeCmd": "claude --resume 22222222-2222-4222-8222-222222222222"
+ },
+ {
+  "sessionId": "33333333-3333-4333-8333-333333333333",
+  "cwd": "D:/code/docs-site",
+  "project": "docs-site",
+  "startedAgo": 1320000,
+  "lastActiveAgo": 30000,
+  "firstPrompt": "Rewrite the Getting Started page from the new CLI flags",
+  "bytes": 620000,
+  "resumeCmd": "claude --resume 33333333-3333-4333-8333-333333333333"
+ },
+ {
+  "sessionId": "44444444-4444-4444-8444-444444444444",
+  "cwd": "D:/code/mobile-app",
+  "project": "mobile-app",
+  "startedAgo": 10800000,
+  "lastActiveAgo": 540000,
+  "firstPrompt": "Fix the flaky login test on Android",
+  "bytes": 410000,
+  "resumeCmd": "claude --resume 44444444-4444-4444-8444-444444444444"
+ },
+ {
+  "sessionId": "55555555-5555-4555-8555-555555555555",
+  "cwd": "D:/code/web-shop",
+  "project": "web-shop",
+  "startedAgo": 93600000,
+  "lastActiveAgo": 86400000,
+  "firstPrompt": "Why is the cart page slow on first load?",
+  "bytes": 3900000,
+  "resumeCmd": "claude --resume 55555555-5555-4555-8555-555555555555"
+ },
+ {
+  "sessionId": "66666666-6666-4666-8666-666666666666",
+  "cwd": "D:/code/old-blog",
+  "project": "old-blog",
+  "startedAgo": 259200000,
+  "lastActiveAgo": 259200000,
+  "firstPrompt": "Migrate the posts folder to MDX",
+  "bytes": 1200000,
+  "resumeCmd": "claude --resume 66666666-6666-4666-8666-666666666666"
+ }
+]

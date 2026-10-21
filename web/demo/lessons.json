@@ -1,0 +1,387 @@
+{
+ "generatedAt": 0,
+ "days": 60,
+ "minCount": 3,
+ "minSessions": 2,
+ "series": [
+  {
+   "dayAgo": 29,
+   "prompts": 5,
+   "toolCalls": 63,
+   "toolErrors": 2,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 28,
+   "prompts": 4,
+   "toolCalls": 106,
+   "toolErrors": 1,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 27,
+   "prompts": 7,
+   "toolCalls": 99,
+   "toolErrors": 0,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 26,
+   "prompts": 6,
+   "toolCalls": 92,
+   "toolErrors": 2,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 25,
+   "prompts": 5,
+   "toolCalls": 85,
+   "toolErrors": 1,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 24,
+   "prompts": 4,
+   "toolCalls": 78,
+   "toolErrors": 0,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 23,
+   "prompts": 7,
+   "toolCalls": 71,
+   "toolErrors": 2,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 22,
+   "prompts": 6,
+   "toolCalls": 64,
+   "toolErrors": 1,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 21,
+   "prompts": 5,
+   "toolCalls": 107,
+   "toolErrors": 0,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 20,
+   "prompts": 4,
+   "toolCalls": 100,
+   "toolErrors": 2,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 19,
+   "prompts": 7,
+   "toolCalls": 93,
+   "toolErrors": 1,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 18,
+   "prompts": 6,
+   "toolCalls": 86,
+   "toolErrors": 0,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 17,
+   "prompts": 5,
+   "toolCalls": 79,
+   "toolErrors": 2,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 16,
+   "prompts": 4,
+   "toolCalls": 72,
+   "toolErrors": 1,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 15,
+   "prompts": 7,
+   "toolCalls": 65,
+   "toolErrors": 0,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 14,
+   "prompts": 6,
+   "toolCalls": 108,
+   "toolErrors": 2,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 13,
+   "prompts": 5,
+   "toolCalls": 101,
+   "toolErrors": 1,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 12,
+   "prompts": 4,
+   "toolCalls": 94,
+   "toolErrors": 0,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 11,
+   "prompts": 7,
+   "toolCalls": 87,
+   "toolErrors": 2,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 10,
+   "prompts": 6,
+   "toolCalls": 80,
+   "toolErrors": 1,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 9,
+   "prompts": 5,
+   "toolCalls": 73,
+   "toolErrors": 0,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 8,
+   "prompts": 4,
+   "toolCalls": 66,
+   "toolErrors": 2,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 7,
+   "prompts": 7,
+   "toolCalls": 109,
+   "toolErrors": 1,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 6,
+   "prompts": 6,
+   "toolCalls": 102,
+   "toolErrors": 0,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 5,
+   "prompts": 5,
+   "toolCalls": 95,
+   "toolErrors": 2,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 4,
+   "prompts": 4,
+   "toolCalls": 88,
+   "toolErrors": 1,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 3,
+   "prompts": 7,
+   "toolCalls": 81,
+   "toolErrors": 0,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 2,
+   "prompts": 6,
+   "toolCalls": 74,
+   "toolErrors": 2,
+   "corrections": 0
+  },
+  {
+   "dayAgo": 1,
+   "prompts": 5,
+   "toolCalls": 67,
+   "toolErrors": 1,
+   "corrections": 1
+  },
+  {
+   "dayAgo": 0,
+   "prompts": 4,
+   "toolCalls": 60,
+   "toolErrors": 0,
+   "corrections": 0
+  }
+ ],
+ "candidates": [
+  {
+   "sig": "Bash: npm test (no script)",
+   "family": "",
+   "label": "npm test ran in a folder with no test script",
+   "tool": "Bash",
+   "members": [],
+   "count": 7,
+   "sessions": 4,
+   "projects": [
+    "docs-site",
+    "old-blog"
+   ],
+   "first": "",
+   "last": "",
+   "samples": [
+    "npm ERR! Missing script: \"test\""
+   ],
+   "draft": "Before running npm test, check package.json has a test script; docs-site uses `mkdocs build --strict` instead.",
+   "spark": [
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1
+   ]
+  },
+  {
+   "sig": "Edit: old_string not found",
+   "family": "",
+   "label": "Edit failed because the file changed after it was read",
+   "tool": "Edit",
+   "members": [],
+   "count": 5,
+   "sessions": 3,
+   "projects": [
+    "web-shop"
+   ],
+   "first": "",
+   "last": "",
+   "samples": [
+    "String to replace not found in file"
+   ],
+   "draft": "Re-read a file right before editing it when a sub-agent may have touched it.",
+   "spark": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1
+   ]
+  }
+ ],
+ "lessons": [
+  {
+   "id": "l-1",
+   "sig": "Bash: gradlew permission denied",
+   "text": "Run ./gradlew through bash, not PowerShell, on this machine.",
+   "target": "project:D:/code/mobile-app",
+   "promotedAt": 0,
+   "effect": {
+    "before": {
+     "days": 10,
+     "calls": 800,
+     "hits": 6,
+     "rate": 0.75
+    },
+    "after": {
+     "days": 10,
+     "calls": 760,
+     "hits": 0,
+     "rate": 0
+    },
+    "verdict": "better",
+    "note": "no repeats since"
+   },
+   "spark": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  }
+ ],
+ "totals": {
+  "files": 68,
+  "parsed": 68,
+  "scanMs": 1200,
+  "prompts": 161,
+  "toolCalls": 2410,
+  "toolErrors": 29,
+  "corrections": 14
+ }
+}

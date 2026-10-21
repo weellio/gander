@@ -1,0 +1,274 @@
+{
+ "license": {
+  "licensed": true,
+  "mode": "demo"
+ },
+ "app-config": {
+  "stallMinutes": 3,
+  "burnAlert": 5,
+  "longRunMinutes": 0,
+  "ctxAlertPct": 0.85,
+  "usageAlertPct": 90,
+  "lessonMinCount": 3,
+  "ollamaUrl": "",
+  "lmstudioUrl": "",
+  "gameNames": "",
+  "quietHours": {
+   "enabled": false,
+   "start": "23:00",
+   "end": "08:00",
+   "days": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "critical": [
+    "runaway",
+    "error"
+   ],
+   "channels": [
+    "telegram",
+    "slack",
+    "desktop",
+    "sound"
+   ]
+  },
+  "autoRetire": true,
+  "retireDoneSec": 180,
+  "retireClosedSec": 60,
+  "retireIdleSec": 1500,
+  "retireStaleActiveSec": 1800,
+  "testCmd": "",
+  "testCmds": {},
+  "codex": false,
+  "telegramReplyToken": {
+   "set": false,
+   "hint": ""
+  },
+  "license": {
+   "set": false,
+   "hint": ""
+  },
+  "allowRemote": false,
+  "accessToken": {
+   "set": false,
+   "hint": ""
+  },
+  "fleetIntervalMs": 5000,
+  "phone": {
+   "remote": false,
+   "tokenSet": false,
+   "urls": [
+    "http://192.168.1.20:3131/phone"
+   ],
+   "port": 3131
+  },
+  "restartNeeded": false
+ },
+ "budget": {
+  "dailyCost": 8.69,
+  "daily": 25,
+  "session": 0,
+  "enforce": false,
+  "overDaily": false,
+  "generatedAt": 0
+ },
+ "dispatch-config": {
+  "enabled": false,
+  "sessions": [],
+  "rateLimit": null,
+  "inboxDeliver": true,
+  "inboxes": 0
+ },
+ "claude-version": {
+  "cmd": "claude",
+  "current": "2.1.306",
+  "latest": "2.1.306",
+  "behind": false,
+  "checkedAt": 0
+ },
+ "teams": {
+  "teams": []
+ },
+ "peers": {
+  "peers": [],
+  "inboxDeliver": true
+ },
+ "permissions": {
+  "pending": [
+   {
+    "sessionId": "22222222-2222-4222-8222-222222222222",
+    "requestId": "demo-perm-1",
+    "tool": "Bash",
+    "detail": "npm publish --access public",
+    "ts": 0
+   }
+  ]
+ },
+ "runbook": {
+  "error": "session required"
+ },
+ "editor": {
+  "cmd": "code"
+ },
+ "claude-config": {
+  "cmd": "",
+  "permMode": "",
+  "flags": ""
+ },
+ "telegram-config": {
+  "configured": false,
+  "hasToken": false,
+  "chatId": "",
+  "dashboardUrl": "http://localhost:3131/"
+ },
+ "slack-config": {
+  "configured": false,
+  "url": "",
+  "hasAppToken": false,
+  "hasBotToken": false,
+  "channel": "",
+  "inbound": false
+ },
+ "nudge-config": {
+  "onSend": false,
+  "interval": 0
+ },
+ "os-notify-config": {
+  "enabled": true
+ },
+ "pricing-config": {
+  "rows": [],
+  "unpriced": []
+ },
+ "ambient-config": {
+  "enabled": false,
+  "events": [
+   "awaiting",
+   "error",
+   "runaway",
+   "done",
+   "clear",
+   "limit"
+  ],
+  "colors": {
+   "awaiting": "amber",
+   "error": "red",
+   "runaway": "red",
+   "done": "green",
+   "clear": "off",
+   "limit": "orange"
+  },
+  "awaiting": {
+   "webhook": "",
+   "command": "",
+   "color": "",
+   "effect": ""
+  },
+  "error": {
+   "webhook": "",
+   "command": "",
+   "color": "",
+   "effect": ""
+  },
+  "runaway": {
+   "webhook": "",
+   "command": "",
+   "color": "",
+   "effect": ""
+  },
+  "done": {
+   "webhook": "",
+   "command": "",
+   "color": "",
+   "effect": ""
+  },
+  "clear": {
+   "webhook": "",
+   "command": "",
+   "color": "",
+   "effect": ""
+  },
+  "limit": {
+   "webhook": "",
+   "command": "",
+   "color": "",
+   "effect": ""
+  },
+  "lifx": {
+   "enabled": false,
+   "hasToken": false,
+   "selector": "all"
+  }
+ },
+ "board-config": {
+  "inject": true,
+  "claudeMd": false
+ },
+ "fleet-config": {
+  "intervalMs": 5000,
+  "peers": [],
+  "status": []
+ },
+ "templates": {
+  "templates": [
+   {
+    "id": "t-1",
+    "name": "Tests green",
+    "prompt": "Run the test suite and fix what fails. Stop when green."
+   },
+   {
+    "id": "t-2",
+    "name": "Release notes",
+    "prompt": "Draft release notes from the commits since the last tag."
+   }
+  ]
+ },
+ "phone": {
+  "needsYou": 1,
+  "queued": 2,
+  "running": 1,
+  "review": 0,
+  "paused": false,
+  "escalations": 0,
+  "plans": 0,
+  "permissions": [
+   {
+    "sessionId": "22222222-2222-4222-8222-222222222222",
+    "project": "api-gateway",
+    "tool": "Bash",
+    "detail": "npm publish --access public"
+   }
+  ],
+  "reviews": [],
+  "attention": [],
+  "plan": null,
+  "at": 0
+ },
+ "mod/band": {
+  "needsYou": 1,
+  "spendUsd": 8.69,
+  "ctxPercent": 41,
+  "url": "http://localhost:3131/"
+ },
+ "git-status": {
+  "branch": "feat/coupon-field",
+  "ahead": 2,
+  "behind": 0,
+  "dirty": 3,
+  "files": [
+   "src/cart/Checkout.svelte",
+   "src/cart/coupon.js",
+   "tests/cart.test.js"
+  ]
+ },
+ "queue/diff": {
+  "log": "a1b2c3d feat(cart): coupon field + total wiring",
+  "stat": " 3 files changed, 84 insertions(+), 6 deletions(-)",
+  "patch": ""
+ }
+}

@@ -1,0 +1,26 @@
+{
+ "briefings": [
+  {
+   "id": "b-1",
+   "routineId": "r-brief",
+   "name": "Morning Brief",
+   "project": "",
+   "tsAgo": 7200000,
+   "ms": 28000,
+   "ok": true,
+   "error": "",
+   "output": "## Morning briefing\n\n- **web-shop**: coupon field is in progress, tests green so far.\n- **api-gateway**: key rotation is written; waiting on you to approve the publish.\n- **docs-site**: Getting Started rewrite drafted, 2 pages left.\n- **mobile-app**: idle since last night, the flaky test is fixed.\n\nSpend yesterday: $11.40 across 6 sessions."
+  },
+  {
+   "id": "b-0",
+   "routineId": "r-brief",
+   "name": "Morning Brief",
+   "project": "",
+   "tsAgo": 93600000,
+   "ms": 28000,
+   "ok": true,
+   "error": "",
+   "output": "## Morning briefing\n\nQuiet day: two sessions, one merge, $6.10."
+  }
+ ]
+}

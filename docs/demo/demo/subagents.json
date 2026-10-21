@@ -1,0 +1,207 @@
+{
+ "subagents": [
+  {
+   "agentId": "demo-s1-a",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "project": "web-shop",
+   "description": "Check the cart total math",
+   "agentType": "Reviewer",
+   "background": true,
+   "model": "claude-sonnet-4-5",
+   "tokens": {
+    "input": 300,
+    "output": 6000,
+    "cacheWrite": 90000,
+    "cacheRead": 700000,
+    "total": 796300
+   },
+   "costUSD": 0.31,
+   "durationMs": 240000,
+   "startedAgo": 360000,
+   "endedAgo": 120000,
+   "toolUses": 9,
+   "turns": 8,
+   "toolErrors": 0,
+   "endedOnError": false
+  },
+  {
+   "agentId": "demo-s1-b",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "project": "web-shop",
+   "description": "Run the cart test suite",
+   "agentType": "TestRunner",
+   "background": true,
+   "model": "claude-sonnet-4-5",
+   "tokens": {
+    "input": 300,
+    "output": 6000,
+    "cacheWrite": 90000,
+    "cacheRead": 700000,
+    "total": 796300
+   },
+   "costUSD": 0.22,
+   "durationMs": 180000,
+   "startedAgo": 360000,
+   "endedAgo": 180000,
+   "toolUses": 5,
+   "turns": 8,
+   "toolErrors": 0,
+   "endedOnError": false
+  },
+  {
+   "agentId": "demo-s1-c",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "project": "web-shop",
+   "description": "Find every couponCode reference",
+   "agentType": "Explore",
+   "background": true,
+   "model": "claude-sonnet-4-5",
+   "tokens": {
+    "input": 300,
+    "output": 6000,
+    "cacheWrite": 90000,
+    "cacheRead": 700000,
+    "total": 796300
+   },
+   "costUSD": 0.09,
+   "durationMs": 60000,
+   "startedAgo": 360000,
+   "endedAgo": 300000,
+   "toolUses": 4,
+   "turns": 8,
+   "toolErrors": 0,
+   "endedOnError": false
+  },
+  {
+   "agentId": "demo-s3-a",
+   "sessionId": "33333333-3333-4333-8333-333333333333",
+   "project": "docs-site",
+   "description": "Draft the Getting Started page",
+   "agentType": "general-purpose",
+   "background": true,
+   "model": "claude-sonnet-4-5",
+   "tokens": {
+    "input": 300,
+    "output": 6000,
+    "cacheWrite": 90000,
+    "cacheRead": 700000,
+    "total": 796300
+   },
+   "costUSD": 0.27,
+   "durationMs": 300000,
+   "startedAgo": 360000,
+   "endedAgo": 60000,
+   "toolUses": 7,
+   "turns": 8,
+   "toolErrors": 0,
+   "endedOnError": false
+  },
+  {
+   "agentId": "a-old-1",
+   "sessionId": "55555555-5555-4555-8555-555555555555",
+   "project": "web-shop",
+   "description": "Profile the cart page first load",
+   "agentType": "Explore",
+   "background": true,
+   "model": "claude-sonnet-4-5",
+   "tokens": {
+    "input": 300,
+    "output": 6000,
+    "cacheWrite": 90000,
+    "cacheRead": 700000,
+    "total": 796300
+   },
+   "costUSD": 0.44,
+   "durationMs": 420000,
+   "startedAgo": 90000000,
+   "endedAgo": 89580000,
+   "toolUses": 12,
+   "turns": 8,
+   "toolErrors": 0,
+   "endedOnError": false
+  },
+  {
+   "agentId": "a-old-2",
+   "sessionId": "44444444-4444-4444-8444-444444444444",
+   "project": "mobile-app",
+   "description": "Reproduce the flaky login test 10 times",
+   "agentType": "TestRunner",
+   "background": true,
+   "model": "claude-sonnet-4-5",
+   "tokens": {
+    "input": 300,
+    "output": 6000,
+    "cacheWrite": 90000,
+    "cacheRead": 700000,
+    "total": 796300
+   },
+   "costUSD": 0.38,
+   "durationMs": 540000,
+   "startedAgo": 9000000,
+   "endedAgo": 8460000,
+   "toolUses": 14,
+   "turns": 8,
+   "toolErrors": 1,
+   "endedOnError": false
+  }
+ ],
+ "totals": {
+  "count": 6,
+  "today": 4,
+  "tokens": 4777800,
+  "costUSD": 1.71,
+  "tokensToday": 3185200,
+  "costToday": 0.89,
+  "toolUses": 51
+ },
+ "byType": [
+  {
+   "agentType": "Explore",
+   "count": 2,
+   "tokens": 1592600,
+   "costUSD": 0.53
+  },
+  {
+   "agentType": "TestRunner",
+   "count": 2,
+   "tokens": 1592600,
+   "costUSD": 0.6
+  },
+  {
+   "agentType": "Reviewer",
+   "count": 1,
+   "tokens": 796300,
+   "costUSD": 0.31
+  },
+  {
+   "agentType": "general-purpose",
+   "count": 1,
+   "tokens": 796300,
+   "costUSD": 0.27
+  }
+ ],
+ "scorecard": [
+  {
+   "agentType": "Explore",
+   "runs": 2,
+   "avgCostUSD": 0.27,
+   "avgDurationMs": 240000,
+   "avgToolUses": 8,
+   "toolErrorRate": 0,
+   "endedOnErrorPct": 0,
+   "totalCostUSD": 0.53,
+   "lastRunAgo": 360000
+  },
+  {
+   "agentType": "TestRunner",
+   "runs": 2,
+   "avgCostUSD": 0.3,
+   "avgDurationMs": 360000,
+   "avgToolUses": 9.5,
+   "toolErrorRate": 5.3,
+   "endedOnErrorPct": 0,
+   "totalCostUSD": 0.6,
+   "lastRunAgo": 360000
+  }
+ ]
+}

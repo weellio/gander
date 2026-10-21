@@ -1,0 +1,153 @@
+{
+ "at": 0,
+ "game": null,
+ "nvidia": {
+  "available": true,
+  "gpus": [
+   {
+    "index": 0,
+    "name": "NVIDIA GeForce RTX 4070",
+    "util": 14,
+    "memUtil": 9,
+    "vramUsedMB": 5120,
+    "vramTotalMB": 12288,
+    "tempC": 52,
+    "powerW": 61,
+    "powerLimitW": 200,
+    "fanPct": 31,
+    "driver": "560.94"
+   }
+  ],
+  "apps": [
+   {
+    "pid": 7001,
+    "name": "ollama.exe",
+    "path": "C:/Program Files/Ollama/ollama.exe",
+    "vramMB": 4600
+   }
+  ],
+  "perProcessVram": true,
+  "readAt": 0,
+  "paused": false
+ },
+ "ollama": {
+  "available": true,
+  "url": "http://127.0.0.1:11434",
+  "version": "0.6.2",
+  "loaded": [
+   {
+    "name": "qwen2.5-coder:7b",
+    "sizeVram": 4600000000
+   }
+  ],
+  "installed": 5
+ },
+ "lmstudio": {
+  "available": false,
+  "url": "http://127.0.0.1:1234",
+  "loaded": []
+ },
+ "history": [
+  {
+   "at": 0,
+   "util": 8,
+   "vramUsedMB": 5100
+  },
+  {
+   "at": 1,
+   "util": 16,
+   "vramUsedMB": 5103
+  },
+  {
+   "at": 2,
+   "util": 17,
+   "vramUsedMB": 5106
+  },
+  {
+   "at": 3,
+   "util": 9,
+   "vramUsedMB": 5109
+  },
+  {
+   "at": 4,
+   "util": 16,
+   "vramUsedMB": 5112
+  },
+  {
+   "at": 5,
+   "util": 18,
+   "vramUsedMB": 5115
+  },
+  {
+   "at": 6,
+   "util": 11,
+   "vramUsedMB": 5118
+  },
+  {
+   "at": 7,
+   "util": 15,
+   "vramUsedMB": 5121
+  },
+  {
+   "at": 8,
+   "util": 18,
+   "vramUsedMB": 5124
+  },
+  {
+   "at": 9,
+   "util": 12,
+   "vramUsedMB": 5127
+  },
+  {
+   "at": 10,
+   "util": 13,
+   "vramUsedMB": 5130
+  },
+  {
+   "at": 11,
+   "util": 18,
+   "vramUsedMB": 5133
+  },
+  {
+   "at": 12,
+   "util": 13,
+   "vramUsedMB": 5136
+  },
+  {
+   "at": 13,
+   "util": 12,
+   "vramUsedMB": 5139
+  },
+  {
+   "at": 14,
+   "util": 18,
+   "vramUsedMB": 5142
+  },
+  {
+   "at": 15,
+   "util": 15,
+   "vramUsedMB": 5145
+  },
+  {
+   "at": 16,
+   "util": 11,
+   "vramUsedMB": 5148
+  },
+  {
+   "at": 17,
+   "util": 18,
+   "vramUsedMB": 5151
+  },
+  {
+   "at": 18,
+   "util": 16,
+   "vramUsedMB": 5154
+  },
+  {
+   "at": 19,
+   "util": 9,
+   "vramUsedMB": 5157
+  }
+ ],
+ "lowered": []
+}

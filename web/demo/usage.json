@@ -1,0 +1,340 @@
+{
+ "totals": {
+  "inputTokens": 912000,
+  "outputTokens": 4310000,
+  "cacheWriteTokens": 21400000,
+  "cacheReadTokens": 171000000,
+  "totalTokens": 197622000,
+  "costUSD": 412.37
+ },
+ "byProject": [
+  {
+   "project": "web-shop",
+   "path": "D:/code/web-shop",
+   "tokens": 81000000,
+   "costUSD": 168.4,
+   "sessions": 31,
+   "lastActiveAgoMs": 20000,
+   "effRate": 2.1,
+   "cacheHit": 0.93
+  },
+  {
+   "project": "api-gateway",
+   "path": "D:/code/api-gateway",
+   "tokens": 52000000,
+   "costUSD": 112.9,
+   "sessions": 19,
+   "lastActiveAgoMs": 240000,
+   "effRate": 2.4,
+   "cacheHit": 0.91
+  },
+  {
+   "project": "docs-site",
+   "path": "D:/code/docs-site",
+   "tokens": 38000000,
+   "costUSD": 77.2,
+   "sessions": 14,
+   "lastActiveAgoMs": 30000,
+   "effRate": 1.9,
+   "cacheHit": 0.95
+  },
+  {
+   "project": "mobile-app",
+   "path": "D:/code/mobile-app",
+   "tokens": 26000000,
+   "costUSD": 53.87,
+   "sessions": 9,
+   "lastActiveAgoMs": 540000,
+   "effRate": 2,
+   "cacheHit": 0.9
+  }
+ ],
+ "byModel": [
+  {
+   "model": "claude-opus-4-1",
+   "tokens": 96000000,
+   "costUSD": 231.5
+  },
+  {
+   "model": "claude-sonnet-4-5",
+   "tokens": 88000000,
+   "costUSD": 164.2
+  },
+  {
+   "model": "claude-haiku-4-5",
+   "tokens": 13622000,
+   "costUSD": 16.67
+  }
+ ],
+ "byDay": [
+  {
+   "dayAgo": 29,
+   "costUSD": 17.4,
+   "tokens": 8352000
+  },
+  {
+   "dayAgo": 28,
+   "costUSD": 13.12,
+   "tokens": 6297600
+  },
+  {
+   "dayAgo": 27,
+   "costUSD": 5.76,
+   "tokens": 2764800
+  },
+  {
+   "dayAgo": 26,
+   "costUSD": 3.13,
+   "tokens": 1502400
+  },
+  {
+   "dayAgo": 25,
+   "costUSD": 14.96,
+   "tokens": 7180800
+  },
+  {
+   "dayAgo": 24,
+   "costUSD": 10.37,
+   "tokens": 4977600
+  },
+  {
+   "dayAgo": 23,
+   "costUSD": 17.87,
+   "tokens": 8577600
+  },
+  {
+   "dayAgo": 22,
+   "costUSD": 10.65,
+   "tokens": 5112000
+  },
+  {
+   "dayAgo": 21,
+   "costUSD": 15.19,
+   "tokens": 7291200
+  },
+  {
+   "dayAgo": 20,
+   "costUSD": 3.77,
+   "tokens": 1809600
+  },
+  {
+   "dayAgo": 19,
+   "costUSD": 5.94,
+   "tokens": 2851200
+  },
+  {
+   "dayAgo": 18,
+   "costUSD": 15.56,
+   "tokens": 7468800
+  },
+  {
+   "dayAgo": 17,
+   "costUSD": 13.27,
+   "tokens": 6369600
+  },
+  {
+   "dayAgo": 16,
+   "costUSD": 14.91,
+   "tokens": 7156800
+  },
+  {
+   "dayAgo": 15,
+   "costUSD": 9.23,
+   "tokens": 4430400
+  },
+  {
+   "dayAgo": 14,
+   "costUSD": 18.75,
+   "tokens": 9000000
+  },
+  {
+   "dayAgo": 13,
+   "costUSD": 3.49,
+   "tokens": 1675200
+  },
+  {
+   "dayAgo": 12,
+   "costUSD": 5.95,
+   "tokens": 2856000
+  },
+  {
+   "dayAgo": 11,
+   "costUSD": 8.34,
+   "tokens": 4003200
+  },
+  {
+   "dayAgo": 10,
+   "costUSD": 14.65,
+   "tokens": 7032000
+  },
+  {
+   "dayAgo": 9,
+   "costUSD": 13.57,
+   "tokens": 6513600
+  },
+  {
+   "dayAgo": 8,
+   "costUSD": 16.73,
+   "tokens": 8030400
+  },
+  {
+   "dayAgo": 7,
+   "costUSD": 13.56,
+   "tokens": 6508800
+  },
+  {
+   "dayAgo": 6,
+   "costUSD": 4.65,
+   "tokens": 2232000
+  },
+  {
+   "dayAgo": 5,
+   "costUSD": 4.62,
+   "tokens": 2217600
+  },
+  {
+   "dayAgo": 4,
+   "costUSD": 14.45,
+   "tokens": 6936000
+  },
+  {
+   "dayAgo": 3,
+   "costUSD": 17.33,
+   "tokens": 8318400
+  },
+  {
+   "dayAgo": 2,
+   "costUSD": 10.3,
+   "tokens": 4944000
+  },
+  {
+   "dayAgo": 1,
+   "costUSD": 15.92,
+   "tokens": 7641600
+  },
+  {
+   "dayAgo": 0,
+   "costUSD": 8.69,
+   "tokens": 4170000
+  }
+ ],
+ "topSessions": [
+  {
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "project": "web-shop",
+   "costUSD": 4.82,
+   "tokens": 2300000,
+   "lastActiveAgoMs": 20000
+  },
+  {
+   "sessionId": "22222222-2222-4222-8222-222222222222",
+   "project": "api-gateway",
+   "costUSD": 2.17,
+   "tokens": 1050000,
+   "lastActiveAgoMs": 240000
+  },
+  {
+   "sessionId": "33333333-3333-4333-8333-333333333333",
+   "project": "docs-site",
+   "costUSD": 1.06,
+   "tokens": 510000,
+   "lastActiveAgoMs": 30000
+  },
+  {
+   "sessionId": "44444444-4444-4444-8444-444444444444",
+   "project": "mobile-app",
+   "costUSD": 0.64,
+   "tokens": 300000,
+   "lastActiveAgoMs": 540000
+  }
+ ],
+ "bySession": {
+  "11111111-1111-4111-8111-111111111111": {
+   "project": "web-shop",
+   "lastActiveAgoMs": 0,
+   "costUSD": 4.82,
+   "tokens": 2300000,
+   "input": 4600,
+   "output": 69000,
+   "cacheWrite": 184000,
+   "cacheRead": 2042400,
+   "outShare": 0.03,
+   "cacheHit": 0.92,
+   "ctxTokens": 82000,
+   "ctxMax": 200000,
+   "ctxPct": 0.41,
+   "model": "claude-opus-4-1",
+   "whatIf": {
+    "sonnet": 1.45,
+    "haiku": 0.48
+   }
+  },
+  "22222222-2222-4222-8222-222222222222": {
+   "project": "api-gateway",
+   "lastActiveAgoMs": 0,
+   "costUSD": 2.17,
+   "tokens": 1050000,
+   "input": 2100,
+   "output": 31500,
+   "cacheWrite": 84000,
+   "cacheRead": 932400,
+   "outShare": 0.03,
+   "cacheHit": 0.92,
+   "ctxTokens": 66000,
+   "ctxMax": 200000,
+   "ctxPct": 0.33,
+   "model": "claude-sonnet-4-5",
+   "whatIf": {
+    "sonnet": 0.65,
+    "haiku": 0.22
+   }
+  },
+  "33333333-3333-4333-8333-333333333333": {
+   "project": "docs-site",
+   "lastActiveAgoMs": 0,
+   "costUSD": 1.06,
+   "tokens": 510000,
+   "input": 1020,
+   "output": 15300,
+   "cacheWrite": 40800,
+   "cacheRead": 452880,
+   "outShare": 0.03,
+   "cacheHit": 0.92,
+   "ctxTokens": 36000,
+   "ctxMax": 200000,
+   "ctxPct": 0.18,
+   "model": "claude-sonnet-4-5",
+   "whatIf": {
+    "sonnet": 0.32,
+    "haiku": 0.11
+   }
+  },
+  "44444444-4444-4444-8444-444444444444": {
+   "project": "mobile-app",
+   "lastActiveAgoMs": 0,
+   "costUSD": 0.64,
+   "tokens": 300000,
+   "input": 600,
+   "output": 9000,
+   "cacheWrite": 24000,
+   "cacheRead": 266400,
+   "outShare": 0.03,
+   "cacheHit": 0.92,
+   "ctxTokens": 24000,
+   "ctxMax": 200000,
+   "ctxPct": 0.12,
+   "model": "claude-haiku-4-5",
+   "whatIf": {
+    "sonnet": 0.19,
+    "haiku": 0.06
+   }
+  }
+ },
+ "window5h": {
+  "costUSD": 7.41,
+  "tokens": 3900000,
+  "outputTokens": 91000,
+  "messages": 143
+ },
+ "generatedAt": 0
+}

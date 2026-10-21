@@ -1,0 +1,71 @@
+{
+ "guard": {
+  "mode": "critical",
+  "how": "hold",
+  "holdSeconds": 120,
+  "extra": [],
+  "rules": [
+   {
+    "id": "delete-root",
+    "level": "critical",
+    "label": "Deletes a whole drive, your home folder, or the project root"
+   },
+   {
+    "id": "git-force-push",
+    "level": "critical",
+    "label": "Force-pushes over a shared branch"
+   },
+   {
+    "id": "git-reset-hard",
+    "level": "high",
+    "label": "Discards uncommitted work (git reset --hard / checkout --)"
+   },
+   {
+    "id": "db-drop",
+    "level": "critical",
+    "label": "Drops a database or table"
+   },
+   {
+    "id": "rm-rf",
+    "level": "high",
+    "label": "Recursive delete outside a temp folder"
+   },
+   {
+    "id": "publish",
+    "level": "medium",
+    "label": "Publishes a package or deploys to production"
+   }
+  ],
+  "recent": [
+   {
+    "id": "g-1",
+    "project": "api-gateway",
+    "rule": "publish",
+    "level": "medium",
+    "command": "npm publish --access public",
+    "atAgo": 240000,
+    "outcome": "held"
+   }
+  ]
+ },
+ "suggestions": [
+  {
+   "rule": "Bash(npm test:*)",
+   "allows": 14,
+   "projects": [
+    "web-shop",
+    "api-gateway"
+   ],
+   "examples": [
+    "npm test",
+    "npm test -- cart"
+   ]
+  }
+ ],
+ "minAllows": 5,
+ "allowList": [
+  "Bash(git status:*)",
+  "Bash(git diff:*)",
+  "Read(**)"
+ ]
+}

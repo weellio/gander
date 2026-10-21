@@ -1,0 +1,123 @@
+{
+ "datasets": [
+  {
+   "id": "cost_by_day",
+   "title": "cost by day",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  },
+  {
+   "id": "cost_by_project",
+   "title": "cost by project",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  },
+  {
+   "id": "sessions",
+   "title": "sessions",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  },
+  {
+   "id": "subagents",
+   "title": "subagents",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  },
+  {
+   "id": "needs_you",
+   "title": "needs you",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  },
+  {
+   "id": "feed",
+   "title": "feed",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  },
+  {
+   "id": "queue",
+   "title": "queue",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  },
+  {
+   "id": "lessons",
+   "title": "lessons",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  },
+  {
+   "id": "skills",
+   "title": "skills",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  },
+  {
+   "id": "processes",
+   "title": "processes",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  },
+  {
+   "id": "gpu",
+   "title": "gpu",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  },
+  {
+   "id": "health",
+   "title": "health",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  },
+  {
+   "id": "board",
+   "title": "board",
+   "description": "Demo dataset",
+   "kind": "rows",
+   "params": {}
+  }
+ ],
+ "mcp": {
+  "enabled": false,
+  "tokenSet": false,
+  "token": "",
+  "localUrl": "http://localhost:3131/mcp",
+  "remoteUrl": "",
+  "tunnel": {
+   "stable": false,
+   "hostname": "",
+   "running": false,
+   "url": "",
+   "startedAt": 0,
+   "error": "",
+   "bin": "cloudflared",
+   "installing": false,
+   "installError": "",
+   "managed": false
+  },
+  "autoTunnel": false,
+  "stable": {
+   "hostname": "",
+   "tokenSet": false
+  },
+  "recent": [],
+  "installHint": "",
+  "tools": 14,
+  "datasets": 13
+ }
+}

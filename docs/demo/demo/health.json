@@ -1,0 +1,136 @@
+{
+ "bridge": {
+  "uptimeMs": 10800000,
+  "port": 3131,
+  "eventsReceived": 1843,
+  "sessions": 4,
+  "projectsKnown": 6,
+  "version": "demo"
+ },
+ "doctor": [
+  {
+   "id": "cli",
+   "label": "claude CLI",
+   "status": "ok",
+   "detail": "2.1.306 installed",
+   "hint": ""
+  },
+  {
+   "id": "hooks",
+   "label": "Gander hooks",
+   "status": "ok",
+   "detail": "27 of 27 events wired",
+   "hint": ""
+  },
+  {
+   "id": "node",
+   "label": "Node.js",
+   "status": "ok",
+   "detail": "v22",
+   "hint": ""
+  },
+  {
+   "id": "transcripts",
+   "label": "Transcripts folder",
+   "status": "ok",
+   "detail": "~/.claude/projects readable",
+   "hint": ""
+  },
+  {
+   "id": "port",
+   "label": "Bridge port",
+   "status": "ok",
+   "detail": "3131 free",
+   "hint": ""
+  },
+  {
+   "id": "plugin",
+   "label": "gander-feed mod",
+   "status": "ok",
+   "detail": "installed",
+   "hint": ""
+  }
+ ],
+ "setup": {
+  "score": {
+   "passed": 41,
+   "total": 41,
+   "pct": 100
+  },
+  "groups": [
+   {
+    "id": "settings",
+    "label": "Settings files",
+    "status": "ok",
+    "checks": [
+     {
+      "id": "settings:global",
+      "label": "settings.json (global)",
+      "status": "ok",
+      "detail": "9 keys"
+     }
+    ]
+   },
+   {
+    "id": "hooks",
+    "label": "Hooks",
+    "status": "ok",
+    "checks": [
+     {
+      "id": "hooks:all",
+      "label": "all events wired",
+      "status": "ok",
+      "detail": "27 events"
+     }
+    ]
+   }
+  ]
+ },
+ "hooks": {
+  "installed": true,
+  "settingsPath": "C:/Users/demo/.claude/settings.json",
+  "events": [
+   {
+    "event": "SessionStart",
+    "wired": true
+   },
+   {
+    "event": "UserPromptSubmit",
+    "wired": true
+   },
+   {
+    "event": "PreToolUse",
+    "wired": true
+   },
+   {
+    "event": "PostToolUse",
+    "wired": true
+   },
+   {
+    "event": "Notification",
+    "wired": true
+   },
+   {
+    "event": "Stop",
+    "wired": true
+   },
+   {
+    "event": "SubagentStart",
+    "wired": true
+   },
+   {
+    "event": "SubagentStop",
+    "wired": true
+   },
+   {
+    "event": "PermissionRequest",
+    "wired": true
+   }
+  ]
+ },
+ "plugin": true,
+ "env": {
+  "node": "v22.12.0",
+  "platform": "win32"
+ }
+}

@@ -1,0 +1,43 @@
+{
+ "summary": [
+  {
+   "project": "web-shop",
+   "open": 2,
+   "claims": 1,
+   "lastAgo": 600000
+  }
+ ],
+ "types": [
+  "note",
+  "claim",
+  "question",
+  "decision",
+  "escalation",
+  "plan"
+ ],
+ "entries": [
+  {
+   "id": "n-1",
+   "project": "web-shop",
+   "type": "note",
+   "author": "Reviewer",
+   "text": "Cart total already rounds to cents in total.js — do not round again in the coupon math.",
+   "atAgo": 600000
+  },
+  {
+   "id": "n-2",
+   "project": "web-shop",
+   "type": "claim",
+   "author": "web-shop",
+   "text": "src/cart/Checkout.svelte",
+   "atAgo": 1800000
+  }
+ ],
+ "claims": [
+  {
+   "file": "src/cart/Checkout.svelte",
+   "by": "web-shop",
+   "atAgo": 1800000
+  }
+ ]
+}

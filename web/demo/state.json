@@ -1,0 +1,308 @@
+{
+ "agents": [
+  {
+   "id": "demo-s1",
+   "name": "web-shop",
+   "project": "web-shop",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "cwd": "D:/code/web-shop",
+   "root": true,
+   "state": "coding",
+   "createdAgo": 2280000,
+   "runStartAgo": 2280000,
+   "updatedAgo": 20000,
+   "closed": false,
+   "retiring": false,
+   "retireAt": 0,
+   "runaway": false,
+   "burnRate": 1.2,
+   "burnStreak": 0,
+   "fileCount": 12,
+   "artifactCount": 0,
+   "peerName": "web-shop-a1",
+   "inbox": true,
+   "title": "Checkout coupon field",
+   "goal": "Add a checkout coupon field and wire it to the cart total",
+   "logLines": [
+    "Edit src/cart/Checkout.svelte",
+    "Read src/cart/total.js",
+    "Grep couponCode"
+   ],
+   "costUSD": 4.82,
+   "ctxPct": 0.41,
+   "lastMessage": "Coupon field added to Checkout.svelte; the Reviewer is checking the total math while I run the cart tests."
+  },
+  {
+   "id": "demo-s2",
+   "name": "api-gateway",
+   "project": "api-gateway",
+   "sessionId": "22222222-2222-4222-8222-222222222222",
+   "cwd": "D:/code/api-gateway",
+   "root": true,
+   "state": "awaiting",
+   "createdAgo": 2280000,
+   "runStartAgo": 2280000,
+   "updatedAgo": 240000,
+   "closed": false,
+   "retiring": false,
+   "retireAt": 0,
+   "runaway": false,
+   "burnRate": 1.2,
+   "burnStreak": 0,
+   "fileCount": 7,
+   "artifactCount": 0,
+   "peerName": "api-gateway-a1",
+   "inbox": true,
+   "title": "Rotate JWT signing key",
+   "goal": "Rotate the JWT signing key and roll it out behind a feature flag",
+   "logLines": [
+    "wants to run Bash: npm publish --access public",
+    "Edit src/auth/keys.js",
+    "Bash npm test"
+   ],
+   "awaitMsg": "wants to run Bash: npm publish --access public",
+   "costUSD": 2.17,
+   "ctxPct": 0.33,
+   "perm": {
+    "requestId": "demo-perm-1",
+    "tool": "Bash",
+    "detail": "npm publish --access public",
+    "hasSuggestions": false,
+    "tsAgo": 240000
+   },
+   "permCount": 1,
+   "lastMessage": "Key rotation is written behind the auth.keyRotation flag and the tests pass. Publishing the shared auth package needs your OK."
+  },
+  {
+   "id": "demo-s3",
+   "name": "docs-site",
+   "project": "docs-site",
+   "sessionId": "33333333-3333-4333-8333-333333333333",
+   "cwd": "D:/code/docs-site",
+   "root": true,
+   "state": "thinking",
+   "createdAgo": 2280000,
+   "runStartAgo": 2280000,
+   "updatedAgo": 20000,
+   "closed": false,
+   "retiring": false,
+   "retireAt": 0,
+   "runaway": false,
+   "burnRate": 1.2,
+   "burnStreak": 0,
+   "fileCount": 3,
+   "artifactCount": 0,
+   "peerName": "docs-site-a1",
+   "inbox": true,
+   "title": "Getting Started rewrite",
+   "goal": "Rewrite the Getting Started page from the new CLI flags",
+   "logLines": [
+    "reading the CLI reference",
+    "Read docs/cli.md"
+   ],
+   "costUSD": 1.06,
+   "ctxPct": 0.18,
+   "lastMessage": "Reading the CLI reference first; a Writer sub-agent is drafting the page in parallel."
+  },
+  {
+   "id": "demo-s4",
+   "name": "mobile-app",
+   "project": "mobile-app",
+   "sessionId": "44444444-4444-4444-8444-444444444444",
+   "cwd": "D:/code/mobile-app",
+   "root": true,
+   "state": "idle",
+   "createdAgo": 2280000,
+   "runStartAgo": 0,
+   "updatedAgo": 540000,
+   "closed": false,
+   "retiring": false,
+   "retireAt": 0,
+   "runaway": false,
+   "burnRate": 1.2,
+   "burnStreak": 0,
+   "fileCount": 2,
+   "artifactCount": 0,
+   "peerName": "mobile-app-a1",
+   "inbox": true,
+   "title": "Flaky Android login test",
+   "goal": "Fix the flaky login test on Android",
+   "logLines": [
+    "waiting for your next prompt",
+    "Bash ./gradlew test"
+   ],
+   "costUSD": 0.64,
+   "ctxPct": 0.12,
+   "lastMessage": "The test raced the splash screen. Added an idling resource; 10 of 10 runs pass. Anything else?"
+  },
+  {
+   "id": "demo-s1-a",
+   "name": "Reviewer",
+   "parentId": "demo-s1",
+   "project": "web-shop",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "cwd": "D:/code/web-shop",
+   "state": "reading",
+   "logLines": [
+    "Read src/cart/total.js"
+   ],
+   "createdAgo": 360000,
+   "runStartAgo": 360000,
+   "updatedAgo": 15000,
+   "closed": false,
+   "retiring": false,
+   "retireAt": 0,
+   "runaway": false,
+   "costUSD": 0.31
+  },
+  {
+   "id": "demo-s1-b",
+   "name": "TestRunner",
+   "parentId": "demo-s1",
+   "project": "web-shop",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "cwd": "D:/code/web-shop",
+   "state": "testing",
+   "logLines": [
+    "Bash npm test -- cart"
+   ],
+   "createdAgo": 360000,
+   "runStartAgo": 360000,
+   "updatedAgo": 15000,
+   "closed": false,
+   "retiring": false,
+   "retireAt": 0,
+   "runaway": false,
+   "costUSD": 0.22
+  },
+  {
+   "id": "demo-s1-c",
+   "name": "Explore",
+   "parentId": "demo-s1",
+   "project": "web-shop",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "cwd": "D:/code/web-shop",
+   "state": "searching",
+   "logLines": [
+    "Grep couponCode"
+   ],
+   "createdAgo": 360000,
+   "runStartAgo": 360000,
+   "updatedAgo": 15000,
+   "closed": false,
+   "retiring": false,
+   "retireAt": 0,
+   "runaway": false,
+   "costUSD": 0.09,
+   "role": "Explore"
+  },
+  {
+   "id": "demo-s3-a",
+   "name": "Writer",
+   "parentId": "demo-s3",
+   "project": "docs-site",
+   "sessionId": "33333333-3333-4333-8333-333333333333",
+   "cwd": "D:/code/docs-site",
+   "state": "coding",
+   "logLines": [
+    "Write docs/getting-started.md"
+   ],
+   "createdAgo": 360000,
+   "runStartAgo": 360000,
+   "updatedAgo": 15000,
+   "closed": false,
+   "retiring": false,
+   "retireAt": 0,
+   "runaway": false,
+   "costUSD": 0.27,
+   "role": "general-purpose"
+  }
+ ],
+ "procs": [
+  {
+   "pid": 4242,
+   "name": "node.exe",
+   "cmd": "node vite dev --port 5173",
+   "ports": [
+    5173
+   ],
+   "uptimeMs": 3120000,
+   "attribution": "project",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "project": "web-shop",
+   "linked": null,
+   "plugin": null,
+   "claudePid": null,
+   "codePids": []
+  },
+  {
+   "pid": 5151,
+   "name": "python.exe",
+   "cmd": "python -m mkdocs serve",
+   "ports": [
+    8000
+   ],
+   "uptimeMs": 1860000,
+   "attribution": "project",
+   "sessionId": "33333333-3333-4333-8333-333333333333",
+   "project": "docs-site",
+   "linked": null,
+   "plugin": null,
+   "claudePid": null,
+   "codePids": []
+  },
+  {
+   "pid": 6161,
+   "name": "node.exe",
+   "cmd": "node scripts/watch-tests.js",
+   "ports": [],
+   "uptimeMs": 10800000,
+   "attribution": "orphan",
+   "sessionId": null,
+   "project": "",
+   "linked": null,
+   "plugin": null,
+   "claudePid": null,
+   "codePids": []
+  }
+ ],
+ "muted": [],
+ "pending": {},
+ "budget": {
+  "dailyCost": 8.69,
+  "daily": 25,
+  "session": 0,
+  "enforce": false,
+  "overDaily": false,
+  "generatedAt": 0
+ },
+ "queue": {
+  "queued": 2,
+  "running": 1
+ },
+ "board": [],
+ "escalations": [],
+ "collisions": [],
+ "dangers": [],
+ "plans": [],
+ "teams": [],
+ "planLimits": {
+  "fiveHour": {
+   "pct": 37,
+   "resetsAt": 0
+  },
+  "sevenDay": {
+   "pct": 52
+  }
+ },
+ "reviews": [],
+ "boardPosts": [],
+ "fleet": [],
+ "dispatch": {
+  "enabled": false,
+  "sessions": 0,
+  "permissions": 0,
+  "rateLimit": null
+ },
+ "build": "demo"
+}

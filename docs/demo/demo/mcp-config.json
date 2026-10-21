@@ -1,0 +1,28 @@
+{
+ "enabled": false,
+ "tokenSet": false,
+ "token": "",
+ "localUrl": "http://localhost:3131/mcp",
+ "remoteUrl": "",
+ "tunnel": {
+  "stable": false,
+  "hostname": "",
+  "running": false,
+  "url": "",
+  "startedAt": 0,
+  "error": "",
+  "bin": "cloudflared",
+  "installing": false,
+  "installError": "",
+  "managed": false
+ },
+ "autoTunnel": false,
+ "stable": {
+  "hostname": "",
+  "tokenSet": false
+ },
+ "recent": [],
+ "installHint": "winget install Cloudflare.cloudflared",
+ "tools": 14,
+ "datasets": 13
+}

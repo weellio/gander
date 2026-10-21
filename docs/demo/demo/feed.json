@@ -1,0 +1,124 @@
+{
+ "events": [
+  {
+   "tsAgo": 20000,
+   "agentId": "demo-s3-a",
+   "agent": "Writer",
+   "project": "docs-site",
+   "sessionId": "33333333-3333-4333-8333-333333333333",
+   "state": "coding",
+   "log": "Write docs/getting-started.md",
+   "error": false
+  },
+  {
+   "tsAgo": 67000,
+   "agentId": "demo-s1-b",
+   "agent": "TestRunner",
+   "project": "web-shop",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "state": "testing",
+   "log": "Bash npm test -- cart",
+   "error": false
+  },
+  {
+   "tsAgo": 114000,
+   "agentId": "demo-s1-a",
+   "agent": "Reviewer",
+   "project": "web-shop",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "state": "reading",
+   "log": "Read src/cart/total.js",
+   "error": false
+  },
+  {
+   "tsAgo": 161000,
+   "agentId": "demo-s1-c",
+   "agent": "Explore",
+   "project": "web-shop",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "state": "searching",
+   "log": "Grep couponCode",
+   "error": false
+  },
+  {
+   "tsAgo": 208000,
+   "agentId": "demo-s2",
+   "agent": "api-gateway",
+   "project": "api-gateway",
+   "sessionId": "22222222-2222-4222-8222-222222222222",
+   "state": "awaiting",
+   "log": "wants to run Bash: npm publish --access public",
+   "error": false
+  },
+  {
+   "tsAgo": 255000,
+   "agentId": "demo-s1",
+   "agent": "web-shop",
+   "project": "web-shop",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "state": "spawning",
+   "log": "Agent Reviewer: check the cart total math",
+   "error": false
+  },
+  {
+   "tsAgo": 302000,
+   "agentId": "demo-s2",
+   "agent": "api-gateway",
+   "project": "api-gateway",
+   "sessionId": "22222222-2222-4222-8222-222222222222",
+   "state": "testing",
+   "log": "Bash npm test",
+   "error": false
+  },
+  {
+   "tsAgo": 349000,
+   "agentId": "demo-s3",
+   "agent": "docs-site",
+   "project": "docs-site",
+   "sessionId": "33333333-3333-4333-8333-333333333333",
+   "state": "reading",
+   "log": "Read docs/cli.md",
+   "error": false
+  },
+  {
+   "tsAgo": 396000,
+   "agentId": "demo-s4",
+   "agent": "mobile-app",
+   "project": "mobile-app",
+   "sessionId": "44444444-4444-4444-8444-444444444444",
+   "state": "idle",
+   "log": "waiting for your next prompt",
+   "error": false
+  },
+  {
+   "tsAgo": 443000,
+   "agentId": "demo-s4",
+   "agent": "mobile-app",
+   "project": "mobile-app",
+   "sessionId": "44444444-4444-4444-8444-444444444444",
+   "state": "running",
+   "log": "Bash ./gradlew test",
+   "error": false
+  },
+  {
+   "tsAgo": 490000,
+   "agentId": "demo-s2",
+   "agent": "api-gateway",
+   "project": "api-gateway",
+   "sessionId": "22222222-2222-4222-8222-222222222222",
+   "state": "coding",
+   "log": "Edit src/auth/keys.js",
+   "error": false
+  },
+  {
+   "tsAgo": 537000,
+   "agentId": "demo-s1",
+   "agent": "web-shop",
+   "project": "web-shop",
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "state": "coding",
+   "log": "Edit src/cart/Checkout.svelte",
+   "error": false
+  }
+ ]
+}

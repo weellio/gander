@@ -1,0 +1,53 @@
+{
+ "enabled": true,
+ "maxSlots": 2,
+ "worktrees": false,
+ "testGate": true,
+ "review": false,
+ "paused": false,
+ "items": [
+  {
+   "id": "q-1",
+   "project": "web-shop",
+   "cwd": "D:/code/web-shop",
+   "prompt": "Add a checkout coupon field and wire it to the cart total",
+   "status": "running",
+   "createdAgo": 2400000,
+   "startedAgo": 2280000,
+   "attempts": 1,
+   "runner": "claude",
+   "gate": "npm test"
+  },
+  {
+   "id": "q-2",
+   "project": "api-gateway",
+   "cwd": "D:/code/api-gateway",
+   "prompt": "Add rate limiting to the /login route (sliding window, 20/min)",
+   "status": "queued",
+   "createdAgo": 1500000,
+   "attempts": 0
+  },
+  {
+   "id": "q-3",
+   "project": "docs-site",
+   "cwd": "D:/code/docs-site",
+   "prompt": "Generate a FAQ page from the last 20 GitHub issues",
+   "status": "queued",
+   "createdAgo": 720000,
+   "attempts": 0
+  },
+  {
+   "id": "q-0",
+   "project": "mobile-app",
+   "cwd": "D:/code/mobile-app",
+   "prompt": "Bump the Gradle wrapper and fix the deprecation warnings",
+   "status": "done",
+   "createdAgo": 14400000,
+   "startedAgo": 13680000,
+   "doneAgo": 11520000,
+   "attempts": 1,
+   "costUSD": 1.92,
+   "doneWhen": "tests green"
+  }
+ ]
+}

@@ -1,0 +1,38 @@
+{
+ "q": "",
+ "results": [
+  {
+   "sessionId": "11111111-1111-4111-8111-111111111111",
+   "project": "web-shop",
+   "cwd": "D:/code/web-shop",
+   "count": 3,
+   "lastActiveAgo": 20000,
+   "snippets": [
+    {
+     "tsAgo": 360000,
+     "role": "assistant",
+     "text": "Coupon field added; running the cart tests now."
+    }
+   ]
+  },
+  {
+   "sessionId": "55555555-5555-4555-8555-555555555555",
+   "project": "web-shop",
+   "cwd": "D:/code/web-shop",
+   "count": 1,
+   "lastActiveAgo": 86400000,
+   "snippets": [
+    {
+     "tsAgo": 86400000,
+     "role": "user",
+     "text": "Why is the cart page slow on first load?"
+    }
+   ]
+  }
+ ],
+ "total": 2,
+ "scanned": 6,
+ "projects": [
+  "web-shop"
+ ]
+}

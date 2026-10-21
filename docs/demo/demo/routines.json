@@ -1,0 +1,41 @@
+{
+ "routines": [
+  {
+   "id": "r-brief",
+   "name": "Morning Brief",
+   "cwd": "",
+   "prompt": "Compile a concise morning briefing of every project: what moved, what is blocked, what it cost.",
+   "permMode": "bypassPermissions",
+   "schedule": "0 8 * * 1-5",
+   "enabled": true,
+   "notify": true,
+   "timeoutSec": 600,
+   "lastRunAgo": 7200000
+  },
+  {
+   "id": "r-deps",
+   "name": "Weekly dependency audit",
+   "cwd": "D:/code/web-shop",
+   "prompt": "Audit package.json for vulnerable or unmaintained dependencies and open a PR with safe bumps.",
+   "permMode": "bypassPermissions",
+   "schedule": "0 7 * * 1",
+   "enabled": true,
+   "notify": false,
+   "timeoutSec": 900,
+   "lastRunAgo": 259200000
+  }
+ ],
+ "briefings": [
+  {
+   "id": "b-1",
+   "routineId": "r-brief",
+   "name": "Morning Brief",
+   "project": "",
+   "tsAgo": 7200000,
+   "ms": 28000,
+   "ok": true,
+   "error": "",
+   "output": "## Morning briefing\n\n- **web-shop**: coupon field is in progress, tests green so far.\n- **api-gateway**: key rotation is written; waiting on you to approve the publish.\n- **docs-site**: Getting Started rewrite drafted, 2 pages left.\n- **mobile-app**: idle since last night, the flaky test is fixed.\n\nSpend yesterday: $11.40 across 6 sessions."
+  }
+ ]
+}

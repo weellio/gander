@@ -1,0 +1,132 @@
+{
+ "11111111-1111-4111-8111-111111111111": {
+  "messages": [
+   {
+    "role": "user",
+    "text": "Add a checkout coupon field and wire it to the cart total",
+    "tools": [],
+    "tsAgo": 2280000
+   },
+   {
+    "role": "assistant",
+    "text": "I will look at the cart total logic first, then add the field to Checkout.svelte.",
+    "tools": [
+     {
+      "name": "Read",
+      "input": {
+       "file_path": "src/cart/total.js"
+      }
+     }
+    ],
+    "tsAgo": 2220000
+   },
+   {
+    "role": "assistant",
+    "text": "The total already rounds to cents. I will add a coupon reducer and a Reviewer sub-agent to double-check the math while I write the UI.",
+    "tools": [
+     {
+      "name": "Agent",
+      "input": {
+       "description": "check the cart total math"
+      }
+     }
+    ],
+    "tsAgo": 1800000
+   },
+   {
+    "role": "assistant",
+    "text": "Coupon field added; running the cart tests now.",
+    "tools": [
+     {
+      "name": "Edit",
+      "input": {
+       "file_path": "src/cart/Checkout.svelte"
+      }
+     },
+     {
+      "name": "Bash",
+      "input": {
+       "command": "npm test -- cart"
+      }
+     }
+    ],
+    "tsAgo": 360000
+   }
+  ]
+ },
+ "22222222-2222-4222-8222-222222222222": {
+  "messages": [
+   {
+    "role": "user",
+    "text": "Rotate the JWT signing key and roll it out behind a feature flag",
+    "tools": [],
+    "tsAgo": 3300000
+   },
+   {
+    "role": "assistant",
+    "text": "Key rotation is written behind the auth.keyRotation flag and the tests pass. Publishing the shared auth package needs your OK.",
+    "tools": [
+     {
+      "name": "Edit",
+      "input": {
+       "file_path": "src/auth/keys.js"
+      }
+     },
+     {
+      "name": "Bash",
+      "input": {
+       "command": "npm test"
+      }
+     }
+    ],
+    "tsAgo": 300000
+   }
+  ]
+ },
+ "33333333-3333-4333-8333-333333333333": {
+  "messages": [
+   {
+    "role": "user",
+    "text": "Rewrite the Getting Started page from the new CLI flags",
+    "tools": [],
+    "tsAgo": 1320000
+   },
+   {
+    "role": "assistant",
+    "text": "Reading the CLI reference and drafting the page with a Writer sub-agent.",
+    "tools": [
+     {
+      "name": "Read",
+      "input": {
+       "file_path": "docs/cli.md"
+      }
+     }
+    ],
+    "tsAgo": 1200000
+   }
+  ]
+ },
+ "44444444-4444-4444-8444-444444444444": {
+  "messages": [
+   {
+    "role": "user",
+    "text": "Fix the flaky login test on Android",
+    "tools": [],
+    "tsAgo": 10800000
+   },
+   {
+    "role": "assistant",
+    "text": "The test raced the splash screen. Added an idling resource; 10 of 10 runs pass. Anything else?",
+    "tools": [
+     {
+      "name": "Bash",
+      "input": {
+       "command": "./gradlew test"
+      }
+     }
+    ],
+    "tsAgo": 540000
+   }
+  ]
+ }
+}

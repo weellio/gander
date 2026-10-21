@@ -1,0 +1,150 @@
+{
+ "roots": [
+  "D:/code"
+ ],
+ "projects": [
+  {
+   "path": "C:/Users/demo",
+   "name": "Global (user)",
+   "sources": [
+    "global"
+   ],
+   "running": false,
+   "skills": [
+    "browser-verify",
+    "ship-it",
+    "humanize"
+   ],
+   "agents": [
+    "code-reviewer",
+    "security-auditor"
+   ],
+   "commands": [
+    "gander"
+   ],
+   "hooks": [
+    "SessionStart",
+    "PreToolUse",
+    "PostToolUse",
+    "Stop",
+    "Notification",
+    "SubagentStart",
+    "SubagentStop"
+   ],
+   "mcp": [
+    "github"
+   ]
+  },
+  {
+   "path": "D:/code/web-shop",
+   "name": "web-shop",
+   "sources": [
+    "root"
+   ],
+   "running": true,
+   "skills": [
+    "browser-verify",
+    "ship-it"
+   ],
+   "agents": [
+    "code-reviewer"
+   ],
+   "commands": [
+    "deploy"
+   ],
+   "hooks": [
+    "SessionStart",
+    "PreToolUse",
+    "PostToolUse",
+    "Stop"
+   ],
+   "mcp": [
+    "playwright"
+   ]
+  },
+  {
+   "path": "D:/code/api-gateway",
+   "name": "api-gateway",
+   "sources": [
+    "root"
+   ],
+   "running": true,
+   "skills": [
+    "ship-it"
+   ],
+   "agents": [
+    "code-reviewer"
+   ],
+   "commands": [
+    "deploy"
+   ],
+   "hooks": [
+    "SessionStart",
+    "PreToolUse",
+    "PostToolUse",
+    "Stop"
+   ],
+   "mcp": []
+  },
+  {
+   "path": "D:/code/docs-site",
+   "name": "docs-site",
+   "sources": [
+    "root"
+   ],
+   "running": true,
+   "skills": [
+    "browser-verify",
+    "ship-it"
+   ],
+   "agents": [],
+   "commands": [
+    "deploy"
+   ],
+   "hooks": [
+    "SessionStart",
+    "PreToolUse",
+    "PostToolUse",
+    "Stop"
+   ],
+   "mcp": []
+  },
+  {
+   "path": "D:/code/mobile-app",
+   "name": "mobile-app",
+   "sources": [
+    "root"
+   ],
+   "running": true,
+   "skills": [
+    "browser-verify",
+    "ship-it"
+   ],
+   "agents": [
+    "code-reviewer"
+   ],
+   "commands": [],
+   "hooks": [
+    "SessionStart",
+    "PreToolUse",
+    "PostToolUse",
+    "Stop"
+   ],
+   "mcp": []
+  },
+  {
+   "path": "D:/code/old-blog",
+   "name": "old-blog",
+   "sources": [
+    "root"
+   ],
+   "running": false,
+   "skills": [],
+   "agents": [],
+   "commands": [],
+   "hooks": [],
+   "mcp": []
+  }
+ ],
+ "muted": []
+}

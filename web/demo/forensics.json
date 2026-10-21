@@ -1,0 +1,85 @@
+{
+ "days": 14,
+ "waste": {
+  "reReads": [
+   {
+    "project": "web-shop",
+    "session": "11111111-1111-4111-8111-111111111111",
+    "file": "D:/code/web-shop/src/cart/total.js",
+    "reads": 6
+   },
+   {
+    "project": "docs-site",
+    "session": "33333333-3333-4333-8333-333333333333",
+    "file": "D:/code/docs-site/docs/cli.md",
+    "reads": 4
+   }
+  ],
+  "reReadTotal": 10,
+  "deadMcp": [
+   "playwright"
+  ],
+  "usedMcp": [
+   "github"
+  ],
+  "editQuality": {
+   "edits": 212,
+   "editedFiles": 61,
+   "oneShot": 168,
+   "reworked": 19,
+   "oneShotRate": 79,
+   "costPerEdit": 0.29,
+   "reworkedTop": [
+    {
+     "project": "web-shop",
+     "session": "11111111-1111-4111-8111-111111111111",
+     "file": "D:/code/web-shop/src/cart/Checkout.svelte",
+     "edits": 7
+    }
+   ]
+  },
+  "days": 14,
+  "scanMs": 640
+ },
+ "productivity": {
+  "productive": 18,
+  "abandoned": 5,
+  "productiveCost": 54.2,
+  "abandonedCost": 7.2,
+  "shippedPct": 78,
+  "abandonedTop": [
+   {
+    "project": "old-blog",
+    "costUSD": 4.1,
+    "lastActiveAgo": 259200000
+   }
+  ]
+ },
+ "taskTypes": {
+  "byType": [
+   {
+    "type": "coding",
+    "label": "edited files",
+    "costUSD": 44.1,
+    "sessions": 15,
+    "pct": 72
+   },
+   {
+    "type": "research",
+    "label": "read-only",
+    "costUSD": 11.2,
+    "sessions": 6,
+    "pct": 18
+   },
+   {
+    "type": "ops",
+    "label": "ran commands only",
+    "costUSD": 6.1,
+    "sessions": 2,
+    "pct": 10
+   }
+  ],
+  "total": 61.4
+ },
+ "generatedAt": 0
+}

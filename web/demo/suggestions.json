@@ -1,0 +1,26 @@
+{
+ "scanned": 23,
+ "suggestions": [
+  {
+   "kind": "command",
+   "title": "Frequent command: `npm test -- cart`",
+   "detail": "Ran 9× across 3 sessions. Consider a /test-cart slash command or an allow rule so it never prompts.",
+   "evidence": "9× · web-shop",
+   "snippet": "Bash(npm test:*)"
+  },
+  {
+   "kind": "prompt",
+   "title": "Repeated prompt: \"run the tests and fix what fails\"",
+   "detail": "Typed 5× in 4 sessions — a routine or a skill would save the retyping.",
+   "evidence": "5× · web-shop, api-gateway",
+   "snippet": null
+  },
+  {
+   "kind": "mcp",
+   "title": "playwright MCP is loaded but unused in web-shop",
+   "detail": "Listed in .mcp.json, zero calls in 30 days. Each turn still pays for its tool definitions.",
+   "evidence": "0 calls · web-shop",
+   "snippet": null
+  }
+ ]
+}

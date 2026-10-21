@@ -1,0 +1,29 @@
+{
+ "days": 30,
+ "generatedAt": 0,
+ "skillUsage": {
+  "browser-verify": {
+   "count": 12,
+   "lastUsedAgo": 3600000,
+   "projects": [
+    "web-shop",
+    "docs-site"
+   ]
+  },
+  "ship-it": {
+   "count": 7,
+   "lastUsedAgo": 86400000,
+   "projects": [
+    "web-shop",
+    "api-gateway"
+   ]
+  },
+  "deploy": {
+   "count": 3,
+   "lastUsedAgo": 172800000,
+   "projects": [
+    "web-shop"
+   ]
+  }
+ }
+}

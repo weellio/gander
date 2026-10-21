@@ -1,0 +1,130 @@
+{
+ "days": 7,
+ "generatedAt": 0,
+ "totals": {
+  "costUSD": 61.4,
+  "tokens": 29400000,
+  "sessions": 23,
+  "commits": 17,
+  "projects": 4
+ },
+ "byDay": [
+  {
+   "dayAgo": 6,
+   "costUSD": 4.65,
+   "tokens": 2232000,
+   "sessions": 3,
+   "commits": 2
+  },
+  {
+   "dayAgo": 5,
+   "costUSD": 4.62,
+   "tokens": 2217600,
+   "sessions": 3,
+   "commits": 2
+  },
+  {
+   "dayAgo": 4,
+   "costUSD": 14.45,
+   "tokens": 6936000,
+   "sessions": 3,
+   "commits": 2
+  },
+  {
+   "dayAgo": 3,
+   "costUSD": 17.33,
+   "tokens": 8318400,
+   "sessions": 3,
+   "commits": 2
+  },
+  {
+   "dayAgo": 2,
+   "costUSD": 10.3,
+   "tokens": 4944000,
+   "sessions": 3,
+   "commits": 2
+  },
+  {
+   "dayAgo": 1,
+   "costUSD": 15.92,
+   "tokens": 7641600,
+   "sessions": 3,
+   "commits": 2
+  },
+  {
+   "dayAgo": 0,
+   "costUSD": 8.69,
+   "tokens": 4170000,
+   "sessions": 3,
+   "commits": 2
+  }
+ ],
+ "projects": [
+  {
+   "project": "web-shop",
+   "path": "D:/code/web-shop",
+   "sessions": 9,
+   "prompts": 41,
+   "commits": 8,
+   "costUSD": 27.1,
+   "lastCommits": [
+    {
+     "hash": "a1b2c3d",
+     "date": "2 h ago",
+     "subject": "feat(cart): coupon field + total wiring"
+    },
+    {
+     "hash": "b2c3d4e",
+     "date": "yesterday",
+     "subject": "perf(cart): lazy-load the recommendations rail"
+    }
+   ]
+  },
+  {
+   "project": "api-gateway",
+   "path": "D:/code/api-gateway",
+   "sessions": 6,
+   "prompts": 22,
+   "commits": 5,
+   "costUSD": 18.3,
+   "lastCommits": [
+    {
+     "hash": "c3d4e5f",
+     "date": "3 h ago",
+     "subject": "feat(auth): JWT key rotation behind a flag"
+    }
+   ]
+  },
+  {
+   "project": "docs-site",
+   "path": "D:/code/docs-site",
+   "sessions": 5,
+   "prompts": 14,
+   "commits": 3,
+   "costUSD": 9.6,
+   "lastCommits": [
+    {
+     "hash": "d4e5f6a",
+     "date": "today",
+     "subject": "docs: getting started rewrite (draft)"
+    }
+   ]
+  },
+  {
+   "project": "mobile-app",
+   "path": "D:/code/mobile-app",
+   "sessions": 3,
+   "prompts": 9,
+   "commits": 1,
+   "costUSD": 6.4,
+   "lastCommits": [
+    {
+     "hash": "e5f6a7b",
+     "date": "yesterday",
+     "subject": "test: stabilize the Android login test"
+    }
+   ]
+  }
+ ],
+ "markdown": "# Ship digest — last 7 days\n\n23 sessions · 17 commits · $61.40\n\n- **web-shop** — 8 commits, $27.10\n- **api-gateway** — 5 commits, $18.30\n- **docs-site** — 3 commits, $9.60\n- **mobile-app** — 1 commit, $6.40\n"
+}

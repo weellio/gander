@@ -1,0 +1,234 @@
+{
+ "11111111-1111-4111-8111-111111111111": {
+  "totalTokens": 82000,
+  "ctxMax": 200000,
+  "behind": false,
+  "compactions": 0,
+  "categories": [
+   {
+    "key": "toolResults",
+    "label": "Tool results",
+    "pct": 0.46,
+    "tokens": 37720
+   },
+   {
+    "key": "toolCalls",
+    "label": "Tool calls",
+    "pct": 0.14,
+    "tokens": 11480
+   },
+   {
+    "key": "thinking",
+    "label": "Thinking",
+    "pct": 0.09,
+    "tokens": 7380
+   },
+   {
+    "key": "conversation",
+    "label": "Conversation",
+    "pct": 0.11,
+    "tokens": 9020
+   },
+   {
+    "key": "injected",
+    "label": "CLAUDE.md · memory · skills",
+    "pct": 0.13,
+    "tokens": 10660
+   },
+   {
+    "key": "baseline",
+    "label": "System + tools baseline",
+    "pct": 0.07,
+    "tokens": 5740
+   }
+  ],
+  "biggest": [
+   {
+    "tool": "Read",
+    "detail": "D:/code/web-shop/src/cart/Checkout.svelte",
+    "tokens": 6560
+   },
+   {
+    "tool": "Bash",
+    "detail": "npm test -- cart",
+    "tokens": 4920
+   }
+  ],
+  "advice": "Tool results are almost half the window — large file reads are the lever here.",
+  "note": "Estimated from the transcript, scaled to the real total."
+ },
+ "22222222-2222-4222-8222-222222222222": {
+  "totalTokens": 66000,
+  "ctxMax": 200000,
+  "behind": false,
+  "compactions": 0,
+  "categories": [
+   {
+    "key": "toolResults",
+    "label": "Tool results",
+    "pct": 0.46,
+    "tokens": 30360
+   },
+   {
+    "key": "toolCalls",
+    "label": "Tool calls",
+    "pct": 0.14,
+    "tokens": 9240
+   },
+   {
+    "key": "thinking",
+    "label": "Thinking",
+    "pct": 0.09,
+    "tokens": 5940
+   },
+   {
+    "key": "conversation",
+    "label": "Conversation",
+    "pct": 0.11,
+    "tokens": 7260
+   },
+   {
+    "key": "injected",
+    "label": "CLAUDE.md · memory · skills",
+    "pct": 0.13,
+    "tokens": 8580
+   },
+   {
+    "key": "baseline",
+    "label": "System + tools baseline",
+    "pct": 0.07,
+    "tokens": 4620
+   }
+  ],
+  "biggest": [
+   {
+    "tool": "Read",
+    "detail": "D:/code/web-shop/src/cart/Checkout.svelte",
+    "tokens": 5280
+   },
+   {
+    "tool": "Bash",
+    "detail": "npm test -- cart",
+    "tokens": 3960
+   }
+  ],
+  "advice": "Tool results are almost half the window — large file reads are the lever here.",
+  "note": "Estimated from the transcript, scaled to the real total."
+ },
+ "33333333-3333-4333-8333-333333333333": {
+  "totalTokens": 36000,
+  "ctxMax": 200000,
+  "behind": false,
+  "compactions": 0,
+  "categories": [
+   {
+    "key": "toolResults",
+    "label": "Tool results",
+    "pct": 0.46,
+    "tokens": 16560
+   },
+   {
+    "key": "toolCalls",
+    "label": "Tool calls",
+    "pct": 0.14,
+    "tokens": 5040
+   },
+   {
+    "key": "thinking",
+    "label": "Thinking",
+    "pct": 0.09,
+    "tokens": 3240
+   },
+   {
+    "key": "conversation",
+    "label": "Conversation",
+    "pct": 0.11,
+    "tokens": 3960
+   },
+   {
+    "key": "injected",
+    "label": "CLAUDE.md · memory · skills",
+    "pct": 0.13,
+    "tokens": 4680
+   },
+   {
+    "key": "baseline",
+    "label": "System + tools baseline",
+    "pct": 0.07,
+    "tokens": 2520
+   }
+  ],
+  "biggest": [
+   {
+    "tool": "Read",
+    "detail": "D:/code/web-shop/src/cart/Checkout.svelte",
+    "tokens": 2880
+   },
+   {
+    "tool": "Bash",
+    "detail": "npm test -- cart",
+    "tokens": 2160
+   }
+  ],
+  "advice": "",
+  "note": "Estimated from the transcript, scaled to the real total."
+ },
+ "44444444-4444-4444-8444-444444444444": {
+  "totalTokens": 24000,
+  "ctxMax": 200000,
+  "behind": false,
+  "compactions": 0,
+  "categories": [
+   {
+    "key": "toolResults",
+    "label": "Tool results",
+    "pct": 0.46,
+    "tokens": 11040
+   },
+   {
+    "key": "toolCalls",
+    "label": "Tool calls",
+    "pct": 0.14,
+    "tokens": 3360
+   },
+   {
+    "key": "thinking",
+    "label": "Thinking",
+    "pct": 0.09,
+    "tokens": 2160
+   },
+   {
+    "key": "conversation",
+    "label": "Conversation",
+    "pct": 0.11,
+    "tokens": 2640
+   },
+   {
+    "key": "injected",
+    "label": "CLAUDE.md · memory · skills",
+    "pct": 0.13,
+    "tokens": 3120
+   },
+   {
+    "key": "baseline",
+    "label": "System + tools baseline",
+    "pct": 0.07,
+    "tokens": 1680
+   }
+  ],
+  "biggest": [
+   {
+    "tool": "Read",
+    "detail": "D:/code/web-shop/src/cart/Checkout.svelte",
+    "tokens": 1920
+   },
+   {
+    "tool": "Bash",
+    "detail": "npm test -- cart",
+    "tokens": 1440
+   }
+  ],
+  "advice": "",
+  "note": "Estimated from the transcript, scaled to the real total."
+ }
+}

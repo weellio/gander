@@ -1,0 +1,29 @@
+{
+  "name": "Gander — Agent Ops",
+  "short_name": "Gander",
+  "description": "A live, animated mission-control dashboard for your Claude Code agents.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1815",
+  "theme_color": "#1a1815",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/goose.png",
+      "sizes": "800x800",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "349x349",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
