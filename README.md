@@ -136,7 +136,19 @@ Full setup: scoped installs, ⚡ Dispatch, Telegram, budgets, smart lights, the 
 
 ## Platform support
 
-Developed and exercised daily on **Windows**; the dashboard, bridge, and data features are plain Node + browser and should work anywhere — the OS-specific surface is window automation (details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)). **On macOS or Linux? Please give it a spin and open issues/PRs.** 🙏
+Developed and exercised daily on **Windows**. The dashboard, the bridge, the hooks, the usage and cost analytics, the needs-you rail, Allow/Deny, the queue, the connector and the mod are plain Node and browser code and run the same everywhere. The parts that touch the operating system differ:
+
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| Start a session / New task / queue launches | ✓ | ✓ Terminal.app | ✓ first of x-terminal-emulator, gnome-terminal, konsole, xfce4-terminal, kitty, alacritty, xterm |
+| Desktop alerts | ✓ toast | ✓ | ✓ needs `notify-send` |
+| Quick-keys and the idle nudge (typing into a session window) | ✓ by PID or title | partial: targets the frontmost VS Code window, not Terminal.app; needs Accessibility permission | X11 only (`xdotool`), not Wayland |
+| Server room (processes, ports, robots), window focus, folder picker, GPU priority | ✓ | not yet | not yet |
+| GPU panel | NVIDIA via `nvidia-smi`; Ollama and LM Studio everywhere | Ollama / LM Studio only | NVIDIA via `nvidia-smi`; Ollama / LM Studio |
+| Claude Desktop tile | ✓ | running / idle, plus activity from `~/Library/Logs/Claude` | no official build |
+| Claude connector tunnel (cloudflared, fetched by the bridge) | ✓ | ✓ | ✓ |
+
+Node 18 or newer. **On macOS or Linux? Please open an issue for anything in the "partial" and "not yet" cells that matters to you; those are the next things to build.**
 
 ## Support
 

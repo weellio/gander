@@ -57,6 +57,7 @@ const digest = require('./digest.js');
 const replay = require('./replay.js');
 const fleet = require('./fleet.js');
 const mod = require('./mod.js');       // gander-feed mod (Claude Code 2.1.287+ in-process hooks): exact per-session telemetry
+const terminal = require('./terminal.js'); // how a terminal window is opened per platform (pure; the quoting is tested)
 const datasets = require('./datasets.js'); // row-shaped datasets: /api/datasets, the MCP connector's tools, the dashboard data pack
 const mcp = require('./mcp.js');       // Gander as a connector: read-only MCP server at /mcp (claude.ai, Desktop, Claude Code)
 const tunnel = require('./tunnel.js'); // cloudflared quick tunnel: a public https door for claude.ai's connector
@@ -1718,13 +1719,11 @@ function launchSession(cwd, resume, prompt, fork) {
   const env = { ...process.env };
   for (const k of Object.keys(env)) if (/^CLAUDE_?CODE/i.test(k)) delete env[k];
   try {
-    if (process.platform === 'win32') {
-      spawn(`start "${launchTitle(cwd)}" cmd /k ${inner}`, { cwd, shell: true, detached: true, stdio: 'ignore', env }).unref();
-    } else if (process.platform === 'darwin') {
-      spawn('osascript', ['-e', `tell app "Terminal" to do script "cd '${cwd}' && unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT && ${inner}"`], { detached: true, stdio: 'ignore', env }).unref();
-    } else {
-      spawn('x-terminal-emulator', ['-e', `bash -c "cd '${cwd}'; unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT; ${inner}; exec bash"`], { detached: true, stdio: 'ignore', env }).unref();
-    }
+    const spec = terminal.launchSpec({ cwd, inner, title: launchTitle(cwd) });
+    if (spec.error) { console.log('[launch] ' + spec.error); return { error: spec.error }; }
+    const child = spawn(spec.cmd, spec.args, { cwd, shell: spec.shell, detached: true, stdio: 'ignore', env });
+    child.on('error', (e) => console.log('[launch] failed: ' + e.message));
+    child.unref();
     return { ok: true };
   } catch (e) { return { error: e.message }; }
 }
@@ -3640,7 +3639,8 @@ Allow / Deny it in the dashboard rail.`);
   if (url === '/api/gpu/free' && req.method === 'POST') {
     const body = await readBody(req);
     const restore = body && body.mode === 'restore';
-    if (process.platform !== 'win32' && !restore) {
+    if (process.platform !== 'win32') {
+      if (restore) return sendJson(res, 200, { ok: true, unloaded: [], lowered: [], note: 'priority lowering is Windows-only for now' });
       return sendJson(res, 200, { ok: true, unloaded: await gpu.unloadAll(gpuOpts()), lowered: [], note: 'priority lowering is Windows-only for now' });
     }
     const unloaded = restore ? [] : await gpu.unloadAll(gpuOpts());

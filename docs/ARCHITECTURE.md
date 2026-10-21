@@ -255,13 +255,18 @@ States: `idle · thinking · coding · spawning · reading · testing · error �
 
 ## Platform support & contributing
 
-Gander is developed and exercised daily on **Windows**. The dashboard, bridge, and all the data features (projects, usage, GitHub, history, routines/briefings) are plain Node + browser and should work anywhere. The **OS-specific surface is the window automation** — launching sessions and typing into them:
+Developed and exercised daily on **Windows**. The dashboard, the bridge, the hooks, the usage and cost analytics, the needs-you rail, Allow/Deny, the queue, the connector and the mod are plain Node and browser code and run the same everywhere. The parts that touch the operating system differ:
 
-| What | Windows | macOS | Linux |
-|------|---------|-------|-------|
-| Launch a session (▶ Start / ＋ New task) | `cmd` + captured window PID | `osascript` (Terminal) | `x-terminal-emulator` |
-| Idle nudge / ⌨ quick-keys (type into a session window) | WScript + PID/title | `osascript` keystrokes | `xdotool` |
-| Open folder / editor | ✓ | `open` | `xdg-open` |
-| Audio (TTS + voice input) | browser Web Speech | browser Web Speech | browser Web Speech |
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| Start a session / New task / queue launches | ✓ | ✓ Terminal.app | ✓ first of x-terminal-emulator, gnome-terminal, konsole, xfce4-terminal, kitty, alacritty, xterm |
+| Desktop alerts | ✓ toast | ✓ | ✓ needs `notify-send` |
+| Quick-keys and the idle nudge (typing into a session window) | ✓ by PID or title | partial: targets the frontmost VS Code window, not Terminal.app; needs Accessibility permission | X11 only (`xdotool`), not Wayland |
+| Server room (processes, ports, robots), window focus, folder picker, GPU priority | ✓ | not yet | not yet |
+| GPU panel | NVIDIA via `nvidia-smi`; Ollama and LM Studio everywhere | Ollama / LM Studio only | NVIDIA via `nvidia-smi`; Ollama / LM Studio |
+| Claude Desktop tile | ✓ | running / idle, plus activity from `~/Library/Logs/Claude` | no official build |
+| Claude connector tunnel (cloudflared, fetched by the bridge) | ✓ | ✓ | ✓ |
+
+Node 18 or newer. **On macOS or Linux? Please open an issue for anything in the "partial" and "not yet" cells that matters to you; those are the next things to build.**
 
 **On macOS or Linux? Please give it a spin and open issues/PRs** — that's the fastest way to make it solid everywhere. The window-automation scripts (`scripts/nudge-idle.sh`, `scripts/sendkeys.sh`) and the launch/open paths in `bridge/server.js` are the most likely places to need a tweak. Bug reports, "it didn't work on my distro" notes, and PRs are all welcome. 🙏

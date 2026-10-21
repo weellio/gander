@@ -73,7 +73,7 @@ function waitForDecision(requestId, port) {
   const deadline = Date.now() + 570000;
   const once = () => {
     if (Date.now() > deadline) return process.exit(0);
-    const r = http.request({ host: 'localhost', port, path: '/api/hook-permission/wait?requestId=' + encodeURIComponent(requestId), method: 'GET', timeout: 30000 }, (res) => {
+    const r = http.request({ host: '127.0.0.1', port, path: '/api/hook-permission/wait?requestId=' + encodeURIComponent(requestId), method: 'GET', timeout: 30000 }, (res) => {
       let b = ''; res.on('data', (d) => (b += d));
       res.on('end', () => {
         let j = {}; try { j = JSON.parse(b || '{}'); } catch (_) {}
@@ -102,7 +102,7 @@ function waitForGuard(gp, port) {
   };
   const once = () => {
     if (Date.now() > deadline) return deny('(No decision arrived while the command was held. If the user allows it in Gander later, you will be told to run it again.)');
-    const r = http.request({ host: 'localhost', port, path: '/api/guard/wait?id=' + encodeURIComponent(gp.id), method: 'GET', timeout: 30000 }, (res) => {
+    const r = http.request({ host: '127.0.0.1', port, path: '/api/guard/wait?id=' + encodeURIComponent(gp.id), method: 'GET', timeout: 30000 }, (res) => {
       let b = ''; res.on('data', (d) => (b += d));
       res.on('end', () => {
         let j = {}; try { j = JSON.parse(b || '{}'); } catch (_) {}
@@ -155,7 +155,7 @@ process.stdin.on('end', () => {
   const port = process.env.AOC_PORT || 3131;
   const req = http.request(
     {
-      host: 'localhost', port, path: '/api/hook', method: 'POST',
+      host: '127.0.0.1', port, path: '/api/hook', method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
       timeout: 1500,
     },

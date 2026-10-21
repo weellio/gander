@@ -130,6 +130,7 @@ function snapshotStats(dataDir) {
     }
   };
   addDir(path.join(dataDir, 'logs'), 0);
+  if (process.platform === 'darwin') addDir(path.join(os.homedir(), 'Library', 'Logs', 'Claude'), 0);   // macOS keeps the logs here
   addDir(path.join(dataDir, 'local-agent-mode-sessions'), 0);
   return map;
 }
