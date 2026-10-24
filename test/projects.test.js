@@ -3,6 +3,7 @@
 // Uses node:test + node:assert only; no external deps.
 
 const { test, describe, before, after } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -61,8 +62,8 @@ describe('copyComponent — validation', () => {
 
   before(() => {
     // Create minimal temp project dirs so the validation guards are reached
-    tmpA = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-src-'));
-    tmpB = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-dst-'));
+    tmpA = tmpdir('gander-src-');
+    tmpB = tmpdir('gander-dst-');
   });
 
   after(() => {
@@ -120,7 +121,7 @@ describe('componentsOf (via project())', () => {
 
   before(() => {
     // Build a minimal .claude scaffold
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-proj-'));
+    tmpDir = tmpdir('gander-proj-');
     const claudeDir = path.join(tmpDir, '.claude');
     fs.mkdirSync(path.join(claudeDir, 'skills', 'my-skill'), { recursive: true });
     fs.mkdirSync(path.join(claudeDir, 'commands'), { recursive: true });
@@ -191,8 +192,8 @@ describe('copyComponent — skill copy', () => {
   let src, dst;
 
   before(() => {
-    src = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-copy-src-'));
-    dst = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-copy-dst-'));
+    src = tmpdir('gander-copy-src-');
+    dst = tmpdir('gander-copy-dst-');
 
     const skillDir = path.join(src, '.claude', 'skills', 'analyzer');
     fs.mkdirSync(skillDir, { recursive: true });
@@ -232,7 +233,7 @@ describe('copyComponent — skill copy', () => {
 // ---------------------------------------------------------------------------
 describe('discover — home-folder session does not duplicate the global entry', () => {
   test('one entry for the home path, with both sources', () => {
-    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-home-'));
+    const tmpHome = tmpdir('gander-home-');
     fs.mkdirSync(path.join(tmpHome, '.claude'), { recursive: true });
     const realHome = os.homedir;
     os.homedir = () => tmpHome;

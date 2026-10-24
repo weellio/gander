@@ -3,9 +3,10 @@
 // so nothing here touches a running bridge or the real state file.
 
 const os = require('node:os');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const path = require('node:path');
 const fs = require('node:fs');
-process.env.AOC_BOARD_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gander-board-')), 'board.json');
+process.env.AOC_BOARD_FILE = path.join(tmpdir('gander-board-'), 'board.json');
 
 const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');

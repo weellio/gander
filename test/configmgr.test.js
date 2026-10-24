@@ -2,6 +2,7 @@
 // test/configmgr.test.js — tests for bridge/configmgr.js
 
 const { test, describe, before, after, beforeEach } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -23,7 +24,7 @@ describe('configmgr exports', () => {
 // Fixture helpers
 // ---------------------------------------------------------------------------
 function makeTmpProject(opts = {}) {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-cfg-'));
+  const tmpDir = tmpdir('gander-cfg-');
 
   const claudeDir = path.join(tmpDir, '.claude');
   fs.mkdirSync(claudeDir, { recursive: true });
@@ -117,7 +118,7 @@ describe('configmgr.read()', () => {
   });
 
   test('returns ok:true with empty hooks/mcp when .claude/ does not exist', () => {
-    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-empty-'));
+    const emptyDir = tmpdir('gander-empty-');
     try {
       const r = configmgr.read(emptyDir);
       assert.equal(r.ok, true);

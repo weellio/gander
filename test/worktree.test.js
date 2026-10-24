@@ -4,6 +4,7 @@
 // tests by design).
 
 const { test, describe, before, after } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
@@ -17,7 +18,7 @@ const g = (dir, ...args) => execFileSync('git', ['-C', dir, ...args], { windowsH
 describe('worktree lifecycle', () => {
   let repo;
   before(() => {
-    repo = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-wt-'));
+    repo = tmpdir('gander-wt-');
     execFileSync('git', ['init', '-b', 'main', repo], { windowsHide: true });
     g(repo, 'config', 'user.email', 't@t'); g(repo, 'config', 'user.name', 'T');
     fs.writeFileSync(path.join(repo, 'a.txt'), 'hello\n');
@@ -75,7 +76,7 @@ describe('worktree lifecycle', () => {
   });
 
   test('non-repo dir returns a clean error', () => {
-    const plain = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-plain-'));
+    const plain = tmpdir('gander-plain-');
     const r = git.worktreeStart(plain, 9);
     assert.ok(r.error, 'should not create worktrees outside repos');
     fs.rmSync(plain, { recursive: true, force: true });

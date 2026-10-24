@@ -4,6 +4,7 @@
 // ~/.claude and the real CLAUDE.md are never touched.
 
 const { test, describe, after, beforeEach } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -11,7 +12,7 @@ const os = require('node:os');
 const L = require('../bridge/lessons.js');
 
 const TEMPS = [];
-function tmp() { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-lessons-')); TEMPS.push(d); return d; }
+function tmp() { const d = tmpdir('gander-lessons-'); TEMPS.push(d); return d; }
 after(() => { for (const d of TEMPS) try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) {} });
 beforeEach(() => L._reset());
 

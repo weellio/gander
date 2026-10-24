@@ -11,6 +11,7 @@
 //      swallowed EADDRINUSE.
 
 const { test, describe, after } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -19,7 +20,7 @@ const net = require('node:net');
 const { spawn } = require('node:child_process');
 
 const TEMPS = [];
-const tmp = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-one-')); TEMPS.push(d); return d; };
+const tmp = () => { const d = tmpdir('gander-one-'); TEMPS.push(d); return d; };
 after(() => { for (const d of TEMPS) try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) {} });
 
 describe('launch lock', () => {

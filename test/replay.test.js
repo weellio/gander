@@ -3,6 +3,7 @@
 // dir passed via opts.file; never touches the real ~/.claude).
 
 const { test, describe } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
@@ -54,7 +55,7 @@ function fixtureLines() {
 }
 
 function writeFixture(lines) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-replay-'));
+  const dir = tmpdir('gander-replay-');
   const file = path.join(dir, 'fixture-session.jsonl');
   fs.writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
   return file;
@@ -148,7 +149,7 @@ describe('replay.build()', () => {
   });
 
   test('ok:false on missing file and invalid session id', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-replay-'));
+    const dir = tmpdir('gander-replay-');
     const missing = await replay.build('fixture-session', { file: path.join(dir, 'nope.jsonl') });
     assert.equal(missing.ok, false);
     assert.equal(missing.error, 'session not found');

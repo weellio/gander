@@ -3,6 +3,7 @@
 // transcripts in a temp dir; never touches ~/.claude.
 
 const { test, describe, before, after } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
@@ -79,7 +80,7 @@ function sampleSession() {
   ];
 }
 
-before(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-runbook-')); });
+before(() => { dir = tmpdir('gander-runbook-'); });
 after(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* ignore */ } });
 
 describe('build', () => {

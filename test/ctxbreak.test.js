@@ -6,6 +6,7 @@
 // context, the compact summary, and the part the transcript never shows.
 
 const { test, describe, beforeEach } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -15,7 +16,7 @@ const ctxbreak = require('../bridge/ctxbreak.js');
 
 // --- helpers ---------------------------------------------------------------
 function writeTranscript(entries, opts) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-ctxbreak-'));
+  const dir = tmpdir('gander-ctxbreak-');
   const file = path.join(dir, 'transcript.jsonl');
   fs.writeFileSync(file, entries.map(toLine).join('') + ((opts && opts.raw) || ''), 'utf8');
   return file;

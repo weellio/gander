@@ -4,9 +4,10 @@
 // keeps node:sqlite out of every tick/summary.
 
 const os = require('node:os');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const path = require('node:path');
 const fs = require('node:fs');
-const HOME_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-codex-'));
+const HOME_DIR = tmpdir('gander-codex-');
 process.env.GANDER_CODEX_HOME = HOME_DIR;
 
 const { test, describe, beforeEach } = require('node:test');

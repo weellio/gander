@@ -1,10 +1,11 @@
 'use strict';
 // bridge/peers.js — Claude Code's session registry + cross-session inbox delivery.
 const os = require('node:os');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const path = require('node:path');
 const fs = require('node:fs');
 const net = require('node:net');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-peers-'));
+const dir = tmpdir('gander-peers-');
 process.env.GANDER_SESSIONS_DIR = dir;
 
 const { test, describe } = require('node:test');

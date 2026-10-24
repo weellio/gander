@@ -5,6 +5,7 @@
 // real `claude` binary — the async cases run against a path that cannot exist.
 
 const { test } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const os = require('os');
 const path = require('path');
@@ -117,7 +118,7 @@ test('update reports ok:false (once) when the cli cannot run', { timeout: 30000 
 // isBehind stayed false, and the update button never appeared. Windows-only bug.
 test('a CLI path containing a space still reports its version', { skip: process.platform !== 'win32' ? 'win32 only' : false }, async () => {
   const os = require('node:os'), fs = require('node:fs'), path = require('node:path');
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-ver-'));
+  const root = tmpdir('gander-ver-');
   const dir = path.join(root, 'a dir with spaces');
   fs.mkdirSync(dir, { recursive: true });
   const cli = path.join(dir, 'claude.cmd');

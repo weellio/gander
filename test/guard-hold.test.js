@@ -5,6 +5,7 @@
 //   Allow once after the hold -> the session is told to run it again (queued channel).
 //   hold 0 -> the old immediate deny.
 const { test, describe, before, after } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
@@ -13,7 +14,7 @@ const net = require('net');
 const http = require('http');
 const { spawn } = require('child_process');
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'gander-guard-'));
+const tmp = () => tmpdir('gander-guard-');
 function freePort() { return new Promise((resolve) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); }); }
 function call(port, method, p, body) {
   return new Promise((resolve, reject) => {

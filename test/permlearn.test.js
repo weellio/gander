@@ -4,6 +4,7 @@
 // ~/.claude/settings.json is never read or written.
 
 const { test, describe, after } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -11,7 +12,7 @@ const os = require('node:os');
 const P = require('../bridge/permlearn.js');
 
 const TEMPS = [];
-function tmp() { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-permlearn-')); TEMPS.push(d); return d; }
+function tmp() { const d = tmpdir('gander-permlearn-'); TEMPS.push(d); return d; }
 after(() => { for (const d of TEMPS) try { fs.rmSync(d, { recursive: true, force: true }); } catch (_) {} });
 
 const NOW = Date.parse('2026-10-01T12:00:00');

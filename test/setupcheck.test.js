@@ -7,6 +7,7 @@
 // easily report on (or damage) the developer's own machine.
 
 const { test, describe, after } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -20,7 +21,7 @@ const { scan, resolveExec, frontmatter, _shellBuiltins } = setupcheck;
 // ---------------------------------------------------------------------------
 const TEMPS = [];
 function tmp() {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-setup-'));
+  const d = tmpdir('gander-setup-');
   TEMPS.push(d);
   return d;
 }

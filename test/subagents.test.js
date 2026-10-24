@@ -4,9 +4,10 @@
 // Points the module at a fresh temp dir so nothing touches ~/.claude.
 
 const os = require('node:os');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const path = require('node:path');
 const fs = require('node:fs');
-const PROJECTS = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-subagents-'));
+const PROJECTS = tmpdir('gander-subagents-');
 process.env.GANDER_PROJECTS_DIR = PROJECTS;
 
 const { test, describe, beforeEach } = require('node:test');

@@ -2,6 +2,7 @@
 // The connector on a real bridge: /mcp speaks JSON-RPC over HTTP, the datasets
 // answer as rows and CSV, and /api/mcp-config turns the token on and off.
 const { test, describe, before, after } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
@@ -10,7 +11,7 @@ const net = require('net');
 const http = require('http');
 const { spawn } = require('child_process');
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'gander-mcpb-'));
+const tmp = () => tmpdir('gander-mcpb-');
 function freePort() { return new Promise((resolve) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); }); }
 
 function call(port, method, p, body, headers = {}) {

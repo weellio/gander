@@ -6,6 +6,7 @@
 // file-history-delta — and folds them into what a dashboard tile wants.
 
 const { test, describe, beforeEach } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -18,7 +19,7 @@ const sessionmeta = require('../bridge/sessionmeta.js');
 // Write an array of objects (or raw strings, for malformed-line tests) as a
 // .jsonl file in a fresh temp dir. Returns the absolute path.
 function writeTranscript(entries) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-sessionmeta-'));
+  const dir = tmpdir('gander-sessionmeta-');
   const file = path.join(dir, 'transcript.jsonl');
   fs.writeFileSync(file, entries.map(toLine).join(''), 'utf8');
   return file;

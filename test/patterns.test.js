@@ -4,6 +4,7 @@
 // opts.root; never touches the real ~/.claude.
 
 const { test, describe, before, after } = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
@@ -82,7 +83,7 @@ describe('typed-prompt filtering', () => {
 describe('scan', () => {
   let root;
   before(() => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-patterns-'));
+    root = tmpdir('gander-patterns-');
     const dir = path.join(root, 'd--proj-alpha');
     fs.mkdirSync(dir, { recursive: true });
     const now = new Date().toISOString();

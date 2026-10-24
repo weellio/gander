@@ -2,10 +2,11 @@
 // of auto-merging; Approve lands it, Request changes keeps the branch and
 // queues a follow-up that carries the note.
 const os = require('node:os');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const path = require('node:path');
 const fs = require('node:fs');
 // state file goes to a temp dir — never the live bridge/aoc-queue.json
-process.env.AOC_QUEUE_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gander-rv-')), 'queue.json');
+process.env.AOC_QUEUE_FILE = path.join(tmpdir('gander-rv-'), 'queue.json');
 
 const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert');

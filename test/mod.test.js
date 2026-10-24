@@ -2,6 +2,7 @@
 // bridge/mod.js — the gander-feed mod's landing spot: version gate, exact
 // per-session telemetry, the band payload, install state and commands.
 const test = require('node:test');
+const { tmpdir } = require('./_tmp.js');   // scratch folders that remove themselves at exit
 const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
@@ -118,7 +119,7 @@ test('sweep(): forgets feeds whose sessions ended long ago', () => {
 
 // ── install state, read from Claude's plugin files ───────────────────────────
 test('installState(): reads installed_plugins.json and known_marketplaces.json', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gander-mod-'));
+  const dir = tmpdir('gander-mod-');
   assert.deepEqual(mod.installState(dir), { installed: false, marketplace: false });
   fs.writeFileSync(path.join(dir, 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'gander-feed@gander': { scope: 'user' } } }));
   fs.writeFileSync(path.join(dir, 'known_marketplaces.json'), JSON.stringify({ gander: { source: { source: 'directory', path: 'D:/gander' } } }));

@@ -1516,6 +1516,24 @@ function buildLaunchFlags() {
 }
 
 // ── routines / briefings ─────────────────────────────────────────────────────
+// %TEMP% hygiene. The hooks leave one tiny gander-cpid-<session> marker per session and
+// older test suites left mkdtemp folders behind; neither is needed after a day.
+// Kept: gander-launch-<port>.lock (the launcher's), gander-drops (image drops).
+function tempSweep() {
+  try {
+    const dir = os.tmpdir(), now = Date.now();
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith('gander-') || name.startsWith('gander-launch-') || name === 'gander-drops') continue;
+      const p = path.join(dir, name);
+      let st; try { st = fs.statSync(p); } catch (_) { continue; }
+      const age = now - st.mtimeMs;
+      if (name.startsWith('gander-cpid-') ? age > 7 * 86400e3 : age > 86400e3) {
+        try { fs.rmSync(p, { recursive: true, force: true }); } catch (_) {}
+      }
+    }
+  } catch (_) {}
+}
+
 function claudeCliRaw() { return (cfg.claudeCmd && String(cfg.claudeCmd).trim()) || 'claude'; }
 const REPO_ROOT = path.join(__dirname, '..');
 // The launched CLI's version, cached 5 min: the mod's version gate reads it on every Settings open.
@@ -4423,6 +4441,7 @@ server.listen(argPort, BIND_HOST, () => {
   setInterval(checkBudget, 180000); setTimeout(checkBudget, 8000);
   setInterval(sampleBurn, 30000); setTimeout(sampleBurn, 6000);
   setInterval(() => mod.sweep(), 3600000);   // forget gander-feed records of sessions that ended a day ago
+  setTimeout(tempSweep, 20000); setInterval(tempSweep, 6 * 3600000);   // %TEMP% hygiene: stale gander-* scratch + session markers
   if (cfg.mcpEnabled && cfg.mcpTunnel) {       // the connector was connected last time: come back up without being asked
     setTimeout(() => mcpConnect((err, st) => { if (err) console.log('[mcp] tunnel did not come back: ' + err); else if (st.url) console.log('[mcp] tunnel back at ' + st.url); }), 3000);
   }
