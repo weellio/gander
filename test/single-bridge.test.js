@@ -83,7 +83,7 @@ describe('a duplicate bridge exits instead of lingering', () => {
     const port = holder.address().port;
     const child = spawn(process.execPath, [path.join(__dirname, '..', 'bridge', 'server.js'), '--port', String(port)], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, AOC_QUEUE_FILE: path.join(tmp(), 'q.json'), AOC_CONFIG_FILE: path.join(tmp(), 'aoc-config.json'), GANDER_NO_OPEN: '1' },
+      env: { ...process.env, AOC_QUEUE_FILE: path.join(tmp(), 'q.json'), AOC_CONFIG_FILE: path.join(tmp(), 'aoc-config.json'), AOC_PROJECTS_FILE: path.join(tmp(), 'aoc-projects.json'), GANDER_NO_OPEN: '1' },
     });
     let out = '';
     child.stdout.on('data', (d) => (out += d));

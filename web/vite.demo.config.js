@@ -24,7 +24,7 @@ function demoPaths(base) {
       return html
         .replace(/href="\/(goose\.png|icon\.png|manifest\.webmanifest)"/g, `href="${base}$1"`)
         .replace(/<script>\s*if \('serviceWorker' in navigator\)[\s\S]*?<\/script>/, '')
-        .replace('<title>Gander · Claude Code NOC</title>', '<title>Gander · live demo</title>');
+        .replace('<title>Gander · Claude Code dashboard</title>', '<title>Gander live demo · a Claude Code dashboard, GUI and cost monitor</title>');
     },
   };
 }

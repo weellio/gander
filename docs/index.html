@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gander: Claude Code dashboard, GUI and cost monitor for your AI coding agents</title>
+  <meta name="description" content="Gander is a free, local web GUI for Claude Code: a live dashboard of every session and sub-agent, alerts on your phone when one needs you, cost per session and project, a danger guard that holds destructive commands, and an MCP connector for claude.ai. Zero-dependency Node, MIT." />
+  <meta name="keywords" content="Claude Code dashboard, Claude Code GUI, Claude Code user interface, Claude Code monitor, Claude Code cost tracker, Claude Code web UI, AI agent observability, sub-agent monitoring, Anthropic Claude Code tools" />
+  <link rel="canonical" href="https://weellio.github.io/gander/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Gander: the control room for Claude Code agents" />
+  <meta property="og:description" content="See every Claude Code session on one floor. Get pinged when one needs you, even on your phone. Know what it costs. Stop a bad command before it runs." />
+  <meta property="og:url" content="https://weellio.github.io/gander/" />
+  <meta property="og:image" content="https://raw.githubusercontent.com/weellio/gander/main/docs/demo.gif" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Gander: Claude Code dashboard and GUI" />
+  <meta name="twitter:description" content="A live dashboard, phone alerts, cost per session and a danger guard for Claude Code. Free, local, MIT." />
+  <meta name="twitter:image" content="https://raw.githubusercontent.com/weellio/gander/main/docs/demo.gif" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"SoftwareApplication","name":"Gander","applicationCategory":"DeveloperApplication","operatingSystem":"Windows, macOS, Linux","description":"A local web dashboard and control room for Claude Code agents: live floor of every session, needs-you alerts to phone, Telegram and Slack, cost per session, a danger guard for destructive commands, and an MCP connector.","url":"https://github.com/weellio/gander","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"license":"https://opensource.org/licenses/MIT"}
+  </script>
+  <style>
+    :root { --bg: #fbfaf7; --fg: #1a1a1a; --muted: #5c5c5c; --card: #fff; --line: #e6e2d8; --accent: #6366f1; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #16161a; --fg: #ececec; --muted: #a8a8a8; --card: #1f1f25; --line: #2d2d35; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--fg); }
+    main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+    h1 { font-size: clamp(26px, 5vw, 38px); line-height: 1.15; margin: 0 0 12px; }
+    .lead { font-size: 18px; color: var(--muted); margin: 0 0 20px; }
+    .cta { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 26px; }
+    .btn { display: inline-block; padding: 10px 16px; border-radius: 8px; text-decoration: none; font-weight: 600; border: 1px solid var(--line); color: var(--fg); background: var(--card); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    img.demo { width: 100%; border-radius: 10px; border: 1px solid var(--line); display: block; }
+    .cap { font-size: 13px; color: var(--muted); margin: 6px 0 28px; }
+    h2 { font-size: 20px; margin: 30px 0 10px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 12px; }
+    .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+    .card b { display: block; margin-bottom: 4px; }
+    .card p { margin: 0; color: var(--muted); font-size: 14px; }
+    pre { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-size: 14px; }
+    footer { margin-top: 40px; font-size: 13px; color: var(--muted); }
+    footer a { color: inherit; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Gander: a dashboard, GUI and cost monitor for Claude Code agents</h1>
+  <p class="lead">See every Claude Code session on one floor. Get pinged the moment one needs you, even on your phone. Know what it all costs. Stop a bad command before it runs. Free, local, MIT.</p>
+  <div class="cta">
+    <a class="btn primary" href="https://weellio.github.io/gander/demo/">▶ Try the live demo, nothing to install</a>
+    <a class="btn" href="https://github.com/weellio/gander#install">Install</a>
+    <a class="btn" href="https://github.com/weellio/gander">GitHub</a>
+  </div>
+  <a href="https://weellio.github.io/gander/demo/"><img class="demo" src="https://raw.githubusercontent.com/weellio/gander/main/docs/demo.webp" alt="Gander's office floor: each Claude Code session is a pixel-art goose that acts out what it is doing" /></a>
+  <p class="cap">Each goose is a Claude Code session: thinking, coding, spawning a sub-agent, waiting on you, erroring, done. Live.</p>
+
+  <h2>What it does</h2>
+  <div class="grid">
+    <div class="card"><b>Live floor</b><p>Every session and sub-agent, across all your projects and machines, as a web user interface fed by Claude Code's own hooks.</p></div>
+    <div class="card"><b>Needs-you alerts</b><p>Who is waiting on a yes or no, with desktop, phone, Telegram and Slack alerts. Allow or Deny from anywhere, in every permission mode.</p></div>
+    <div class="card"><b>Cost monitor</b><p>Spend per session and per project, runaway alerts, budgets with a hard stop, and where the money went.</p></div>
+    <div class="card"><b>Danger guard</b><p>Destructive shell commands are held until you click Allow once. Works even with permissions bypassed.</p></div>
+    <div class="card"><b>Task queue</b><p>Line up goals per project; the bridge starts them in worktrees and merges only green branches.</p></div>
+    <div class="card"><b>Connector and voice</b><p>A read-only MCP server so claude.ai can query it, and "hey Gander" voice control in the browser.</p></div>
+  </div>
+
+  <h2>Install in one line</h2>
+  <pre>/plugin marketplace add weellio/gander
+/plugin install gander@gander</pre>
+  <p class="cap">Type that in any Claude Code session. Or clone the repo and run <code>node install.js</code>. Windows, macOS and Linux; Node 18 or newer.</p>
+
+  <footer>
+    <a href="https://github.com/weellio/gander/blob/main/SECURITY.md">What it reads and never sends</a> ·
+    <a href="https://github.com/weellio/gander/blob/main/docs/FEATURES.md">Every feature</a> ·
+    <a href="https://github.com/weellio/gander/blob/main/CHANGELOG.md">Changelog</a> ·
+    MIT license
+  </footer>
+</main>
+</body>
+</html>

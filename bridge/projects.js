@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const CFG = path.join(__dirname, 'aoc-projects.json');
+const CFG = process.env.AOC_PROJECTS_FILE || path.join(__dirname, 'aoc-projects.json');   // tests point this at scratch
 let cfg = (() => { try { return JSON.parse(fs.readFileSync(CFG, 'utf8')); } catch (_) { return {}; } })();
 cfg.roots = cfg.roots || [];
 cfg.known = cfg.known || [];
@@ -400,4 +400,38 @@ function removeComponent(type, name, dir) {
   } catch (e) { return { error: e.message }; }
 }
 
-module.exports = { getConfig, addRoot, removeRoot, noteKnown, discover, project, copyComponent, keyOf, diffComponent, readComponent, writeComponent, newComponent, validateFrontMatter, agentMeta, skillsIndex, removeComponent };
+// ＋ New project: a folder under a parent the person chose, with `git init` and a README,
+// registered so it shows in every project list at once. Returns { ok, cwd, name } or { error }.
+function createProject({ parent, name, git = true, readme = true }, run) {
+  const nm = String(name || '').trim();
+  if (!nm) return { error: 'name required' };
+  if (!/^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/.test(nm) || /^\.+$/.test(nm)) return { error: 'name: letters, digits, space, dot, dash or underscore; up to 64 characters' };
+  const par = String(parent || '').trim();
+  if (!par) return { error: 'parent folder required' };
+  let parentAbs;
+  try { parentAbs = path.resolve(par); } catch (_) { return { error: 'bad parent folder' }; }
+  if (!fs.existsSync(parentAbs) || !fs.statSync(parentAbs).isDirectory()) return { error: `parent folder does not exist: ${parentAbs}` };
+  const cwd = path.join(parentAbs, nm);
+  if (fs.existsSync(cwd)) return { error: `already exists: ${cwd}` };
+  try { fs.mkdirSync(cwd); } catch (e) { return { error: `could not create: ${e.message}` }; }
+  if (readme) { try { fs.writeFileSync(path.join(cwd, 'README.md'), `# ${nm}\n`); } catch (_) {} }
+  let gitOk = false;
+  if (git && run) { try { gitOk = run(['git', 'init', '-q'], cwd); } catch (_) { gitOk = false; } }
+  noteKnown(cwd);
+  return { ok: true, cwd, name: nm, git: gitOk };
+}
+
+// Where new projects usually go: the parents of the projects already known, most common first.
+function parentFolders() {
+  const counts = new Map();
+  for (const p of discover()) {
+    if ((p.sources || []).includes('global')) continue;
+    const parent = path.dirname(p.path);
+    if (!parent || parent === p.path) continue;
+    counts.set(parent, (counts.get(parent) || 0) + 1);
+  }
+  for (const r of cfg.roots) counts.set(path.resolve(r), (counts.get(path.resolve(r)) || 0) + 100);   // configured roots first
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([p]) => p);
+}
+
+module.exports = { getConfig, addRoot, removeRoot, noteKnown, discover, project, createProject, parentFolders, copyComponent, keyOf, diffComponent, readComponent, writeComponent, newComponent, validateFrontMatter, agentMeta, skillsIndex, removeComponent };

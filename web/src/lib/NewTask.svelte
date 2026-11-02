@@ -9,6 +9,34 @@
   let box = $state(null);
   let dispatchOn = $state(false);     // bridge-hosted launches enabled (Settings → Gander Dispatch)
   let forceTerminal = $state(false);  // per-launch override back to the classic terminal window
+  // ＋ New project: a folder that does not exist yet, created on Launch / Queue
+  const NEW = '__new__';
+  let parents = $state([]);
+  let npName = $state('');
+  let npParent = $state('');
+  let npGit = $state(true);
+  const creating = $derived(cwd === NEW);
+  const npOk = $derived(creating && npName.trim().length > 0 && npParent.trim().length > 0);
+  async function loadParents() {
+    try { parents = (await (await fetch('/api/projects/parents')).json()).parents || []; } catch (_) { parents = []; }
+    if (!npParent && parents.length) npParent = parents[0];
+  }
+  async function browseParent() {
+    try { const j = await (await fetch('/api/pick-folder', { method: 'POST' })).json(); if (j && j.path) npParent = j.path; else if (j && j.error) result = '⚠ ' + j.error; } catch (_) {}
+  }
+  // Make the folder first; returns its path, or '' after showing why not.
+  async function ensureProject() {
+    if (!creating) return cwd;
+    if (!npOk) { result = '⚠ give the new project a name and a parent folder'; return ''; }
+    try {
+      const j = await (await fetch('/api/projects/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parent: npParent.trim(), name: npName.trim(), git: npGit }) })).json();
+      if (!j || !j.ok) { result = '✗ ' + ((j && j.error) || 'could not create the project'); return ''; }
+      projects = [...projects, { name: j.name, path: j.cwd, sources: ['session'] }];
+      cwd = j.cwd; npName = '';
+      try { localStorage.setItem('aoc-project', j.name); } catch (_) {}
+      return j.cwd;
+    } catch (_) { result = '✗ Failed — is the bridge running?'; return ''; }
+  }
 
   // 📝 templates: saved goals with {blanks}. Picking one turns each {blank} into a
   // field, and the goal fills in as you type. Saved on the bridge, so every browser
@@ -53,13 +81,15 @@
     } catch (_) { projects = []; }
     try { dispatchOn = !!(await (await fetch('/api/dispatch-config')).json()).enabled; } catch (_) { dispatchOn = false; }
   }
-  $effect(() => { if (open) { result = ''; load(); loadTemplates(); setTimeout(() => box && box.focus(), 30); } });
+  $effect(() => { if (open) { result = ''; load(); loadTemplates(); loadParents(); setTimeout(() => box && box.focus(), 30); } });
 
   async function launch() {
     if (!cwd || busy) return;
     busy = true; result = '';
+    const target = await ensureProject();
+    if (!target) { busy = false; return; }
     try {
-      const body = { cwd, prompt: goal.trim() };
+      const body = { cwd: target, prompt: goal.trim() };
       if (forceTerminal) body.mode = 'terminal';
       const r = await fetch('/api/launch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const j = await r.json();
@@ -77,8 +107,10 @@
   async function queueIt() {
     if (!cwd || busy || !goal.trim()) { if (!goal.trim()) result = '⚠ type a goal to queue'; return; }
     busy = true; result = '';
+    const target = await ensureProject();
+    if (!target) { busy = false; return; }
     try {
-      const r = await fetch('/api/queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd, prompt: goal.trim() }) });
+      const r = await fetch('/api/queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: target, prompt: goal.trim() }) });
       const j = await r.json();
       if (j && j.ok) { result = `📋 Queued #${j.item.id} — starts when a slot frees`; goal = ''; setTimeout(() => (open = false), 1100); }
       else result = '✗ ' + ((j && j.error) || 'could not queue');
@@ -116,12 +148,21 @@
       <div class="lblrow"><label class="lbl">Goal <span class="sub">— what should Claude do?</span></label><MicButton onappend={(t) => (goal = (goal ? goal.trim() + ' ' : '') + t)} /></div>
       <textarea bind:this={box} bind:value={goal} rows="3" placeholder="e.g. add a dark-mode toggle to the settings page and wire it to the theme store" onkeydown={onKey}></textarea>
       <label class="lbl">Project</label>
-      {#if projects.length}
-        <select class="in" bind:value={cwd}>
-          {#each projects as p (p.path)}<option value={p.path}>{p.name}</option>{/each}
-        </select>
-      {:else}
-        <div class="empty">No projects yet — add one in Manage → Projects.</div>
+      <select class="in" bind:value={cwd}>
+        {#each projects as p (p.path)}<option value={p.path}>{p.name}</option>{/each}
+        <option value={NEW}>＋ New project…</option>
+      </select>
+      {#if creating}
+        <div class="np">
+          <input class="in" placeholder="project name, e.g. invoice-bot" bind:value={npName} aria-label="New project name" />
+          <div class="nprow">
+            <input class="in" placeholder="parent folder" bind:value={npParent} list="np-parents" aria-label="Parent folder" />
+            <datalist id="np-parents">{#each parents as p (p)}<option value={p}></option>{/each}</datalist>
+            <button class="mini" onclick={browseParent} title="Pick a parent folder">Browse…</button>
+          </div>
+          <label class="dsp"><input type="checkbox" bind:checked={npGit} /> <span>git init + README</span></label>
+          <div class="empty">Created when you Launch or Queue{npOk ? `: ${npParent.replace(/[\\/]+$/, '')}${npParent.includes('/') && !npParent.includes('\\') ? '/' : '\\'}${npName.trim()}` : ''}. It appears in every project list right away.</div>
+        </div>
       {/if}
       {#if dispatchOn}
         <label class="dsp"><input type="checkbox" bind:checked={forceTerminal} /> Open a terminal window instead <span class="dspdim">(dispatch is ON — default runs inside the bridge: instant replies, Allow/Deny permission buttons)</span></label>
@@ -130,8 +171,8 @@
     </div>
     <div class="ft">
       <span class="hint">{dispatchOn && !forceTerminal ? 'Dispatches a bridge-hosted session working on the goal (blank goal = terminal session).' : 'Opens a new Claude session in that project, working on the goal. (Blank goal = just start a session.)'}</span>
-      <button class="go ghost" disabled={busy || !cwd} onclick={queueIt} title="Add to the task queue — starts when a slot is free instead of right now">📋 Queue</button>
-      <button class="go" disabled={busy || !cwd} onclick={launch}>{busy ? 'Launching…' : 'Launch ↵'}</button>
+      <button class="go ghost" disabled={busy || !cwd || (creating && !npOk)} onclick={queueIt} title="Add to the task queue — starts when a slot is free instead of right now">📋 Queue</button>
+      <button class="go" disabled={busy || !cwd || (creating && !npOk)} onclick={launch}>{busy ? (creating ? 'Creating…' : 'Launching…') : (creating ? 'Create + Launch ↵' : 'Launch ↵')}</button>
     </div>
   </div>
 {/if}
@@ -160,6 +201,9 @@
     border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); color: var(--color-text-primary); box-sizing: border-box; width: 100%; }
   textarea { resize: vertical; line-height: 1.4; }
   .empty { font-size: 11px; color: var(--color-text-tertiary); padding: 6px 0; }
+  .np { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 0.5px dashed var(--color-border-secondary); border-radius: var(--border-radius-md); }
+  .nprow { display: flex; gap: 6px; align-items: center; }
+  .nprow .in { flex: 1 1 auto; min-width: 0; }
   .res { font-size: 11px; font-weight: 600; color: #10B981; }
   .dsp { display: flex; align-items: baseline; gap: 6px; font-size: 11px; color: var(--color-text-secondary); cursor: pointer; margin-top: 2px; }
   .dspdim { font-size: 10px; color: var(--color-text-tertiary); }

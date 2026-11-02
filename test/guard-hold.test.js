@@ -39,7 +39,7 @@ describe('danger guard hold', () => {
     port = await freePort(); const dir = tmp();
     child = spawn(process.execPath, [path.join(__dirname, '..', 'bridge', 'server.js'), '--port', String(port)], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, AOC_QUEUE_FILE: path.join(dir, 'q.json'), AOC_CONFIG_FILE: path.join(dir, 'aoc-config.json'), GANDER_SETTINGS: path.join(dir, 'settings.json'), GANDER_NO_OPEN: '1' },
+      env: { ...process.env, AOC_QUEUE_FILE: path.join(dir, 'q.json'), AOC_CONFIG_FILE: path.join(dir, 'aoc-config.json'), AOC_PROJECTS_FILE: path.join(dir, 'aoc-projects.json'), GANDER_SETTINGS: path.join(dir, 'settings.json'), GANDER_NO_OPEN: '1' },
     });
     child.stdout.on('data', (d) => (out += d)); child.stderr.on('data', (d) => (out += d));
     await waitUp(port);

@@ -1,5 +1,6 @@
-<h1 align="center">Gander: the control room for Claude Code agents</h1>
+<h1 align="center">Gander: a dashboard, GUI and cost monitor for Claude Code agents</h1>
 <p align="center"><strong>See every session on one floor. Get pinged the moment one needs you, even on your phone. Know what it all costs. Stop a bad command before it runs.</strong></p>
+<p align="center">A free, local <strong>web user interface for Claude Code</strong>: live monitoring of sessions and sub-agents, phone, Telegram and Slack alerts, cost tracking per session and project, a danger guard for destructive commands, a task queue, and an MCP connector for claude.ai. Zero-dependency Node, MIT, Windows, macOS and Linux.</p>
 
 <p align="center"><img src="docs/demo.webp" alt="Gander's office floor: each Claude Code session is a pixel-art goose that acts out what it is doing" width="820" /></p>
 <p align="center"><em>Each goose is a Claude Code session. Thinking, coding, spawning a sub-agent, waiting on you, erroring, done. Live.</em></p>
@@ -12,6 +13,8 @@
 </p>
 
 ## The problem it solves
+
+<!-- also searched as: Claude Code GUI, Claude Code dashboard, Claude Code monitor, Claude Code cost tracker, Claude Code web UI, AI agent observability -->
 
 You run three, five, ten Claude Code sessions. One of them has been waiting on a yes/no for forty minutes. Another just tried `git push --force`. A third is burning two dollars a minute re-reading the same file. You find out when you tab through the terminals, if you find out at all.
 
@@ -75,6 +78,7 @@ The short list. The long one, with every detail, is [docs/FEATURES.md](docs/FEAT
 - **📊 Agent scorecards**: per sub-agent type, its runs, average cost and time, and error rate, so you can see which agents are worth using.
 - **🔎 Spend forensics** — where your tokens went and whether it shipped: a *shipped %* (spend that landed a commit vs. exploratory), spend by activity, edit one-shot rate + cost-per-edit, and a waste scan (files re-read many times, unused MCP servers). Deterministic — no model calls.
 - **⏪ Session replay** — scrub any session's timeline: what ran when, with cumulative tokens/cost at every moment. Turn it into a **🎬 clip** (an auto-playing page to screen-record) or a **📄 runbook** (the steps that worked, the files changed and how it was verified, ready to hand to whoever implements the fix). **⑂ Fork** any session to try another direction without losing the original.
+- **＋ New task, into a new project**: pick **＋ New project…**, name it, choose the parent folder, and Gander creates the folder, runs git init and starts the session there.
 - **📋 Task queue · 📰 Ship digest · Routines** — line up goals per project, each showing **what it cost, across every attempt**: **⎇ worktree isolation** (parallel tasks in one project), a **🧪 test gate** (only green branches merge), a **👀 review-before-merge** hold (diff + approve / request changes from the rail), `then:` chaining, a **✓ definition of done**, **⊘ competing candidates** (fan a hard goal into N attempts, pick the winner), and it **holds while your plan is rate-limited**. Plus the ship digest and headless morning briefings.
 - **Projects control center** — skills, agents, commands, hooks, MCP, `settings.json`, git status/commit/push — for every project, in one place.
 - **Tune + Skills usage** — deterministic mining of your own transcripts: your prompting "turn tax" with copy-paste fixes, and which skills actually get used (never-used = context dead weight).
@@ -153,6 +157,10 @@ Node 18 or newer. **On macOS or Linux? Please open an issue for anything in the 
 ## Support
 
 Gander is free and always will be. If it saves you time (or money), you can [**buy me a coffee** ☕](https://www.paypal.com/ncp/payment/G8NNLNUHD6SFW) — and a ⭐ on the repo genuinely helps.
+
+## Searching for this?
+
+People find Gander by many names: a **Claude Code GUI**, a **Claude Code dashboard**, a **Claude Code monitor**, a **Claude Code cost tracker**, a **web UI for Claude Code**, **sub-agent monitoring**, or **AI coding agent observability**. It is all of those, and it stays free.
 
 ## License
 

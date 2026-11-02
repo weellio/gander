@@ -2907,6 +2907,19 @@ Allow / Deny it in the dashboard rail.`);
     return sendJson(res, 200, { roots: projects.getConfig().roots, projects: uniq, muted: [...muted] });
   }
 
+  // ＋ New project (from the New-task dialog): make the folder, git init, README, register it.
+  if (url === '/api/projects/parents' && req.method === 'GET') {
+    return sendJson(res, 200, { parents: projects.parentFolders().slice(0, 12) });
+  }
+  if (url === '/api/projects/create' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    const runGit = (argv, cwd) => { try { const r = require('child_process').spawnSync(argv[0], argv.slice(1), { cwd, windowsHide: true, stdio: 'ignore', timeout: 20000 }); return r.status === 0; } catch (_) { return false; } };
+    const r = projects.createProject({ parent: body.parent, name: body.name, git: body.git !== false, readme: body.readme !== false }, runGit);
+    if (r.error) return sendJson(res, 400, r);
+    console.log(`[projects] created ${r.cwd}${r.git ? ' (git init)' : ''}`);
+    return sendJson(res, 200, r);
+  }
   if (url === '/api/projects/roots' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || !body.path) return sendJson(res, 400, { error: 'path required' });
