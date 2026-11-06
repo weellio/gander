@@ -13,7 +13,8 @@
   pinch-and-drag mess. This page is the opposite: one column, thumb-sized
   buttons, and only the things you would actually want to do while away from
   the desk — answer a permission prompt, approve a held branch, reply to a
-  session that stopped on a question.
+  session that stopped on a question — and, since the Floor section, see every
+  session with how long it has been idle and nudge the quiet ones.
 
   Deliberately a plain static file: no build step, no framework, no CDN. It is
   copied into dashboard/dist by Vite and served by the bridge, so it works on a
@@ -82,6 +83,12 @@
   }
   .card.attn { border-left: 4px solid var(--warn); }
   .card.err  { border-left: 4px solid var(--bad); }
+  .card.idle { border-left: 4px solid var(--dim); }
+  .card.busy { border-left: 4px solid var(--ok); }
+  .st { display: inline-block; font-size: 12px; font-weight: 650; letter-spacing: .4px; text-transform: uppercase; padding: 1px 7px; border-radius: 999px; background: var(--card2); border: 1px solid var(--line); color: var(--dim); vertical-align: 2px; margin-left: 6px; }
+  .st.idle { color: var(--fg); }
+  .st.busy { color: var(--ok); border-color: #1c6b3c; }
+  .st.attn { color: var(--warn); border-color: var(--warn); }
   .proj { font-weight: 650; font-size: 16px; word-break: break-word; }
   .meta { color: var(--dim); font-size: 14px; margin-top: 3px; word-break: break-word; }
   .tool {
@@ -215,6 +222,8 @@
   var lastOk = 0;
   var busy = {};          // key -> true while an action is in flight
   var replyFor = null;    // sessionId whose reply box is open
+  var pokeFor = null;     // sessionId whose nudge box is open (Floor section)
+  var DEFAULT_POKE = 'Continue with the current task. If it is finished, say what is left to do and what you need from me.';
   var POLL_MS = 4000;
 
   function render() {
@@ -229,7 +238,10 @@
 
     // chips
     var chips = [];
-    if (data.running) chips.push('<span class="chip">' + plural(data.running, 'running', 'running') + '</span>');
+    var fs = data.floorSummary || null;
+    if (fs && fs.working) chips.push('<span class="chip">' + plural(fs.working, 'session working', 'sessions working') + '</span>');
+    if (fs && fs.idle) chips.push('<span class="chip">' + plural(fs.idle, 'idle', 'idle') + '</span>');
+    if (data.running) chips.push('<span class="chip">' + plural(data.running, 'task running', 'tasks running') + '</span>');
     if (data.queued) chips.push('<span class="chip">' + plural(data.queued, 'queued', 'queued') + '</span>');
     if (data.review) chips.push('<span class="chip">' + plural(data.review, 'in review', 'in review') + '</span>');
     if (data.escalations) chips.push('<span class="chip">' + plural(data.escalations, 'escalation', 'escalations') + '</span>');
@@ -323,6 +335,47 @@
       });
     }
 
+    // ── the whole floor: every session, how long idle, and a Nudge for the quiet ones ──
+    var fl = data.floor || [];
+    html += '<h2>Floor <span class="count">' + fl.length + '</span></h2>';
+    if (!fl.length) {
+      html += '<div class="empty">No session is open.</div>';
+    } else {
+      fl.forEach(function (r) {
+        var cls = r.needsYou ? (r.state === 'error' ? 'err' : 'attn') : r.working ? 'busy' : 'idle';
+        var stCls = r.needsYou ? 'attn' : r.working ? 'busy' : 'idle';
+        var stTxt = r.working ? r.state : r.state === 'awaiting' ? 'waiting' : r.state === 'error' ? 'error' : 'idle ' + (r.idleFor || '');
+        var meta = [];
+        if (r.project && r.project !== r.name) meta.push(r.project);
+        if (r.costUSD != null) meta.push('$' + Number(r.costUSD).toFixed(2));
+        if (r.ctxPct != null) meta.push(r.ctxPct + '% context');
+        if (r.machine) meta.push('on ' + r.machine);
+        var open = pokeFor === r.sessionId;
+        var k = 'poke:' + r.sessionId;
+        var d = busy[k] ? ' disabled' : '';
+        html += '<div class="card ' + cls + '">' +
+          '<div class="proj">' + esc(r.name || 'session') + '<span class="st ' + stCls + '">' + esc(stTxt) + '</span></div>' +
+          (meta.length ? '<div class="meta">' + esc(meta.join(' · ')) + '</div>' : '') +
+          (r.last ? '<div class="tool">' + esc(clip(r.last, 220)) + '</div>' : (r.goal ? '<div class="tool">' + esc(clip(r.goal, 220)) + '</div>' : ''));
+        if (!r.canPoke) {
+          html += '<div class="meta" style="margin-top:10px">' + (r.desktop ? 'view-only (Claude Desktop)' : r.machine ? 'reply from that machine\'s dashboard' : 'no session id') + '</div>';
+        } else if (!open) {
+          html += '<div class="row">' +
+            (r.working ? '<button class="flat" data-act="poke-open" data-sid="' + esc(r.sessionId) + '">Message…</button>'
+                       : '<button class="go" data-act="poke-now" data-sid="' + esc(r.sessionId) + '"' + d + '>Nudge: continue</button>' +
+                         '<button class="flat" data-act="poke-open" data-sid="' + esc(r.sessionId) + '">Say something…</button>') +
+            '</div>';
+        } else {
+          html += '<textarea id="pokeText" placeholder="What should it do?"></textarea>' +
+            '<div class="row">' +
+              '<button class="go" data-act="poke-send" data-sid="' + esc(r.sessionId) + '"' + d + '>Send</button>' +
+              '<button class="flat" data-act="poke-close">Cancel</button>' +
+            '</div>';
+        }
+        html += '</div>';
+      });
+    }
+
     $('sections').innerHTML = html;
 
     // keep focus/text when the poll re-renders underneath an open reply box
@@ -330,9 +383,14 @@
       var ta = $('say');
       if (ta) ta.value = pendingText;
     }
+    if (pokeFor && pokeText) {
+      var tp = $('pokeText');
+      if (tp) tp.value = pokeText;
+    }
   }
 
   var pendingText = '';
+  var pokeText = '';
 
   // ── actions ───────────────────────────────────────────────────────────────
   document.addEventListener('click', function (ev) {
@@ -348,6 +406,29 @@
       return;
     }
     if (act === 'close') { replyFor = null; pendingText = ''; render(); return; }
+
+    // Floor: nudge an idle session (one tap = the default "continue" line) or say something
+    if (act === 'poke-open') {
+      pokeFor = b.getAttribute('data-sid'); pokeText = ''; render();
+      var tp0 = $('pokeText'); if (tp0) tp0.focus();
+      return;
+    }
+    if (act === 'poke-close') { pokeFor = null; pokeText = ''; render(); return; }
+    if (act === 'poke-now' || act === 'poke-send') {
+      var psid = b.getAttribute('data-sid');
+      var ptext = act === 'poke-now' ? DEFAULT_POKE : (($('pokeText') && $('pokeText').value.trim()) || '');
+      if (!ptext) { toast('Nothing to send', true); return; }
+      var pkk = 'poke:' + psid;
+      busy[pkk] = true; pokeText = ptext; render();
+      api('/api/poke', { method: 'POST', body: { sessionId: psid, text: ptext } })
+        .then(function (r) {
+          if (r && r.error) toast(r.error, true);
+          else { toast(r && r.instant ? 'Delivered' : 'Queued — waking the session'); pokeFor = null; pokeText = ''; }
+        })
+        .catch(function (e) { toast(e.message, true); })
+        .then(function () { delete busy[pkk]; poll(); });
+      return;
+    }
 
     if (act === 'allow' || act === 'deny') {
       var rid = b.getAttribute('data-rid'), sid = b.getAttribute('data-sid');
@@ -397,6 +478,7 @@
 
   document.addEventListener('input', function (ev) {
     if (ev.target && ev.target.id === 'say') pendingText = ev.target.value;
+    if (ev.target && ev.target.id === 'pokeText') pokeText = ev.target.value;
   });
 
   // ── polling ───────────────────────────────────────────────────────────────

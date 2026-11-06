@@ -6,7 +6,7 @@ There are two ways to use Gander away from the desk. This guide covers getting t
 | --- | --- | --- |
 | Built for | a thumb, one-handed | a desk |
 | Shows | what needs you, and nothing else | the whole floor |
-| You can | answer permission prompts, approve held branches, reply to a stuck session | everything |
+| You can | see every session with its idle time, nudge the quiet ones, answer permission prompts, approve held branches, reply to a stuck session | everything |
 | On a phone | the point | pinch-and-drag; the floor is not responsive |
 
 **Start with `/phone`.** It is a plain page that polls a single small endpoint, so it works on a weak signal and stops polling the moment you pocket the phone.
@@ -53,6 +53,12 @@ node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
    The `?token=` is only needed once — it sets the cookie.
 5. **Add to home screen** (steps below). Thanks to the PWA manifest it installs as a real app — its own icon, standalone window, live floor in your pocket.
 
+## Easiest: the phone console through the connector tunnel
+
+If you have switched on **Settings → 🔌 Claude connector → Connect to claude.ai**, the bridge already runs a cloudflared tunnel. Tick **Settings → Advanced → 📱 Phone console → Reachable through the connector tunnel**, set an **access token** (and restart the bridge once if it was blank), then **copy link**: the address comes with the token on it. Open it on the phone once, add to home screen, done. Nothing to install on the phone, works on any network.
+
+What passes through: `/phone` and the few calls it makes (the floor, permissions, held branches, replies, pokes). The full dashboard, the hooks and every config route still answer loopback only, and every tunnelled call must carry the token. The quick tunnel's hostname changes when it restarts; **Fixed address** in the connector block (a Cloudflare named tunnel) makes it permanent. Prefer Tailscale if you would rather nothing of yours were on the public internet at all.
+
 ## Alternative: cloudflared quick tunnel
 
 No accounts on the phone, works from any network:
@@ -81,6 +87,7 @@ What you get:
 - **Permission prompts**: the tool, the exact command, and **Allow** / **Deny**
 - **Held branches**: **Approve & merge** or **Request changes**
 - **Stuck sessions**: what it asked, and a box to answer it
+- **The Floor**: every open session with its state, **how long it has been idle**, cost, context and last line, idle ones longest-first. **Nudge: continue** wakes an idle session with one tap; **Say something…** sends your own words; a busy session takes a **Message…** for its next turn
 - **Plan usage**: your 5-hour and 7-day percentages, when the status line has reported them
 
 It polls one small endpoint every 4 seconds and stops entirely when the page is hidden.
@@ -98,7 +105,7 @@ Works for `/phone` and for the full dashboard — whichever you opened.
 Don't. That exposes a tool that can run commands on your PC to the whole internet, guarded by one string. Tailscale gives you the same convenience with real encryption and device auth.
 
 **Does the phone get push notifications?**
-Use the built-in **Telegram alerts** for that — the bridge pings you when a session needs you, and you can reply or `/stop` right from the chat (see [INSTALL.md](INSTALL.md)). The PWA is the other half: the **live floor** in your pocket, where you can read any agent's thread, reply, and **Allow / Deny** permission prompts.
+Use the built-in **Telegram alerts** for that — the bridge pings you when a session needs you (and, with the 💤 idle ping on, when one has sat idle for N minutes), and you can reply, `/status` the whole floor, `/poke project` or `/stop` right from the chat (see [INSTALL.md](INSTALL.md)). The PWA is the other half: the **live floor** in your pocket, where you can read any agent's thread, reply, and **Allow / Deny** permission prompts.
 
 **My phone connects but the tiles never load.**
 The dashboard streams over a WebSocket to the same host/port — if the page loads, the socket should too. Check that you kept the `?token=` on the very first load (the cookie is what authorizes the socket), and that the bridge was restarted after editing `aoc-config.json`.

@@ -105,7 +105,7 @@
     mdBusy = false;
   }
 
-  // ── Claude connector: the bridge as a read-only MCP server (/mcp) for claude.ai, Claude Desktop and Claude Code,
+  // ── Claude connector: the bridge as an MCP server (/mcp; reads + one poke tool) for claude.ai, Claude Desktop and Claude Code,
   //    plus the dashboard data pack a person attaches to a Claude Dashboard. ──
   let mcOpen = $state(false); let mc = $state(null); let mcStatus = $state(''); let mcBusy = $state(false); let mcShowTok = $state(false);
   async function loadMcp() { try { const j = await (await fetch('/api/mcp-config')).json(); mc = j && !j.error ? j : null; if (mc && mc.stable && mc.stable.hostname && !cfHost) cfHost = mc.stable.hostname; } catch (_) { mc = null; } }
@@ -150,7 +150,18 @@
   let advTgTok = $state({ set: false, hint: '' }), advLic = $state({ set: false, hint: '' }), advAcc = $state({ set: false, hint: '' });
   let advTgTokIn = $state(''), advLicIn = $state(''), advAccIn = $state('');
   let advClear = $state({ telegramReplyToken: false, license: false, accessToken: false });
-  let advPhone = $state({ remote: false, tokenSet: false, urls: [], port: 0 });
+  let advPhone = $state({ remote: false, tokenSet: false, urls: [], port: 0, viaTunnel: false, tunnelUrl: '' });
+  let advPhoneTunnel = $state(false); let phoneLinkStatus = $state('');
+  async function copyPhoneLink(base) {
+    phoneLinkStatus = '…';
+    try {
+      const j = await (await fetch('/api/phone-link', { headers: base ? { 'X-Gander-Base': base } : {} })).json();
+      if (!j.url) { phoneLinkStatus = j.reason || 'no link'; return; }
+      await navigator.clipboard.writeText(j.url);
+      phoneLinkStatus = '✓ copied with the token — paste it into the phone browser once, then bookmark';
+    } catch (_) { phoneLinkStatus = 'copy failed'; }
+    setTimeout(() => (phoneLinkStatus = ''), 6000);
+  }
   let phoneCopied = $state('');
   async function copyPhone(u) {
     try { await navigator.clipboard.writeText(u); phoneCopied = u; setTimeout(() => (phoneCopied = ''), 1600); } catch (_) {}
@@ -170,7 +181,8 @@
     advTestRows = Object.entries(j.testCmds || {}).map(([project, cmd]) => ({ project, cmd }));
     advTgTok = j.telegramReplyToken || { set: false, hint: '' }; advLic = j.license || { set: false, hint: '' }; advAcc = j.accessToken || { set: false, hint: '' };
     advTgTokIn = ''; advLicIn = ''; advAccIn = ''; advClear = { telegramReplyToken: false, license: false, accessToken: false };
-    advPhone = j.phone || { remote: false, tokenSet: false, urls: [], port: 0 };
+    advPhone = j.phone || { remote: false, tokenSet: false, urls: [], port: 0, viaTunnel: false, tunnelUrl: '' };
+    advPhoneTunnel = !!j.phoneViaTunnel;
     if (j.quietHours) quiet = { enabled: !!j.quietHours.enabled, start: j.quietHours.start || '23:00', end: j.quietHours.end || '08:00', critical: Array.isArray(j.quietHours.critical) ? j.quietHours.critical : ['runaway', 'danger'] };
     advRestart = !!j.restartNeeded;
   }
@@ -191,6 +203,7 @@
       lessonMinCount: Math.max(2, Number(adv.lessonMinCount) || 3),
       ollamaUrl: String(adv.ollamaUrl || '').trim(), lmstudioUrl: String(adv.lmstudioUrl || '').trim(), gameNames: String(adv.gameNames || ''),
       quietHours: { enabled: !!quiet.enabled, start: quiet.start, end: quiet.end, critical: quiet.critical },
+      phoneViaTunnel: !!advPhoneTunnel,
     };
     // secrets: typed value → send it · "clear" pressed → send "" · otherwise omit (bridge keeps the stored one)
     if (advTgTokIn.trim()) body.telegramReplyToken = advTgTokIn.trim(); else if (advClear.telegramReplyToken) body.telegramReplyToken = '';
@@ -256,11 +269,11 @@
   function closePanel() { open = false; }
 
   // ── Telegram (global bridge config) ──
-  let tgCfg = $state(null); let tgToken = $state(''); let tgChat = $state(''); let tgStatus = $state(''); let tgOpen = $state(false);
-  async function loadTg() { try { const r = await fetch('/api/telegram-config'); tgCfg = await r.json(); tgChat = (tgCfg && tgCfg.chatId) || ''; } catch (_) {} }
+  let tgCfg = $state(null); let tgToken = $state(''); let tgChat = $state(''); let tgStatus = $state(''); let tgOpen = $state(false); let tgIdle = $state(0);
+  async function loadTg() { try { const r = await fetch('/api/telegram-config'); tgCfg = await r.json(); tgChat = (tgCfg && tgCfg.chatId) || ''; tgIdle = Number(tgCfg && tgCfg.idleAlertMinutes) || 0; } catch (_) {} }
   async function saveTg(test) {
     tgStatus = 'Saving…';
-    const body = { chatId: tgChat, test };
+    const body = { chatId: tgChat, test, idleAlertMinutes: Math.max(0, Number(tgIdle) || 0) };
     if (tgToken.trim()) body.token = tgToken.trim();
     const r = await post('/api/telegram-config', body);
     if (r && r.ok) { tgStatus = test ? (r.test === 'sent' ? '✓ Test message sent — check Telegram!' : 'Saved, but test failed — check token & chat id.') : '✓ Saved.'; tgToken = ''; loadTg(); }
@@ -412,12 +425,14 @@
         <div class="tg-form">
           <input class="in" placeholder={tgCfg && tgCfg.hasToken ? 'bot token (blank = keep current)' : 'bot token (from @BotFather)'} bind:value={tgToken} />
           <input class="in" placeholder="chat id (your numeric id)" bind:value={tgChat} />
+          <label class="cbrow">💤 Ping me when a session sits idle for <input class="in num wide-num" type="number" min="0" max="1440" step="5" bind:value={tgIdle} /> min (0 = off)</label>
           <div class="tg-btns">
             <button class="select" onclick={() => saveTg(false)}>Save</button>
             <button class="select" onclick={() => saveTg(true)}>Save &amp; Test</button>
           </div>
           {#if tgStatus}<div class="tg-status">{tgStatus}</div>{/if}
           <div class="tg-hint">Make a bot with @BotFather; get your chat id from @userinfobot. Applies live — no restart.</div>
+          <div class="tg-hint">From the chat: <code>/status</code> shows every session with its idle time and last line · <code>/poke project</code> wakes an idle one (add your own words after the name) · <code>project: your message</code> sends text to it · <code>/task project goal</code> queues work · <code>/queue</code> · <code>/stop</code> · <code>/help</code>. The idle ping is once per idle stretch, obeys quiet hours, and you can reply to it directly.</div>
         </div>
       {/if}
     </div>
@@ -680,9 +695,9 @@
               <button class="mini" onclick={() => loadMcp()} title="refresh">⟳ refresh calls</button>
             {/if}
             <div class="tg-hint">
-              <b>{mc.tools} read-only tools</b> over {mc.datasets} datasets: sessions on the floor, spend by day / project / model, sub-agent scorecards, the queue, forensics. Once added, ask claude.ai for "a dashboard of my Claude Code spend by project this month" and the <b>Claude Dashboard</b> runs live queries on Gander, each chart citing its query.<br>
+              <b>{mc.tools} tools</b> over {mc.datasets} datasets: sessions on the floor, spend by day / project / model, sub-agent scorecards, the queue, forensics — plus <code>gander_floor</code> (every session with its idle time) and <code>gander_poke</code>, the one tool that acts: it sends a message into a session, so from the Claude app on your phone you can ask what is idle and tell it to carry on. Once added, ask claude.ai for "a dashboard of my Claude Code spend by project this month" and the <b>Claude Dashboard</b> runs live queries on Gander, each chart citing its query.<br>
               <b>Claude Code on this machine</b> needs no tunnel: <code>claude mcp add --transport http gander {mc.localUrl}</code>.<br>
-              The tunnel is a free cloudflared <i>quick tunnel</i> (no account; the bridge downloads cloudflared itself and restarts the tunnel whenever it or the bridge comes back). Its hostname changes on every start: Gander then posts the new address to the feed and a desktop alert so you can re-paste it. Everything behind it is read-only.
+              The tunnel is a free cloudflared <i>quick tunnel</i> (no account; the bridge downloads cloudflared itself and restarts the tunnel whenever it or the bridge comes back). Its hostname changes on every start: Gander then posts the new address to the feed and a desktop alert so you can re-paste it. Everything behind it reads, except gander_poke, which only ever sends text into one of your own sessions.
             </div>
             <div class="tg-hint">
               <b>No connector? Attach a file instead.</b> <a href="/api/datasets-pack" download>⬇ Dashboard data pack (JSON)</a> holds every dataset as rows; or one at a time as CSV:
@@ -767,8 +782,23 @@
           {#if advClear.accessToken}<div class="tg-status">Access token will be cleared on Save</div>{/if}
 
           <div class="adv-group">📱 Phone console</div>
-          <div class="tg-hint">A thumb-sized page for answering permission prompts, approving held branches and replying to a session that stopped on a question. Open it here to try it, or on a phone using one of the addresses below.</div>
+          <div class="tg-hint">A thumb-sized page: every session with how long it has been idle and a <b>Nudge</b> button, permission prompts with Allow / Deny, held branches, and a reply box for a session that stopped on a question. Open it here to try it, or on a phone using one of the addresses below.</div>
           <div class="tg-btns"><button class="select" onclick={() => window.open('/phone.html', '_blank', 'noopener')}>Open phone console</button></div>
+          <label class="cbrow"><input type="checkbox" bind:checked={advPhoneTunnel} /> Reachable through the 🔌 connector tunnel (phone page only; needs the access token)</label>
+          {#if advPhoneTunnel}
+            {#if !advPhone.tokenSet}
+              <div class="tg-hint adv-danger">Set an <b>access token</b> above and restart the bridge first — the tunnel is the public internet, and the token is the only lock.</div>
+            {:else if advPhone.tunnelUrl}
+              <div class="amb-fields">
+                <input class="in grow" type="text" readonly value={advPhone.tunnelUrl} />
+                <button class="mini" onclick={() => copyPhoneLink(advPhone.tunnelUrl)}>copy link</button>
+              </div>
+              <div class="tg-hint">Save, then open the copied link (it carries the token) on the phone once and add it to the home screen. The address changes whenever the quick tunnel restarts; <b>Fixed address</b> in the connector block stops that. Only <code>/phone</code> and the handful of calls it makes pass through — the dashboard, hooks and config stay local.</div>
+            {:else}
+              <div class="tg-hint">The connector tunnel is not running: switch on <b>🔌 Claude connector → Connect to claude.ai</b> below, then come back for the link.</div>
+            {/if}
+            {#if phoneLinkStatus}<div class="tg-status">{phoneLinkStatus}</div>{/if}
+          {/if}
           {#if !advPhone.remote}
             <div class="tg-hint adv-danger">Remote access is off, so only this machine can reach it. Tick <b>Allow remote</b> above (set an access token first) and restart the bridge.</div>
           {:else if !advPhone.tokenSet}
@@ -779,8 +809,10 @@
               <div class="amb-fields">
                 <input class="in grow" type="text" readonly value={u} />
                 <button class="mini" onclick={() => copyPhone(u)}>{phoneCopied === u ? 'copied' : 'copy'}</button>
+                <button class="mini" onclick={() => copyPhoneLink(u)}>+ token</button>
               </div>
             {/each}
+            {#if phoneLinkStatus && !advPhoneTunnel}<div class="tg-status">{phoneLinkStatus}</div>{/if}
           {:else}
             <div class="tg-hint">No LAN address found — the machine may be on VPN only. Tailscale works well here; see <b>docs/REMOTE.md</b>.</div>
           {/if}

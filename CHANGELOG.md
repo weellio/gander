@@ -2,6 +2,16 @@
 
 Gander uses calendar versions: `v<year>.<month>` for a monthly release, `v<year>.<month>.<n>` for a fix in between. Every entry below is a `feat:` or `fix:` commit on `main`.
 
+## Unreleased
+
+### Added
+- **The floor from anywhere**: `/status` and `/poke project` in Telegram and Slack, a Floor section with idle times and a Nudge button on the phone console, `gander_floor` + `gander_poke` on the connector, and a 💤 idle ping after N quiet minutes (reply-routable, quiet hours apply).
+- **Phone console through the connector tunnel**: opt-in, token required, phone paths only; Copy link hands over the address with the token.
+- **＋ New project…** in New task; README search terms; a Pages landing page.
+
+### Fixed
+- A call arriving through the tunnel or a reverse proxy now always counts as remote, even with remote access on.
+
 ## v2026.10 — 2026-10-14
 
 ### Added

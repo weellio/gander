@@ -28,6 +28,7 @@ const license = require('./license.js');
 const projects = require('./projects.js');
 const git = require('./git.js');
 const peers = require('./peers');        // Claude Code session registry + cross-session inbox delivery
+const floor = require('./floor');        // the floor at a glance: rows, Telegram text, /status + /poke, idle alerts
 const teams = require('./teams');        // Agent Teams files (~/.claude/teams + ~/.claude/tasks), experimental
 const codex = require('./codex');        // OpenAI Codex (CLI + Desktop) sessions, read from $CODEX_HOME
 const subagents = require('./subagents'); // sub-agent names + spend, read from ~/.claude/projects/**/subagents
@@ -199,7 +200,30 @@ datasets.init({
   priceFor: (m) => usage.rateFor(m, cfg.pricing || {}),
   feeds: (sid) => mod.forSession(sid),
 });
-const mcpRpc = mcp.createRpc(datasets.tools());
+// Two tools on top of the datasets: `gander_floor` (the snapshot with idle times)
+// and `gander_poke` — the one tool that ACTS: it sends a message into a session,
+// so "my api session has been idle an hour, tell it to continue" works from the
+// Claude app on a phone. Same token gate as every other remote call.
+const floorTools = [
+  {
+    name: 'gander_floor',
+    description: 'The floor right now: every open session with state, how long it has been idle, what it last said, spend, and whether it can be poked. Sorted: needs-you first, then idle (longest first), then busy. Use this to answer "what are my agents doing / is anything stuck?".',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    run: async () => { const rows = floorRows(); return { summary: floor.summary(rows), rows }; },
+  },
+  {
+    name: 'gander_poke',
+    description: 'Send a message into a session on the floor (wake an idle one, answer a question, redirect it). Name the session by project or tile name (or a session id); omit message to send the default "continue with the current task". Returns how it was delivered.',
+    inputSchema: { type: 'object', properties: { project: { type: 'string', description: 'project / tile name, or session id' }, message: { type: 'string', description: 'what to say; default = continue the current task' } }, required: ['project'], additionalProperties: false },
+    run: async (args) => {
+      const row = floor.findRow(floorRows(), args && args.project);
+      if (!row) return { error: `No session called "${args && args.project}". On the floor: ${floorRows().filter((r) => r.canPoke).map((r) => r.name).join(', ') || 'nothing'}` };
+      const r = await pokeSession(row.sessionId, (args && args.message) || floor.DEFAULT_POKE, 'connector');
+      return { ...r, session: row.name, sessionId: row.sessionId };
+    },
+  },
+];
+const mcpRpc = mcp.createRpc(datasets.tools().concat(floorTools));
 // Remote callers need the token, and only while the connector is switched on;
 // loopback callers (Claude Code / Desktop on this machine) always may.
 const mcpHandle = mcp.mount({ rpc: mcpRpc, getToken: () => (cfg.mcpEnabled && cfg.mcpToken ? String(cfg.mcpToken) : ''), readBody: (req) => readBody(req), sendJson: (res, code, obj) => sendJson(res, code, obj) });
@@ -246,6 +270,7 @@ function mcpConfigView() {
 // console flash); macOS/Linux uses the shell twin.
 const SCRIPTS_DIR = path.join(__dirname, '..', 'scripts');
 function runNudgeSweep() {
+  if (process.env.GANDER_NO_NUDGE) return;   // tests: never type into a real window
   try {
     if (process.platform === 'win32') {
       spawnSafe('wscript.exe', [path.join(SCRIPTS_DIR, 'nudge-idle-hidden.vbs'), '-OnlyPending'], { windowsHide: true });
@@ -486,7 +511,7 @@ function sendSlack(text) {
 
 // Alert markers → mirrored to Slack. Conversational Telegram replies (queue
 // confirmations, "no active session…") stay in the Telegram chat only.
-const ALERTY = /^[🔔⚠✅🛑💸⏱🛡]/u;
+const ALERTY = /^[🔔⚠✅🛑💸⏱🛡💤]/u;
 // 🌙 Quiet hours. Every outbound alert passes one of these gates; held ones are
 // counted so the "while you were away" card can say so. Conversational replies
 // (a Telegram answer to a command YOU just sent) are never held: they are not
@@ -505,6 +530,7 @@ function alertKind(text) {
   if (t.startsWith('🛡')) return 'danger';
   if (t.startsWith('⏱')) return 'limit';
   if (t.startsWith('✅')) return 'done';
+  if (t.startsWith('💤')) return 'idle';
   if (t.startsWith('🔔')) return /wants to run|permission/i.test(t) ? 'permission' : 'awaiting';
   if (t.startsWith('⚠')) return /same file|collision/i.test(t) ? 'collision' : 'error';
   return 'error';
@@ -573,6 +599,20 @@ function knownProjectNames(limit) {
 function handleTgMessage(m) {
   if (!m || !m.text || String(m.chat.id) !== String(tg.chat)) return;
   const text = m.text.trim();
+  // /status, /poke <project> [message], /help — the floor at a glance and the
+  // one-word way to make an idle session go (bridge/floor.js owns the grammar)
+  const fc = floor.parseCommand(text);
+  if (fc && fc.kind === 'status') { sendTelegram(floor.telegramText(floorRows(), { dashUrl: tg.dash })); return; }
+  if (fc && fc.kind === 'help') { sendTelegram(floor.HELP); return; }
+  if (fc && fc.kind === 'poke') {
+    const rows = floorRows();
+    const row = fc.project ? floor.findRow(rows, fc.project) : (rows.find((r) => r.canPoke && !r.working) || null);
+    if (!row) { sendTelegram(fc.project ? `No session called “${fc.project}”.\nOn the floor: ${rows.filter((r) => r.canPoke).map((r) => r.name).join(', ') || 'nothing'}` : 'Nothing idle to poke.'); return; }
+    pokeSession(row.sessionId, fc.message || floor.DEFAULT_POKE, 'telegram').then((r) => {
+      sendTelegram(r.ok ? `👉 Poked <b>${row.name}</b>${r.via === 'queued' ? ' — message queued, waking its window' : r.instant ? ' — delivered' : ''}.` : `Could not poke <b>${row.name}</b>: ${r.error || 'unknown error'}`, (mid) => { if (mid) alertMsgMap.set(mid, row.sessionId); });
+    });
+    return;
+  }
   // /task <project> <goal> — queue new work from the phone; the bridge starts it
   // the moment a slot frees, exactly like the 📋 panel
   const taskCmd = text.match(/^\/task\s+(\S+)\s+([\s\S]+)$/i);
@@ -2196,6 +2236,48 @@ function isStalled(a, now) {
   return ASKY.test(String(a.lastMessage).slice(-400));
 }
 
+// The floor at a glance (bridge/floor.js): what the phone page, /status and the
+// connector's gander_floor all read.
+function floorRows() { return floor.rows(Array.from(agents.values()), Date.now(), { isStalled }); }
+
+// Send text into a session from afar and make sure it gets there: a hosted
+// (Dispatch) session over stdin, a terminal / VS Code session straight into its
+// inbox, anything else through the queued channel PLUS a wake sweep — the point
+// of a poke is an idle window, and an idle window never fires the Stop hook that
+// would otherwise collect the message.
+async function pokeSession(sessionId, text, from) {
+  const sid = String(sessionId || '');
+  if (!/^[\w-]+$/.test(sid)) return { error: 'bad session id' };
+  const msg = String(text || '').trim() || floor.DEFAULT_POKE;
+  const k = 'sess:' + sid;
+  if (awaitTimers.has(k)) { clearTimeout(awaitTimers.get(k)); awaitTimers.delete(k); }
+  if (dispatch.isHosted(sid)) { const r = dispatch.send(sid, msg); if (r.ok) console.log(`[poke←${from}] ${sid} via dispatch`); return r.ok ? { ...r, instant: true, via: 'dispatch' } : r; }
+  if (cfg.inboxDeliver !== false && peers.canDeliver(sid)) {
+    const d = await peers.deliver(sid, msg, { fromName: 'gander' });
+    if (d.ok) { console.log(`[poke←${from}] ${sid} via inbox`); return { ok: true, instant: true, via: 'inbox' }; }
+  }
+  const r = queueCommand(sid, 'message', msg);
+  if (r.error) return r;
+  console.log(`[poke←${from}] ${sid} queued + wake sweep`);
+  runNudgeSweep();
+  return { ok: true, instant: false, via: 'queued' };
+}
+
+// 💤 Idle alerts: a Telegram/Slack ping when a session has sat idle for
+// cfg.idleAlertMinutes (0 = off), once per idle stretch, reply-routable so the
+// answer goes to that session. Quiet hours apply (kind 'idle').
+const idleSeen = new Map();
+setInterval(() => {
+  try {
+    const minutes = Number(cfg.idleAlertMinutes) || 0;
+    if (!minutes) { if (idleSeen.size) idleSeen.clear(); return; }
+    for (const r of floor.idleDue(floorRows(), minutes, idleSeen)) {
+      console.log(`[idle] ${r.name} idle ${r.idleFor}`);
+      sendTelegram(floor.idleAlertText(r, { dashUrl: tg.dash }), (mid) => { if (mid) alertMsgMap.set(mid, r.sessionId); });
+    }
+  } catch (_) {}
+}, 60000).unref();
+
 function snapshot() {
   const list = Array.from(agents.values());
   const now = Date.now();
@@ -2607,8 +2689,14 @@ function phoneAccess() {
       }
     }
   } catch (_) {}
-  return { remote: !!ALLOW_REMOTE, tokenSet: !!ACCESS_TOKEN, urls: urls.slice(0, 6), port: argPort };
+  let tunnelUrl = '';
+  try { const t = tunnel.status(); if (t && t.url) tunnelUrl = t.url.replace(/\/$/, '') + '/phone'; } catch (_) {}
+  return { remote: !!ALLOW_REMOTE, tokenSet: !!ACCESS_TOKEN, urls: urls.slice(0, 6), port: argPort, viaTunnel: !!cfg.phoneViaTunnel, tunnelUrl, tokenNeedsRestart: !!(cfg.accessToken && !ACCESS_TOKEN) };
 }
+
+// What the phone console needs, and nothing else: what the tunnel may carry when
+// `phoneViaTunnel` is on (the full dashboard, hooks and config stay loopback-only).
+const PHONE_PATHS = new Set(['/phone', '/phone.html', '/api/phone', '/api/floor', '/api/poke', '/api/permissions/answer', '/api/queue/action', '/api/resume-reply', '/manifest.webmanifest']);
 
 const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
@@ -2622,7 +2710,13 @@ const server = http.createServer(async (req, res) => {
   // non-loopback Host header (defeats DNS-rebinding) and any cross-origin request
   // (defeats a malicious web page CSRFing the bridge). No Origin = server-side hook
   // POSTs, which are allowed.
-  if (!ALLOW_REMOTE) {
+  // A call through the connector tunnel (or any reverse proxy) lands on loopback
+  // wearing proxy headers: treat it as remote, never as the frictionless local case.
+  const proxied = !!(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']);
+  // Opt-in: the phone console through the same tunnel, token required, these paths only.
+  const phonePath = PHONE_PATHS.has(url) || /^\/(favicon|icon|gander)\.png$/.test(url);
+  const phoneViaTunnel = proxied && phonePath && !!cfg.phoneViaTunnel && !!ACCESS_TOKEN;
+  if (!ALLOW_REMOTE && !phoneViaTunnel) {
     const host = String(req.headers.host || '');
     if (!/^(localhost|127\.0\.0\.1|\[::1\]|::1)(:\d+)?$/i.test(host)) { res.writeHead(403); res.end('forbidden'); return; }
     const origin = req.headers.origin;
@@ -2634,9 +2728,9 @@ const server = http.createServer(async (req, res) => {
   // `X-Gander-Token` header, `?token=` on first load (sets a cookie), or the
   // cookie itself. Loopback stays frictionless so local hooks/dashboard never
   // need it. See docs/REMOTE.md for the phone/Tailscale recipe.
-  if (ALLOW_REMOTE && ACCESS_TOKEN) {
+  if ((ALLOW_REMOTE || phoneViaTunnel) && ACCESS_TOKEN) {
     const ra = String(req.socket.remoteAddress || '');
-    const loopback = ra === '127.0.0.1' || ra === '::1' || ra === '::ffff:127.0.0.1';
+    const loopback = !proxied && (ra === '127.0.0.1' || ra === '::1' || ra === '::ffff:127.0.0.1');
     if (!loopback) {
       const u = new URL(req.url, 'http://x');
       const presented = [u.searchParams.get('token') || '', String(req.headers['x-gander-token'] || ''), (/(?:^|;\s*)aoc_token=([^;]+)/.exec(String(req.headers.cookie || '')) || [])[1] || ''];
@@ -3237,7 +3331,9 @@ Allow / Deny it in the dashboard rail.`);
     }
 
     const esc2 = board.openEscalations().length, plans2 = board.pendingPlans().length;
+    const floorList = floorRows();
     return sendJson(res, 200, {
+      floor: floorList.slice(0, 40), floorSummary: floor.summary(floorList),
       needsYou: attention.length + esc2 + plans2 + review,
       queued, running, review, paused, escalations: esc2, plans: plans2,
       permissions, reviews, attention: attention.slice(0, 30),
@@ -3245,6 +3341,22 @@ Allow / Deny it in the dashboard rail.`);
         ? { fiveHour: planLimits.fiveHour, sevenDay: planLimits.sevenDay } : null,
       at: now,
     });
+  }
+
+  // The floor at a glance, and a poke: what the phone page's Floor section and
+  // the Telegram /status + /poke commands use.
+  if (url === '/api/floor' && req.method === 'GET') {
+    const rows = floorRows();
+    return sendJson(res, 200, { summary: floor.summary(rows), rows, at: Date.now() });
+  }
+  if (url === '/api/poke' && req.method === 'POST') {
+    const body = await readBody(req);
+    if (!body) return sendJson(res, 400, { error: 'invalid JSON' });
+    let sid = String(body.sessionId || '');
+    if (!sid && body.project) { const row = floor.findRow(floorRows(), body.project); if (!row) return sendJson(res, 404, { error: `no session called "${body.project}"` }); sid = row.sessionId; }
+    if (!sid) return sendJson(res, 400, { error: 'sessionId or project required' });
+    const r = await pokeSession(sid, body.text, 'phone');
+    return sendJson(res, r.error ? 400 : 200, r);
   }
 
   // Convenience: /phone → the phone console, so it can be typed on a keypad.
@@ -3789,10 +3901,20 @@ Allow / Deny it in the dashboard rail.`);
     telegramReplyToken: secretView(cfg.telegramReplyToken), license: secretView(cfg.license),
     allowRemote: !!cfg.allowRemote, accessToken: secretView(cfg.accessToken),
     fleetIntervalMs: Number(cfg.fleet && cfg.fleet.intervalMs) || 5000,
-    phone: phoneAccess(),
+    phone: phoneAccess(), phoneViaTunnel: !!cfg.phoneViaTunnel,
     restartNeeded: !!restartNeeded,
   });
   if (url === '/api/app-config' && req.method === 'GET') return sendJson(res, 200, appConfigView(false));
+  // The phone link WITH the token, for the copy button in Settings (loopback only:
+  // a remote caller already holds the token, and the tunnel never carries this path).
+  if (url === '/api/phone-link' && req.method === 'GET') {
+    const ra = String(req.socket.remoteAddress || '');
+    if (req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || !(ra === '127.0.0.1' || ra === '::1' || ra === '::ffff:127.0.0.1')) return sendJson(res, 403, { error: 'local only' });
+    const pa = phoneAccess();
+    const base = String((req.headers['x-gander-base'] || '')) || pa.tunnelUrl || pa.urls[0] || '';
+    if (!base) return sendJson(res, 200, { url: '', reason: pa.viaTunnel ? 'the connector tunnel is not running' : 'no address: turn on remote access or the tunnel' });
+    return sendJson(res, 200, { url: base + (ACCESS_TOKEN ? '?token=' + encodeURIComponent(ACCESS_TOKEN) : ''), tokenSet: !!ACCESS_TOKEN });
+  }
   if (url === '/api/app-config' && req.method === 'POST') {
     const body = await readBody(req);
     if (!body || typeof body !== 'object') return sendJson(res, 400, { error: 'invalid JSON' });
@@ -3827,6 +3949,7 @@ Allow / Deny it in the dashboard rail.`);
     if (body.license !== undefined) { cfg.license = String(body.license || '').trim(); restartNeeded = true; }
     if (body.allowRemote !== undefined && !!body.allowRemote !== !!cfg.allowRemote) { cfg.allowRemote = !!body.allowRemote; restartNeeded = true; }
     if (body.accessToken !== undefined) { const v = String(body.accessToken || '').trim(); if (v !== String(cfg.accessToken || '')) { cfg.accessToken = v; restartNeeded = true; } }
+    if (body.phoneViaTunnel !== undefined) cfg.phoneViaTunnel = !!body.phoneViaTunnel;
     if (body.fleetIntervalMs !== undefined) {
       cfg.fleet = { ...(cfg.fleet || {}), peers: (cfg.fleet && cfg.fleet.peers) || [], intervalMs: num(body.fleetIntervalMs, 1000, 3600000, 5000) };
       try { fleet.configure(cfg.fleet); if (cfg.fleet.peers.length) fleet.start(); } catch (_) {}
@@ -3999,7 +4122,7 @@ Allow / Deny it in the dashboard rail.`);
   }
 
   if (url === '/api/telegram-config' && req.method === 'GET') {
-    return sendJson(res, 200, { configured: !!(tg.token && tg.chat), hasToken: !!tg.token, chatId: tg.chat, dashboardUrl: tg.dash });
+    return sendJson(res, 200, { configured: !!(tg.token && tg.chat), hasToken: !!tg.token, chatId: tg.chat, dashboardUrl: tg.dash, idleAlertMinutes: Number(cfg.idleAlertMinutes) || 0 });
   }
 
   if (url === '/api/telegram-config' && req.method === 'POST') {
@@ -4008,6 +4131,7 @@ Allow / Deny it in the dashboard rail.`);
     if (body.token !== undefined) { cfg.telegramToken = String(body.token).trim(); tg.token = cfg.telegramToken; }
     if (body.chatId !== undefined) { cfg.telegramChatId = String(body.chatId).trim(); tg.chat = cfg.telegramChatId; }
     if (body.dashboardUrl !== undefined) { cfg.dashboardUrl = String(body.dashboardUrl).trim(); tg.dash = cfg.dashboardUrl || tg.dash; }
+    if (body.idleAlertMinutes !== undefined) { cfg.idleAlertMinutes = Math.max(0, Math.min(1440, Number(body.idleAlertMinutes) || 0)); idleSeen.clear(); }
     saveConfig();
     startTelegramPolling();
     if (body.test && tg.token && tg.chat) {

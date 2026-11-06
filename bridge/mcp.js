@@ -1,5 +1,5 @@
 'use strict';
-// Gander as a connector: a read-only MCP server (Streamable HTTP, JSON-RPC 2.0)
+// Gander as a connector: an MCP server (Streamable HTTP, JSON-RPC 2.0)
 // served by the bridge at /mcp, so claude.ai, Claude Desktop and Claude Code can
 // query the dashboard's data — and a Claude Dashboard can run live queries on it.
 //
@@ -12,8 +12,9 @@
 //   2. A token guards every non-loopback call: `Authorization: Bearer <token>`
 //      (claude.ai's "fixed credentials") or the path form `/mcp/<token>` for
 //      clients that cannot set headers. Loopback callers need no token.
-//   3. Tools are read-only: nothing here starts, stops, replies to or edits a
-//      session; they read what the bridge already computes.
+//   3. Tools read what the bridge already computes, with one exception the
+//      bridge adds: gander_poke sends text into one of the person's own sessions
+//      (wake an idle one from a phone). Nothing starts, stops or edits config.
 
 const crypto = require('crypto');
 
