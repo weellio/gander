@@ -226,7 +226,7 @@ GET  /api/ambient-config  -> { enabled, events, colors, awaiting, error, runaway
 POST /api/ambient-config  -> { enabled?, <event>:{webhook,command,color,effect}, lifx? } | { test:<event>|"lifx", rule? } -> { ok, ... }   webhook / command / LIFX per state change
 
 # Notifications & chat
-GET  /api/telegram-config -> { configured, hasToken, chatId, dashboardUrl }
+GET  /api/telegram-config -> { configured, hasToken, chatId, dashboardUrl, link, idleAlertMinutes }
 POST /api/telegram-config -> { token?, chatId?, dashboardUrl?, test? } -> { ok, configured, test? }
 GET  /api/slack-config    -> { configured, url, hasAppToken, hasBotToken, channel, inbound }
 POST /api/slack-config    -> { url?, appToken?, botToken?, channel?, test? } -> { ok, configured, hasAppToken, hasBotToken, inbound }   webhook out + Socket Mode in

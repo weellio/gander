@@ -114,7 +114,8 @@ It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — 
 | `idleAlertMinutes` [0] | 💤 Telegram/Slack ping when a session has sat idle this long, once per idle stretch; 0 = off. |
 | `phoneViaTunnel` [false] | Serve `/phone` (and only its calls) through the connector's cloudflared tunnel; needs `accessToken`. |
 | `autoRetire` [true] · `retireDoneSec` [180] · `retireClosedSec` [60] · `retireIdleSec` [1500] · `retireStaleActiveSec` [1800] | How long tiles linger before clocking out: finished sub-agents, truly closed sessions, idle sessions, orphaned "active" tiles. |
-| `telegramToken` · `telegramChatId` · `telegramReplyToken` · `dashboardUrl` | Telegram (see above). |
+| `telegramToken` · `telegramChatId` · `telegramReplyToken` | Telegram (see above). |
+| `dashboardUrl` [blank] | The link Telegram/Slack messages carry. Blank = automatic: the phone page through the connector tunnel (token on the link), else the LAN phone page when remote access is on, else no link. A localhost URL is never sent: it is useless on a phone. |
 | `slackWebhook` · `slackAppToken` · `slackBotToken` · `slackChannel` | Slack (see above). |
 | `fleet` `{ peers, intervalMs }` | Fleet hub polling (see above). A Settings save keeps a hand-edited `intervalMs`. |
 | `pricing` · `testCmds` · `testCmd` · `allowRemote` · `accessToken` | See the rows above. |

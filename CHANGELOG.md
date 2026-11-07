@@ -11,6 +11,9 @@ Gander uses calendar versions: `v<year>.<month>` for a monthly release, `v<year>
 
 ### Fixed
 - A call arriving through the tunnel or a reverse proxy now always counts as remote, even with remote access on.
+- Telegram messages linked to `http://localhost:3131/`, useless on a phone. They now carry your own URL if set, else the phone page through the connector tunnel (token included), else the LAN phone page, else no link.
+- A Telegram message aimed at a session that has since closed now gets "that session is closed" plus who is on the floor, instead of queueing forever.
+- `Poke`, `status`, `help` work without the slash (phone keyboards capitalise; `/go` keeps its slash so "go ahead" stays a message).
 
 ## v2026.10 — 2026-10-14
 

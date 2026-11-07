@@ -95,13 +95,15 @@ function telegramText(list, opts = {}) {
 
 // The chat commands this module owns. Everything else (replies, /task, /queue,
 // /stop) stays with the bridge's handler.
+// Slash forms always; the bare words `status`, `floor`, `help`, `poke`, `nudge` too
+// (a phone keyboard capitalises them, and nobody sends a session the single word
+// "status"). `/go` keeps its slash: "go ahead and fix it" is a message, not a poke.
 function parseCommand(text) {
   const t = String(text || '').trim();
-  if (/^\/(status|floor|snap|s)\b/i.test(t)) return { kind: 'status' };
-  if (/^\/(help|start)\b/i.test(t)) return { kind: 'help' };
-  const m = /^\/(poke|nudge|go)\s+(\S+)(?:\s+([\s\S]+))?$/i.exec(t);
-  if (m) return { kind: 'poke', project: m[2], message: (m[3] || '').trim() };
-  if (/^\/(poke|nudge|go)\s*$/i.test(t)) return { kind: 'poke', project: '', message: '' };
+  if (/^\/(status|floor|snap|s)\b/i.test(t) || /^(status|floor)\s*$/i.test(t)) return { kind: 'status' };
+  if (/^\/(help|start)\b/i.test(t) || /^help\s*$/i.test(t)) return { kind: 'help' };
+  const m = /^(?:\/(?:poke|nudge|go)|poke|nudge)(?:\s+(\S+)(?:\s+([\s\S]+))?)?\s*$/i.exec(t);
+  if (m) return { kind: 'poke', project: m[1] || '', message: (m[2] || '').trim() };
   return null;
 }
 

@@ -269,11 +269,11 @@
   function closePanel() { open = false; }
 
   // ── Telegram (global bridge config) ──
-  let tgCfg = $state(null); let tgToken = $state(''); let tgChat = $state(''); let tgStatus = $state(''); let tgOpen = $state(false); let tgIdle = $state(0);
-  async function loadTg() { try { const r = await fetch('/api/telegram-config'); tgCfg = await r.json(); tgChat = (tgCfg && tgCfg.chatId) || ''; tgIdle = Number(tgCfg && tgCfg.idleAlertMinutes) || 0; } catch (_) {} }
+  let tgCfg = $state(null); let tgToken = $state(''); let tgChat = $state(''); let tgStatus = $state(''); let tgOpen = $state(false); let tgIdle = $state(0); let tgLink = $state('');
+  async function loadTg() { try { const r = await fetch('/api/telegram-config'); tgCfg = await r.json(); tgChat = (tgCfg && tgCfg.chatId) || ''; tgIdle = Number(tgCfg && tgCfg.idleAlertMinutes) || 0; tgLink = (tgCfg && tgCfg.dashboardUrl) || ''; } catch (_) {} }
   async function saveTg(test) {
     tgStatus = 'Saving…';
-    const body = { chatId: tgChat, test, idleAlertMinutes: Math.max(0, Number(tgIdle) || 0) };
+    const body = { chatId: tgChat, test, idleAlertMinutes: Math.max(0, Number(tgIdle) || 0), dashboardUrl: tgLink.trim() };
     if (tgToken.trim()) body.token = tgToken.trim();
     const r = await post('/api/telegram-config', body);
     if (r && r.ok) { tgStatus = test ? (r.test === 'sent' ? '✓ Test message sent — check Telegram!' : 'Saved, but test failed — check token & chat id.') : '✓ Saved.'; tgToken = ''; loadTg(); }
@@ -426,6 +426,12 @@
           <input class="in" placeholder={tgCfg && tgCfg.hasToken ? 'bot token (blank = keep current)' : 'bot token (from @BotFather)'} bind:value={tgToken} />
           <input class="in" placeholder="chat id (your numeric id)" bind:value={tgChat} />
           <label class="cbrow">💤 Ping me when a session sits idle for <input class="in num wide-num" type="number" min="0" max="1440" step="5" bind:value={tgIdle} /> min (0 = off)</label>
+          <input class="in" placeholder="link in messages (blank = automatic: the phone page through the connector tunnel)" bind:value={tgLink} />
+          {#if tgCfg && tgCfg.link}
+            <div class="tg-hint">Messages link to <code>{tgCfg.link.replace(/token=[^&]+/, 'token=…')}</code></div>
+          {:else if tgCfg && tgCfg.configured}
+            <div class="tg-hint">Messages carry no link yet. Set one above, or tick <b>Reachable through the connector tunnel</b> under Advanced → 📱 Phone console (needs the access token).</div>
+          {/if}
           <div class="tg-btns">
             <button class="select" onclick={() => saveTg(false)}>Save</button>
             <button class="select" onclick={() => saveTg(true)}>Save &amp; Test</button>

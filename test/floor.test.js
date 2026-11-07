@@ -68,6 +68,13 @@ test('parseCommand(): /status, /poke, /help and nothing else', () => {
   assert.equal(floor.parseCommand('/stop'), null);
   assert.equal(floor.parseCommand('blog: hello'), null);
   assert.equal(floor.parseCommand('/statusline'), null);
+  // bare words from a phone keyboard
+  assert.deepEqual(floor.parseCommand('Poke'), { kind: 'poke', project: '', message: '' });
+  assert.deepEqual(floor.parseCommand('poke blog'), { kind: 'poke', project: 'blog', message: '' });
+  assert.deepEqual(floor.parseCommand('Status'), { kind: 'status' });
+  assert.deepEqual(floor.parseCommand('help'), { kind: 'help' });
+  assert.equal(floor.parseCommand('go ahead and fix it'), null, 'a plain message, not a poke');
+  assert.equal(floor.parseCommand('status report is due'), null);
 });
 
 test('idleDue(): once per idle stretch, only pokeable idle sessions, resets when the session works again', () => {

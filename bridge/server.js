@@ -562,7 +562,7 @@ function maybeAlert(root) {
   const proj = root.project || 'a session';
   console.log(`[alert] ${proj} awaiting input`);
   sendTelegram(
-    `🔔 <b>Gander</b>\n<b>${proj}</b> needs your input.\nReply to this message to answer, or open: ${tg.dash}`,
+    `🔔 <b>Gander</b>\n<b>${proj}</b> needs your input.\nReply to this message to answer.${(l => l ? '\nOr open: ' + l : '')(remoteLink())}`,
     (mid) => { if (mid) alertMsgMap.set(mid, sid); }
   );
 }
@@ -602,7 +602,7 @@ function handleTgMessage(m) {
   // /status, /poke <project> [message], /help — the floor at a glance and the
   // one-word way to make an idle session go (bridge/floor.js owns the grammar)
   const fc = floor.parseCommand(text);
-  if (fc && fc.kind === 'status') { sendTelegram(floor.telegramText(floorRows(), { dashUrl: tg.dash })); return; }
+  if (fc && fc.kind === 'status') { sendTelegram(floor.telegramText(floorRows(), { dashUrl: remoteLink() })); return; }
   if (fc && fc.kind === 'help') { sendTelegram(floor.HELP); return; }
   if (fc && fc.kind === 'poke') {
     const rows = floorRows();
@@ -638,8 +638,15 @@ function handleTgMessage(m) {
   if (/^\/stop\b/i.test(text)) { type = 'stop'; payload = ''; }
   const tagged = text.match(/^@?([\w.-]+)\s*:\s*([\s\S]+)$/);
   if (!sessionId && tagged) { const s = sessionByProject(tagged[1]); if (s) { sessionId = s; payload = tagged[2]; } }
-  if (!sessionId) sessionId = lastAwaitingSession || lastActiveSession;
-  if (!sessionId) { sendTelegram('No active session to send to. Use “project: your message”.'); return; }
+  const live = floorRows();
+  const onFloor = live.filter((r) => r.canPoke).map((r) => r.name).join(', ') || 'nothing';
+  if (sessionId && !live.some((r) => r.sessionId === sessionId)) {
+    const was = agents.get('sess:' + sessionId);
+    sendTelegram(`That session (<b>${was && was.project ? was.project : sessionId.slice(0, 8)}</b>) is closed, so nothing was sent.\nOn the floor: ${onFloor}\nUse <code>project: your message</code>, or <code>/status</code>.`);
+    return;
+  }
+  if (!sessionId) sessionId = [lastAwaitingSession, lastActiveSession].find((s) => s && live.some((r) => r.sessionId === s)) || null;
+  if (!sessionId) { sendTelegram(`No live session to send to.\nOn the floor: ${onFloor}\nUse <code>project: your message</code>.`); return; }
   queueCommand(sessionId, type, payload);
   maybeNudge();
   const root = agents.get('sess:' + sessionId);
@@ -1944,7 +1951,7 @@ dispatch.init({
       const still = dispatch.pendingList().some((p) => p.requestId === perm.requestId);
       if (!still) return;
       lastAwaitingSession = sess.sessionId;
-      sendTelegram(`🔐 <b>Gander</b>\n<b>${sess.project}</b> wants to use <b>${perm.tool}</b>\n<code>${String(perm.detail).slice(0, 180)}</code>\nAllow/Deny on the dashboard: ${tg.dash}`,
+      sendTelegram(`🔐 <b>Gander</b>\n<b>${sess.project}</b> wants to use <b>${perm.tool}</b>\n<code>${String(perm.detail).slice(0, 180)}</code>${(l => l ? '\nAllow/Deny: ' + l : '\nAllow/Deny on the phone console or the dashboard.')(remoteLink())}`,
         (mid) => { if (mid && sess.sessionId) alertMsgMap.set(mid, sess.sessionId); });
     }, 20000));
   },
@@ -2273,7 +2280,7 @@ setInterval(() => {
     if (!minutes) { if (idleSeen.size) idleSeen.clear(); return; }
     for (const r of floor.idleDue(floorRows(), minutes, idleSeen)) {
       console.log(`[idle] ${r.name} idle ${r.idleFor}`);
-      sendTelegram(floor.idleAlertText(r, { dashUrl: tg.dash }), (mid) => { if (mid) alertMsgMap.set(mid, r.sessionId); });
+      sendTelegram(floor.idleAlertText(r, { dashUrl: remoteLink() }), (mid) => { if (mid) alertMsgMap.set(mid, r.sessionId); });
     }
   } catch (_) {}
 }, 60000).unref();
@@ -2692,6 +2699,19 @@ function phoneAccess() {
   let tunnelUrl = '';
   try { const t = tunnel.status(); if (t && t.url) tunnelUrl = t.url.replace(/\/$/, '') + '/phone'; } catch (_) {}
   return { remote: !!ALLOW_REMOTE, tokenSet: !!ACCESS_TOKEN, urls: urls.slice(0, 6), port: argPort, viaTunnel: !!cfg.phoneViaTunnel, tunnelUrl, tokenNeedsRestart: !!(cfg.accessToken && !ACCESS_TOKEN) };
+}
+
+// The link Telegram / Slack messages carry. A localhost address is useless on a
+// phone, so: your own URL if you set one (and it is not localhost), else the phone
+// console through the connector tunnel with the token, else the LAN phone page with
+// the token when remote access is on, else no link at all (better than a dead one).
+function remoteLink() {
+  const own = String(cfg.dashboardUrl || process.env.AOC_DASH_URL || '').trim();
+  if (own && !/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:|\/|$)/i.test(own)) return own;
+  const pa = phoneAccess();
+  if (pa.viaTunnel && pa.tunnelUrl && ACCESS_TOKEN) return pa.tunnelUrl + '?token=' + ACCESS_TOKEN;
+  if (ALLOW_REMOTE && ACCESS_TOKEN && pa.urls[0]) return pa.urls[0] + '?token=' + ACCESS_TOKEN;
+  return '';
 }
 
 // What the phone console needs, and nothing else: what the tunnel may carry when
@@ -4122,7 +4142,7 @@ Allow / Deny it in the dashboard rail.`);
   }
 
   if (url === '/api/telegram-config' && req.method === 'GET') {
-    return sendJson(res, 200, { configured: !!(tg.token && tg.chat), hasToken: !!tg.token, chatId: tg.chat, dashboardUrl: tg.dash, idleAlertMinutes: Number(cfg.idleAlertMinutes) || 0 });
+    return sendJson(res, 200, { configured: !!(tg.token && tg.chat), hasToken: !!tg.token, chatId: tg.chat, dashboardUrl: cfg.dashboardUrl || '', link: remoteLink(), idleAlertMinutes: Number(cfg.idleAlertMinutes) || 0 });
   }
 
   if (url === '/api/telegram-config' && req.method === 'POST') {

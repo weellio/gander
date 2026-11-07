@@ -167,4 +167,18 @@ describe('the floor at a glance on a real bridge', () => {
     assert.equal(clamp.status, 200);
     assert.equal((await call(port, 'GET', '/api/telegram-config')).json.idleAlertMinutes, 0);
   });
+
+  test('the link in Telegram messages is never localhost: your own URL, else the tunnel phone page, else none', async () => {
+    let r = await call(port, 'GET', '/api/telegram-config');
+    assert.equal(r.json.link, '', 'no tunnel, remote off: no link rather than a dead localhost one');
+    await call(port, 'POST', '/api/telegram-config', { dashboardUrl: 'http://localhost:' + port + '/' });
+    r = await call(port, 'GET', '/api/telegram-config');
+    assert.equal(r.json.dashboardUrl, 'http://localhost:' + port + '/');
+    assert.equal(r.json.link, '', 'a localhost URL is ignored');
+    await call(port, 'POST', '/api/telegram-config', { dashboardUrl: 'https://pc.example.net/phone' });
+    r = await call(port, 'GET', '/api/telegram-config');
+    assert.equal(r.json.link, 'https://pc.example.net/phone');
+    await call(port, 'POST', '/api/telegram-config', { dashboardUrl: '' });
+    assert.equal((await call(port, 'GET', '/api/telegram-config')).json.link, '');
+  });
 });
