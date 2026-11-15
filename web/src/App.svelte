@@ -27,6 +27,7 @@
   import HistoryPanel from './lib/HistoryPanel.svelte';
   import HealthPanel from './lib/HealthPanel.svelte';
   import ProcessesPanel from './lib/ProcessesPanel.svelte';
+  import SourcesPanel from './lib/SourcesPanel.svelte';
   import SuggestionsPanel from './lib/SuggestionsPanel.svelte';
   import SkillsPanel from './lib/SkillsPanel.svelte';
   import MemoryPanel from './lib/MemoryPanel.svelte';
@@ -216,7 +217,7 @@
   // Manage / Options menus + the panels they control
   let menuOpen = $state(false);
   let optsOpen = $state(false);
-  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false, skills: false, queue: false, digest: false, board: false, subagents: false, lessons: false, gpu: false, safety: false });
+  let panels = $state({ projects: false, usage: false, github: false, config: false, history: false, health: false, feed: false, search: false, routines: false, procs: false, memory: false, tune: false, skills: false, queue: false, digest: false, board: false, subagents: false, lessons: false, gpu: false, safety: false, sources: false });
   function openP(k) { panels[k] = true; menuOpen = false; }
   // Settings/Config is one drawer with two scopes: 'app' (global: Telegram, budget,
   // sessions, nudge, editor) opened from Settings ▾, and 'project' (this project's
@@ -285,6 +286,7 @@
       { label: 'Search', sub: 'panel', action: () => openP('search') },
       { label: 'Activity feed', sub: 'panel', action: () => openP('feed') },
       { label: 'Health / status', sub: 'panel', action: () => openP('health') },
+      { label: 'Sources — every API, site and feed your projects talk to', sub: 'panel', action: () => openP('sources') },
       { label: 'New task — start a session on a goal', sub: 'launch', action: () => (newTaskOpen = true) },
       { label: 'Task queue — line up goals, auto-start on free slots', sub: 'panel', action: () => openP('queue') },
       { label: 'Ship digest — sessions · commits · spend, last N days', sub: 'panel', action: () => openP('digest') },
@@ -509,6 +511,7 @@
             <button class="select" onclick={() => openP('search')}>Search</button>
             <button class="select" onclick={() => openP('feed')}>Activity feed</button>
             <button class="select" onclick={() => openP('procs')}>Processes (stuck open?)</button>
+            <button class="select" onclick={() => openP('sources')}>🌐 Sources (APIs &amp; sites, all projects)</button>
             <button class="select" onclick={() => openP('skills')}>🧩 Skills (all projects)</button>
             <button class="select" onclick={() => openP('tune')}>💡 Tune (suggestions)</button>
             <button class="select" onclick={() => openP('lessons')}>📈 Improvement (trend + lessons)</button>
@@ -601,6 +604,7 @@
   <SafetyPanel bind:open={panels.safety} />
   <HealthPanel bind:open={panels.health} />
   <ProcessesPanel bind:open={panels.procs} />
+  <SourcesPanel bind:open={panels.sources} />
   <SuggestionsPanel bind:open={panels.tune} />
   <SkillsPanel bind:open={panels.skills} />
   <MemoryPanel bind:open={panels.memory} initialScope={memScope} initialCwd={memCwd} />

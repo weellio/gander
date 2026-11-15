@@ -111,6 +111,7 @@ It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — 
 | `ambient` | Smart-light / webhook alerts — the JSON mirrors the Settings form (per-scenario colour + pattern, `webhook`, `command`, `lifx.token` / `lifx.selector`). Easiest to set once from the UI and copy the block. |
 | `boardInject` [true] | Append the coordination-board briefing to launched prompts. |
 | `queueTelegram` [false] | Telegram ping when a queue task finishes (failures always ping). |
+| `sourcesDailyCheck` [false] | 🌐 Sources: once a day HEAD every API/feed/site the projects use; one Telegram line when a host that answered stops. Toggle in the Sources panel. |
 | `idleAlertMinutes` [0] | 💤 Telegram/Slack ping when a session has sat idle this long, once per idle stretch; 0 = off. |
 | `phoneViaTunnel` [false] | Serve `/phone` (and only its calls) through the connector's cloudflared tunnel; needs `accessToken`. |
 | `autoRetire` [true] · `retireDoneSec` [180] · `retireClosedSec` [60] · `retireIdleSec` [1500] · `retireStaleActiveSec` [1800] | How long tiles linger before clocking out: finished sub-agents, truly closed sessions, idle sessions, orphaned "active" tiles. |

@@ -46,6 +46,17 @@ const CATALOG = {
       return (s.byModel || []).map((m) => ({ model: m.model, costUSD: r2(m.costUSD), tokens: Number(m.tokens) || 0 }));
     },
   },
+  sources: {
+    title: 'External sources', kind: 'rows',
+    description: 'Every external API, website, feed, CDN and repo the projects on this machine talk to, read from their own files: one row per host and project. Use it to answer "what does project X call?" and "which projects already use this API, and what env names do they read for it?". Columns: host, kind (api|feed|site|cdn|repo|docs|package), inCode (true = the project code talks to it; false = only mentioned in docs or data files), own (true = your own domain), project, path, count (mentions), files (semicolon list), env (credential NAMES read near it, never values), shared (used by 2+ projects), checkOk, checkStatus, checkedAt (last reachability check, null if never).',
+    params: {},
+    async get() {
+      const v = need().sources();
+      const out = [];
+      for (const r of v.rows) for (const p of r.projects) out.push({ host: r.host, kind: r.kind, inCode: !!p.code, own: !!r.own, project: p.name, path: p.path, count: p.count, files: (p.files || []).join(';'), env: (p.env || []).join(';'), shared: !!r.shared, checkOk: r.check ? !!r.check.ok : null, checkStatus: r.check ? r.check.status : null, checkedAt: r.check ? iso(r.check.at) : null });
+      return out;
+    },
+  },
   sessions: {
     title: 'Sessions', kind: 'rows',
     description: 'One row per Claude Code session with its project, model, spend, token split, cache-hit rate and context fill (0-1), newest first. Columns: sessionId, project, model, lastActive, costUSD, tokens, input, output, cacheRead, cacheWrite, cacheHit, ctxPct.',

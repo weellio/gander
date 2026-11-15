@@ -5,6 +5,7 @@ Gander uses calendar versions: `v<year>.<month>` for a monthly release, `v<year>
 ## Unreleased
 
 ### Added
+- **🌐 Sources registry**: every external API, website, feed, CDN and repo each project talks to, read from its own files and merged across all projects, with the env names (never values) read beside each source, shared sources first, ⭐ own domains, up/down checks, Copy as Markdown, an opt-in daily check that pings Telegram when a host stops answering, and a `gander_sources` connector dataset.
 - **The floor from anywhere**: `/status` and `/poke project` in Telegram and Slack, a Floor section with idle times and a Nudge button on the phone console, `gander_floor` + `gander_poke` on the connector, and a 💤 idle ping after N quiet minutes (reply-routable, quiet hours apply).
 - **Phone console through the connector tunnel**: opt-in, token required, phone paths only; Copy link hands over the address with the token.
 - **＋ New project…** in New task; README search terms; a Pages landing page.

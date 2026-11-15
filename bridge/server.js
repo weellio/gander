@@ -60,6 +60,9 @@ const fleet = require('./fleet.js');
 const mod = require('./mod.js');       // gander-feed mod (Claude Code 2.1.287+ in-process hooks): exact per-session telemetry
 const terminal = require('./terminal.js'); // how a terminal window is opened per platform (pure; the quoting is tested)
 const datasets = require('./datasets.js'); // row-shaped datasets: /api/datasets, the MCP connector's tools, the dashboard data pack
+const sources = require('./sources.js');   // external sources: every API / site / feed a project talks to, from its own files
+const sourcesStore = sources.createStore(process.env.AOC_SOURCES_FILE || path.join(__dirname, 'aoc-sources.json'));
+function sourceProjects() { return sources.pickProjects(projects.discover(), os.homedir()); }
 const mcp = require('./mcp.js');       // Gander as a connector: read-only MCP server at /mcp (claude.ai, Desktop, Claude Code)
 const tunnel = require('./tunnel.js'); // cloudflared quick tunnel: a public https door for claude.ai's connector
 const desktop = require('./desktop.js');
@@ -196,6 +199,7 @@ function saveConfig() { try { fs.writeFileSync(CFG_FILE, JSON.stringify(cfg, nul
 // ── Gander as a connector: datasets + a read-only MCP endpoint ──
 datasets.init({
   usage, subagents, forensics, digest, history, queue, projects,
+  sources: () => sourcesStore.view(sourceProjects()),
   getAgents: () => Array.from(agents.values()),
   priceFor: (m) => usage.rateFor(m, cfg.pricing || {}),
   feeds: (sid) => mod.forSession(sid),
@@ -511,7 +515,7 @@ function sendSlack(text) {
 
 // Alert markers → mirrored to Slack. Conversational Telegram replies (queue
 // confirmations, "no active session…") stay in the Telegram chat only.
-const ALERTY = /^[🔔⚠✅🛑💸⏱🛡💤]/u;
+const ALERTY = /^[🔔⚠✅🛑💸⏱🛡💤🌐]/u;
 // 🌙 Quiet hours. Every outbound alert passes one of these gates; held ones are
 // counted so the "while you were away" card can say so. Conversational replies
 // (a Telegram answer to a command YOU just sent) are never held: they are not
@@ -531,6 +535,7 @@ function alertKind(text) {
   if (t.startsWith('⏱')) return 'limit';
   if (t.startsWith('✅')) return 'done';
   if (t.startsWith('💤')) return 'idle';
+  if (t.startsWith('🌐')) return 'source';
   if (t.startsWith('🔔')) return /wants to run|permission/i.test(t) ? 'permission' : 'awaiting';
   if (t.startsWith('⚠')) return /same file|collision/i.test(t) ? 'collision' : 'error';
   return 'error';
@@ -2245,6 +2250,22 @@ function isStalled(a, now) {
 
 // The floor at a glance (bridge/floor.js): what the phone page, /status and the
 // connector's gander_floor all read.
+// Daily reachability sweep of the external sources (opt-in from the 🌐 Sources
+// panel): a host that answered last time and does not now gets one Telegram line.
+setInterval(async () => {
+  if (!cfg.sourcesDailyCheck) return;
+  try {
+    const v = sourcesStore.view(sourceProjects());
+    if (v.lastCheckAt && Date.now() - v.lastCheckAt < 23 * 3600000) return;
+    const before = { ...sourcesStore.checks() };
+    const hosts = sources.checkable(v.rows);
+    if (!hosts.length) return;
+    const after = await sourcesStore.check(hosts);
+    const down = Object.values(after).filter((c) => !c.ok && before[c.host] && before[c.host].ok);
+    if (down.length) sendTelegram('🌐 <b>Gander</b>\n' + down.map((c) => { const row = v.rows.find((r) => r.host === c.host); return `<b>${c.host}</b> is not answering (${c.error || c.status}) · used by ${row ? row.projects.map((p) => p.name).join(', ') : '?'}`; }).join('\n'));
+  } catch (_) {}
+}, 15 * 60000).unref();
+
 function floorRows() { return floor.rows(Array.from(agents.values()), Date.now(), { isStalled }); }
 
 // Send text into a session from afar and make sure it gets there: a hosted
@@ -3121,6 +3142,44 @@ Allow / Deny it in the dashboard rail.`);
     return sendJson(res, m ? 200 : 404, m || { error: 'no transcript' });
   }
   // ── datasets: row-shaped JSON (or CSV) over what the bridge computes; the dashboard data pack ──
+  // ── 🌐 external sources: what every project talks to ──
+  if (url === '/api/sources' && req.method === 'GET') {
+    const list = sourceProjects();
+    sourcesStore.refresh(list, 7 * 86400000);   // never-scanned projects scan now; week-old scans refresh; the rest is served from the registry
+    return sendJson(res, 200, { ...sourcesStore.view(list), dailyCheck: !!cfg.sourcesDailyCheck, generatedAt: Date.now() });
+  }
+  if (url === '/api/sources.md' && req.method === 'GET') {
+    const v = sourcesStore.view(sourceProjects());
+    res.writeHead(200, { 'Content-Type': 'text/markdown; charset=utf-8' });
+    const mu = new URL(req.url, 'http://localhost');
+    return res.end(sources.toMarkdown(v.rows, v.projects, { at: Date.now(), mentions: mu.searchParams.get('mentions') === '1', project: mu.searchParams.get('project') || '' }));
+  }
+  if (url === '/api/sources/rescan' && req.method === 'POST') {
+    const body = (await readBody(req)) || {};
+    const list = sourceProjects();
+    const want = body.path ? path.resolve(String(body.path)).toLowerCase() : '';
+    const pick = want ? list.filter((p) => path.resolve(p.path).toLowerCase() === want) : list;
+    if (want && !pick.length) return sendJson(res, 404, { error: 'unknown project' });
+    sourcesStore.forget(list);
+    return sendJson(res, 200, { ok: true, ...sourcesStore.rescan(pick) });
+  }
+  if (url === '/api/sources/check' && req.method === 'POST') {
+    const body = (await readBody(req)) || {};
+    const v = sourcesStore.view(sourceProjects());
+    const hosts = body.host ? [String(body.host).toLowerCase()] : sources.checkable(v.rows);
+    const r = await sourcesStore.check(hosts);
+    return sendJson(res, 200, { ok: true, checked: Object.keys(r).length, results: r });
+  }
+  if (url === '/api/sources/own' && req.method === 'POST') {
+    const body = (await readBody(req)) || {};
+    if (!body.host) return sendJson(res, 400, { error: 'host required' });
+    return sendJson(res, 200, { ok: true, own: sourcesStore.setOwn(body.host, body.own !== false) });
+  }
+  if (url === '/api/sources/daily' && req.method === 'POST') {
+    const body = (await readBody(req)) || {};
+    cfg.sourcesDailyCheck = !!body.enabled; saveConfig();
+    return sendJson(res, 200, { ok: true, enabled: cfg.sourcesDailyCheck });
+  }
   if (url === '/api/datasets' && req.method === 'GET') {
     return sendJson(res, 200, { datasets: datasets.catalog(), mcp: mcpConfigView() });
   }

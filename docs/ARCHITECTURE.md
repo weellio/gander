@@ -246,6 +246,12 @@ GET  /api/teams           -> { teams:[...] }   Agent Teams read from ~/.claude/t
 GET  /api/subagents  -> { subagents, totals, byType }   every sub-agent ever run: name, tokens, cost, duration
 
 # Misc
+GET  /api/sources         -> { rows:[{host, kind, own, total, env, projects:[{name, path, count, files, urls, env}], shared, check}], projects:[...], own, scanning, lastCheckAt, dailyCheck }   external sources registry (first call scans)
+GET  /api/sources.md      -> text/markdown   the registry as Markdown
+POST /api/sources/rescan  -> { path? }  -> { ok, queued }       re-read one project's files, or all
+POST /api/sources/check   -> { host? }  -> { ok, checked, results }   HEAD each API/feed/site host (6 s cap)
+POST /api/sources/own     -> { host, own } -> { ok, own }       mark a domain as yours
+POST /api/sources/daily   -> { enabled } -> { ok, enabled }     daily sweep + Telegram when a host stops answering
 GET  /api/processes       -> { processes:[...], generatedAt }   attributed long-running / port-holding processes (shared cache with /api/state's procs; Windows)
 POST /api/kill-process    -> { pid } -> { ok, output }   (taskkill /T /F; refuses the bridge's own pid)
 POST /api/focus-pid       -> { pid } -> { ok, output }   raise a background process's window (Windows)
