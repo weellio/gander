@@ -270,7 +270,9 @@
 
   // ── Telegram (global bridge config) ──
   let tgCfg = $state(null); let tgToken = $state(''); let tgChat = $state(''); let tgStatus = $state(''); let tgOpen = $state(false); let tgIdle = $state(0); let tgLink = $state('');
+  let tgTimer; $effect(() => { if (tgOpen) { loadTg(); tgTimer = setInterval(loadTg, 10000); } else clearInterval(tgTimer); return () => clearInterval(tgTimer); });
   async function loadTg() { try { const r = await fetch('/api/telegram-config'); tgCfg = await r.json(); tgChat = (tgCfg && tgCfg.chatId) || ''; tgIdle = Number(tgCfg && tgCfg.idleAlertMinutes) || 0; tgLink = (tgCfg && tgCfg.dashboardUrl) || ''; } catch (_) {} }
+  function tgAgo(ts, now) { if (!ts) return 'never'; const m = Math.round(((now || Date.now()) - ts) / 60000); if (m < 1) return 'just now'; if (m < 60) return m + ' min ago'; const h = Math.round(m / 60); if (h < 48) return h + ' h ago'; return Math.round(h / 24) + ' d ago'; }
   async function saveTg(test) {
     tgStatus = 'Saving…';
     const body = { chatId: tgChat, test, idleAlertMinutes: Math.max(0, Number(tgIdle) || 0), dashboardUrl: tgLink.trim() };
@@ -427,6 +429,24 @@
           <input class="in" placeholder="chat id (your numeric id)" bind:value={tgChat} />
           <label class="cbrow">💤 Ping me when a session sits idle for <input class="in num wide-num" type="number" min="0" max="1440" step="5" bind:value={tgIdle} /> min (0 = off)</label>
           <input class="in" placeholder="link in messages (blank = automatic: the phone page through the connector tunnel)" bind:value={tgLink} />
+          {#if tgCfg && tgCfg.health}
+            {@const h = tgCfg.health}
+            {#if h.conflict}
+              <div class="tg-hint tg-warn">⚠ Another program is reading this bot's messages (Telegram 409 conflict). Your messages may be going to it instead of Gander. Give one of them its own bot from @BotFather.</div>
+            {:else if h.lastError}
+              <div class="tg-hint tg-warn">⚠ Telegram polling error: <code>{h.lastError}</code></div>
+            {:else if h.polling}
+              <div class="tg-hint">Listening ✓ · last check {tgAgo(h.lastOkAt || h.lastPollAt, h.now)} · last message from you {h.lastInboundAt ? tgAgo(h.lastInboundAt, h.now) : 'none since the bridge started ' + tgAgo(h.bridgeStarted, h.now)}. Every message you send gets 👀 the moment it lands, then 👍 (done) or 🤷 (could not); 😴 means it arrived while the bridge was off and was not acted on. Send <code>ping</code> any time.</div>
+            {/if}
+            {#if tgCfg.inbox && tgCfg.inbox.length}
+              <div class="tg-inbox">
+                <div class="tg-inbox-h">Received from you</div>
+                {#each tgCfg.inbox as m (m.messageId)}
+                  <div class="tg-row"><span class="tg-when">{tgAgo(m.sentAt || m.at, h.now)}</span><span class="tg-text" title={m.text}>{m.text}</span><span class="tg-out" title={m.outcome}>{m.outcome}</span></div>
+                {/each}
+              </div>
+            {/if}
+          {/if}
           {#if tgCfg && tgCfg.link}
             <div class="tg-hint">Messages link to <code>{tgCfg.link.replace(/token=[^&]+/, 'token=…')}</code></div>
           {:else if tgCfg && tgCfg.configured}
@@ -984,6 +1004,13 @@
   .quietkinds { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; }
   .tg-status { font-size: 11px; color: var(--color-text-secondary); }
   .tg-hint { font-size: 10px; color: var(--color-text-tertiary); line-height: 1.4; }
+  .tg-warn { color: #EF4444; }
+  .tg-inbox { margin-top: 6px; border: 0.5px solid var(--color-border-tertiary); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 3px; }
+  .tg-inbox-h { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-tertiary); }
+  .tg-row { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 8px; font-size: 10.5px; align-items: baseline; }
+  .tg-when { color: var(--color-text-tertiary); white-space: nowrap; }
+  .tg-text { color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tg-out { color: var(--color-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cbrow { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--color-text-secondary); cursor: pointer; }
   .in.num { width: 56px; flex: 0 0 auto; text-align: center; }
 

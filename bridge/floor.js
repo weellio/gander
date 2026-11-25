@@ -117,6 +117,7 @@ const HELP = [
   '<code>/task project goal</code> — queue new work',
   '<code>/queue</code> — what is queued or running',
   '<code>/stop</code> — stop the session you last replied to',
+  '<code>/ping</code> — is Gander listening? (every message you send gets 👀 the moment it lands, then 👍 done or 🤷 could not)',
   'Reply to any alert to answer that session.',
 ].join('\n');
 

@@ -168,6 +168,13 @@ describe('the floor at a glance on a real bridge', () => {
     assert.equal((await call(port, 'GET', '/api/telegram-config')).json.idleAlertMinutes, 0);
   });
 
+  test('telegram-config carries polling health and the received-from-you log', async () => {
+    const r = await call(port, 'GET', '/api/telegram-config');
+    assert.equal(r.status, 200);
+    assert.ok(r.json.health && typeof r.json.health.polling === 'boolean' && r.json.health.bridgeStarted > 0, JSON.stringify(r.json.health));
+    assert.ok(Array.isArray(r.json.inbox));
+  });
+
   test('the link in Telegram messages is never localhost: your own URL, else the tunnel phone page, else none', async () => {
     let r = await call(port, 'GET', '/api/telegram-config');
     assert.equal(r.json.link, '', 'no tunnel, remote off: no link rather than a dead localhost one');

@@ -540,6 +540,30 @@ function alertKind(text) {
   if (t.startsWith('⚠')) return /same file|collision/i.test(t) ? 'collision' : 'error';
   return 'error';
 }
+// Receipts. A reaction lands on YOUR message the instant the bridge sees it (👀), then
+// 👍 when something was done with it or 🤷 when nothing could be (unknown project, closed
+// session); 😴 marks a message that arrived while the bridge was down. The last 50 inbound
+// messages and what happened to them are kept for Settings → Telegram → received from you.
+const BRIDGE_STARTED = Date.now();
+const TG_LOG_FILE = process.env.AOC_TG_LOG_FILE || path.join(__dirname, 'aoc-telegram-log.json');
+let tgLog = []; try { tgLog = JSON.parse(fs.readFileSync(TG_LOG_FILE, 'utf8')).slice(-50); } catch (_) {}
+const tgHealth = { pollingSince: 0, lastPollAt: 0, lastOkAt: 0, lastError: '', conflict: false, lastInboundAt: 0 };
+function tgNote(m, outcome) {
+  if (!m) return;
+  const plain = String(outcome || '').replace(/<[^>]+>/g, '').slice(0, 160);
+  const cur = tgLog.find((x) => x.messageId === m.message_id);
+  if (cur) cur.outcome = plain; else tgLog.push({ messageId: m.message_id, at: Date.now(), sentAt: m.date ? m.date * 1000 : Date.now(), text: String(m.text || '').slice(0, 200), outcome: plain });
+  if (tgLog.length > 50) tgLog = tgLog.slice(-50);
+  try { fs.writeFileSync(TG_LOG_FILE, JSON.stringify(tgLog)); } catch (_) {}
+}
+function tgReact(messageId, emoji) {
+  if (!tg.token || !tg.chat || !messageId) return;
+  const data = JSON.stringify({ chat_id: tg.chat, message_id: messageId, reaction: [{ type: 'emoji', emoji }] });
+  const req = https.request({ host: 'api.telegram.org', path: `/bot${cfg.telegramReplyToken || tg.token}/setMessageReaction`, method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data) }, timeout: 8000 }, (res) => res.resume());
+  req.on('error', () => {}); req.on('timeout', () => req.destroy());
+  req.end(data);
+}
+const sendTelegramRaw = (text, cb) => sendTelegram(text, cb);
 function sendTelegram(text, cb) {
   const alerty = ALERTY.test(String(text));
   if (alerty && quietAllows('slack', alertKind(text))) sendSlack(text);   // fires even with no Telegram configured
@@ -604,6 +628,14 @@ function knownProjectNames(limit) {
 function handleTgMessage(m) {
   if (!m || !m.text || String(m.chat.id) !== String(tg.chat)) return;
   const text = m.text.trim();
+  // every answer is also the recorded outcome of this inbound message (Settings → Telegram → received from you)
+  const sendTelegram = (t, cb) => { tgNote(m, t); tgReact(m.message_id, /^(No |Nothing |That session|Unknown |Could not|Failed|No live)/.test(String(t).replace(/<[^>]+>/g, '')) ? '🤷' : '👍'); sendTelegramRaw(t, cb); };
+  if (/^\/?ping\s*$/i.test(text)) {
+    const live = floorRows();
+    const last = tgLog.length > 1 ? tgLog[tgLog.length - 2].at : 0;
+    sendTelegram(`🦆 Gander here.\nPolling ${tgHealth.conflict ? '⚠ conflicted: another program reads this bot' : 'ok'} · ${live.length} session${live.length === 1 ? '' : 's'} on the floor · bridge up ${floor.ago(Date.now() - BRIDGE_STARTED)}${last ? ` · your previous message ${floor.ago(Date.now() - last)} ago` : ''}.`);
+    return;
+  }
   // /status, /poke <project> [message], /help — the floor at a glance and the
   // one-word way to make an idle session go (bridge/floor.js owns the grammar)
   const fc = floor.parseCommand(text);
@@ -672,22 +704,38 @@ function startTelegramPolling() {
         res.on('end', () => {
           try {
             const j = JSON.parse(b);
-            if (!j.ok && /webhook/i.test(j.description || '') && !warned) {
-              warned = true;
-              console.error('[telegram] reply polling blocked: this bot has a webhook. Set "telegramReplyToken" in aoc-config.json to a dedicated bot to enable Telegram replies.');
-            } else if (j.ok) {
-              for (const u of j.result) { offset = u.update_id + 1; try { handleTgMessage(u.message); } catch (_) {} }
+            tgHealth.lastPollAt = Date.now();
+            if (!j.ok) {
+              tgHealth.lastError = String(j.description || res.statusCode || 'error');
+              tgHealth.conflict = /conflict/i.test(tgHealth.lastError);
+              if (tgHealth.conflict && Date.now() - (tgHealth.conflictWarnedAt || 0) > 600000) { tgHealth.conflictWarnedAt = Date.now(); console.error('[telegram] another program is polling this bot (409 Conflict): messages may go to it instead of Gander. Give one of them its own bot (@BotFather) — Gander takes a second token as "telegramReplyToken".'); }
+              if (/webhook/i.test(tgHealth.lastError) && !warned) { warned = true; console.error('[telegram] reply polling blocked: this bot has a webhook. Set "telegramReplyToken" in aoc-config.json to a dedicated bot to enable Telegram replies.'); }
+            } else {
+              tgHealth.lastOkAt = Date.now(); tgHealth.lastError = ''; tgHealth.conflict = false;
+              const stale = [];
+              for (const u of j.result) {
+                offset = u.update_id + 1;
+                const m = u.message;
+                if (!m || !m.text || String(m.chat.id) !== String(tg.chat)) continue;
+                tgHealth.lastInboundAt = Date.now();
+                // sent while the bridge was down (older than 10 min at the moment we first see it): report, never replay
+                if (m.date && Date.now() - m.date * 1000 > 600000) { stale.push(m); tgReact(m.message_id, '😴'); tgNote(m, 'arrived while Gander was offline — not acted on'); continue; }
+                tgReact(m.message_id, '👀');
+                try { handleTgMessage(m); } catch (e) { tgNote(m, 'error: ' + e.message); }
+              }
+              if (stale.length) sendTelegramRaw(`😴 <b>Gander</b> was offline when ${stale.length === 1 ? 'this arrived' : 'these arrived'}; nothing was done with ${stale.length === 1 ? 'it' : 'them'}:\n` + stale.slice(-8).map((m) => `• ${new Date(m.date * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} “${String(m.text).slice(0, 60)}”`).join('\n') + '\nResend anything you still want.');
             }
           } catch (_) {}
           setTimeout(poll, 800);
         });
       }
     );
-    req.on('error', () => setTimeout(poll, 3000));
+    req.on('error', (e) => { tgHealth.lastPollAt = Date.now(); tgHealth.lastError = e.code || e.message; setTimeout(poll, 3000); });
     req.on('timeout', () => { req.destroy(); setTimeout(poll, 500); });
     req.end();
   };
   poll();
+  tgHealth.pollingSince = Date.now();
   console.log('[telegram] reply polling started');
 }
 
@@ -4201,7 +4249,7 @@ Allow / Deny it in the dashboard rail.`);
   }
 
   if (url === '/api/telegram-config' && req.method === 'GET') {
-    return sendJson(res, 200, { configured: !!(tg.token && tg.chat), hasToken: !!tg.token, chatId: tg.chat, dashboardUrl: cfg.dashboardUrl || '', link: remoteLink(), idleAlertMinutes: Number(cfg.idleAlertMinutes) || 0 });
+    return sendJson(res, 200, { configured: !!(tg.token && tg.chat), hasToken: !!tg.token, chatId: tg.chat, dashboardUrl: cfg.dashboardUrl || '', link: remoteLink(), idleAlertMinutes: Number(cfg.idleAlertMinutes) || 0, health: { ...tgHealth, polling: tgPollStarted, bridgeStarted: BRIDGE_STARTED, now: Date.now() }, inbox: tgLog.slice(-12).reverse() });
   }
 
   if (url === '/api/telegram-config' && req.method === 'POST') {
