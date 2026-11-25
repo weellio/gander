@@ -80,6 +80,7 @@ function main() {
     const child = spawn(process.execPath, [SERVER, '--port', String(PORT)], {
       detached: true,
       stdio: 'ignore',
+      windowsHide: true,   // the keeper task starts us from a hidden script: no console window
       env: { ...process.env, CLAUDECODE: '' },
     });
     child.unref();

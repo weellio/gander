@@ -50,7 +50,7 @@ describe('the floor at a glance on a real bridge', () => {
     const dir = tmpdir('gander-floorb-');
     child = spawn(process.execPath, [path.join(__dirname, '..', 'bridge', 'server.js'), '--port', String(port)], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, AOC_QUEUE_FILE: path.join(dir, 'q.json'), AOC_REGISTRY_FILE: path.join(dir, 'reg.json'), GANDER_NO_OPEN: '1', GANDER_NO_NUDGE: '1', GANDER_SETTINGS: path.join(dir, 'settings.json'), AOC_CONFIG_FILE: path.join(dir, 'aoc-config.json'), AOC_PROJECTS_FILE: path.join(dir, 'aoc-projects.json'), AOC_TOKEN: TOKEN },
+      env: { ...process.env, AOC_QUEUE_FILE: path.join(dir, 'q.json'), AOC_REGISTRY_FILE: path.join(dir, 'reg.json'), GANDER_NO_OPEN: '1', GANDER_NO_NUDGE: '1', GANDER_SETTINGS: path.join(dir, 'settings.json'), AOC_CONFIG_FILE: path.join(dir, 'aoc-config.json'), AOC_PROJECTS_FILE: path.join(dir, 'aoc-projects.json'), AOC_TOKEN: TOKEN, GANDER_NO_AUTOSTART: '1' },
     });
     child.stdout.on('data', (d) => (out += d));
     child.stderr.on('data', (d) => (out += d));
@@ -166,6 +166,15 @@ describe('the floor at a glance on a real bridge', () => {
     const clamp = await call(port, 'POST', '/api/telegram-config', { idleAlertMinutes: -4 });
     assert.equal(clamp.status, 200);
     assert.equal((await call(port, 'GET', '/api/telegram-config')).json.idleAlertMinutes, 0);
+  });
+
+  test('the keeper toggle answers its state and, in tests, never touches the OS', async () => {
+    const g = await call(port, 'GET', '/api/autostart');
+    assert.equal(g.status, 200);
+    assert.equal(typeof g.json.enabled, 'boolean');
+    assert.ok(/minute/.test(g.json.how), g.json.how);
+    const p = await call(port, 'POST', '/api/autostart', { enabled: true });
+    assert.equal(p.json.skipped, 'tests');
   });
 
   test('telegram-config carries polling health and the received-from-you log', async () => {

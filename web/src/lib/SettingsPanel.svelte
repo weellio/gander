@@ -152,6 +152,16 @@
   let advClear = $state({ telegramReplyToken: false, license: false, accessToken: false });
   let advPhone = $state({ remote: false, tokenSet: false, urls: [], port: 0, viaTunnel: false, tunnelUrl: '' });
   let advPhoneTunnel = $state(false); let phoneLinkStatus = $state('');
+  let autoOn = $state(false); let autoBusy = $state(false); let autoMsg = $state('');
+  async function loadAutostart() { try { const j = await (await fetch('/api/autostart')).json(); autoOn = !!j.enabled; autoMsg = j.enabled ? `On · ${j.how}.` : `Off · without it the bridge only starts when a Claude session starts, and stays down after a reboot, logoff or crash until then.`; } catch (_) {} }
+  async function toggleAutostart(e) {
+    autoBusy = true;
+    const want = e.target.checked;
+    const r = await post('/api/autostart', { enabled: want });
+    autoBusy = false;
+    if (r && r.ok) { autoOn = !!r.enabled; autoMsg = want ? `On · ${r.how}. The bridge now comes back by itself within a minute or two, and starts at logon.` : 'Off.'; }
+    else { autoOn = !want; autoMsg = '✗ ' + ((r && r.error) || 'could not change it'); }
+  }
   async function copyPhoneLink(base) {
     phoneLinkStatus = '…';
     try {
@@ -186,7 +196,7 @@
     if (j.quietHours) quiet = { enabled: !!j.quietHours.enabled, start: j.quietHours.start || '23:00', end: j.quietHours.end || '08:00', critical: Array.isArray(j.quietHours.critical) ? j.quietHours.critical : ['runaway', 'danger'] };
     advRestart = !!j.restartNeeded;
   }
-  async function loadAdvanced() { try { const j = await (await fetch('/api/app-config')).json(); if (j && !j.error) applyAdvanced(j); } catch (_) {} }
+  async function loadAdvanced() { loadAutostart(); try { const j = await (await fetch('/api/app-config')).json(); if (j && !j.error) applyAdvanced(j); } catch (_) {} }
   function advAddTest() { advTestRows = [...advTestRows, { project: '', cmd: '' }]; }
   function advDelTest(i) { advTestRows = advTestRows.filter((_, k) => k !== i); }
   async function saveAdvanced() {
@@ -853,6 +863,9 @@
               <button class="mini" onclick={restartBridge} disabled={advRestarting}>{advRestarting ? 'restarting…' : 'Restart bridge now'}</button>
             </div>
           {/if}
+          <div class="adv-group">🔁 Keep the bridge running</div>
+          <label class="cbrow"><input type="checkbox" checked={autoOn} onchange={toggleAutostart} disabled={autoBusy} /> Start the bridge at logon and bring it back if it stops (a small keeper checks every minute)</label>
+          <div class="tg-hint">{autoMsg}</div>
           <div class="tg-hint">Remote access, the access token and the licence key need a bridge restart; everything else applies immediately. Secrets are stored in <code>bridge/aoc-config.json</code> and never shown back — only their last 4 characters.</div>
         </div>
       {/if}

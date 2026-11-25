@@ -5,6 +5,7 @@ Gander uses calendar versions: `v<year>.<month>` for a monthly release, `v<year>
 ## Unreleased
 
 ### Added
+- **🔁 Keep the bridge running**: a Settings toggle installs a keeper (Windows: a Startup-folder launcher running `keeper.js`, a one-minute check; macOS LaunchAgent; Linux systemd timer) that starts the bridge at logon and brings it back if it stops; the bridge's own console window is hidden when started that way.
 - **Telegram receipts**: 👀 on your message the instant the bridge sees it, 👍 done / 🤷 could not / 😴 arrived while offline (listed once, never replayed into a random session); `/ping`; Settings shows listening state, last check, a received-from-you log with outcomes, and a 409 warning when another program polls the same bot.
 - **🌐 Sources registry**: every external API, website, feed, CDN and repo each project talks to, read from its own files and merged across all projects, with the env names (never values) read beside each source, shared sources first, ⭐ own domains, up/down checks, Copy as Markdown, an opt-in daily check that pings Telegram when a host stops answering, and a `gander_sources` connector dataset.
 - **The floor from anywhere**: `/status` and `/poke project` in Telegram and Slack, a Floor section with idle times and a Nudge button on the phone console, `gander_floor` + `gander_poke` on the connector, and a 💤 idle ping after N quiet minutes (reply-routable, quiet hours apply).

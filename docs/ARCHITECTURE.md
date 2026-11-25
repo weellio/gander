@@ -246,6 +246,8 @@ GET  /api/teams           -> { teams:[...] }   Agent Teams read from ~/.claude/t
 GET  /api/subagents  -> { subagents, totals, byType }   every sub-agent ever run: name, tokens, cost, duration
 
 # Misc
+GET  /api/autostart       -> { enabled, how, detail }   is the keeper installed (Startup-folder launcher + keeper.js / LaunchAgent / systemd timer)
+POST /api/autostart       -> { enabled } -> { ok, enabled, how, error? }   install or remove it
 GET  /api/sources         -> { rows:[{host, kind, own, total, env, projects:[{name, path, count, files, urls, env}], shared, check}], projects:[...], own, scanning, lastCheckAt, dailyCheck }   external sources registry (first call scans)
 GET  /api/sources.md      -> text/markdown   the registry as Markdown
 POST /api/sources/rescan  -> { path? }  -> { ok, queued }       re-read one project's files, or all

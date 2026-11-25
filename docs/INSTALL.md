@@ -60,6 +60,7 @@ Prefer everything in one window? A thin **VS Code extension** in [`vscode-extens
 - **Goose icon in the Activity Bar** (the left rail) — click it to dock the live dashboard in the sidebar next to your code, with ↻ reload and ↗ open-as-tab buttons in its title bar.
 - **Status bar**: a live count of what needs you. Click it, or run **"Gander: Open Dashboard (full tab)"**, for the full dashboard as an editor tab (via the built-in Simple Browser), roomier for the Office floor and grid views. Off switch: `gander.statusBar`.
 - If the bridge isn't reachable, it can **autostart** it from the repo (`gander.autostart`).
+- **Keep the bridge running** without any session: **Settings → Advanced → 🔁 Keep the bridge running** installs a keeper: on Windows a launcher in your Startup folder runs `bridge/keeper.js` (checks every minute, runs `launch.js` when the bridge is down); on macOS a LaunchAgent and on Linux a systemd user timer run `launch.js` every 5 minutes. `launch.js` exits at once when a bridge already answers.
 
 It's a wrapper, not a fork: it loads the *same* dashboard the bridge serves — browser users open `localhost:3131`, VS Code users see the identical app. Install the packaged `.vsix` (Extensions → ⋯ → *Install from VSIX…*), or open the folder and press **F5** to develop. See [vscode-extension/README.md](../vscode-extension/README.md).
 

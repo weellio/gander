@@ -60,6 +60,7 @@ const fleet = require('./fleet.js');
 const mod = require('./mod.js');       // gander-feed mod (Claude Code 2.1.287+ in-process hooks): exact per-session telemetry
 const terminal = require('./terminal.js'); // how a terminal window is opened per platform (pure; the quoting is tested)
 const datasets = require('./datasets.js'); // row-shaped datasets: /api/datasets, the MCP connector's tools, the dashboard data pack
+const autostart = require('./autostart.js'); // keep the bridge running: a 5-minute OS keeper that runs launch.js
 const sources = require('./sources.js');   // external sources: every API / site / feed a project talks to, from its own files
 const sourcesStore = sources.createStore(process.env.AOC_SOURCES_FILE || path.join(__dirname, 'aoc-sources.json'));
 function sourceProjects() { return sources.pickProjects(projects.discover(), os.homedir()); }
@@ -4087,6 +4088,14 @@ Allow / Deny it in the dashboard rail.`);
   }
   // One-click bridge restart from the drawer: hand off to a detached helper that
   // re-launches via bridge/launch.js once this process has let go of the port.
+  // ── keep the bridge running (OS keeper every 5 minutes) ──
+  if (url === '/api/autostart' && req.method === 'GET') return sendJson(res, 200, autostart.status({ port: argPort }));
+  if (url === '/api/autostart' && req.method === 'POST') {
+    const body = (await readBody(req)) || {};
+    if (process.env.GANDER_NO_AUTOSTART) return sendJson(res, 200, { ok: true, enabled: !!body.enabled, skipped: 'tests' });
+    const r = body.enabled ? autostart.enable({ port: argPort }) : autostart.disable({ port: argPort });
+    return sendJson(res, r.ok ? 200 : 500, r);
+  }
   if (url === '/api/restart-bridge' && req.method === 'POST') {
     sendJson(res, 200, { ok: true });
     try {
